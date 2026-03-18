@@ -77,7 +77,7 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
         $descriptorspec = [
             0 => ['pipe', 'r'],
             1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
+            2 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'w'],
         ];
 
         $cwd = null;
