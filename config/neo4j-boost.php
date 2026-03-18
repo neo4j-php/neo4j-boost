@@ -28,6 +28,12 @@ return [
                 'NEO4J_PASSWORD' => env('NEO4J_PASSWORD', ''),
             ],
         ],
+
+        'http' => [
+            'url' => env('NEO4J_MCP_URL', 'http://localhost:8080/mcp'),
+            'username' => env('NEO4J_MCP_USERNAME', env('NEO4J_USERNAME')),
+            'password' => env('NEO4J_MCP_PASSWORD', env('NEO4J_PASSWORD')),
+        ],
     ],
 
     /*
@@ -39,9 +45,9 @@ return [
     | server is already running elsewhere (e.g. Docker on port 8080).
     |
     */
-    'http' => [
-        'url' => env('NEO4J_MCP_URL', 'http://localhost:8080/mcp'),
-        'username' => env('NEO4J_MCP_USERNAME', env('NEO4J_USERNAME')),
-        'password' => env('NEO4J_MCP_PASSWORD', env('NEO4J_PASSWORD')),
+    'neo4j_mcp' => [
+        'version' => 'v1.4.0',
+        'binary_path' => null, // null = use storage_path('app/neo4j-mcp/neo4j-mcp'); set to absolute path to override.
+        'platform_asset' => null, // null = auto-detect (Linux_x86_64, Linux_arm64, Darwin_*, Windows_*). Override e.g. 'Linux_x86_64'.
     ],
 ];

@@ -17,7 +17,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
 
     public function callTool(string $toolName, array $arguments = []): array
     {
-        $url = $this->normalizeMcpUrl(config('neo4j-boost.http.url', 'http://localhost:8080/mcp'));
+        $url = config('neo4j-boost.http.url', 'http://localhost:8080/mcp');
         $username = config('neo4j-boost.http.username');
         $password = config('neo4j-boost.http.password');
 
@@ -102,15 +102,5 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
         }
 
         return $body['result'] ?? [];
-    }
-
-    private function normalizeMcpUrl(string $url): string
-    {
-        $url = rtrim($url, '/');
-        if (! str_ends_with($url, '/mcp')) {
-            $url .= '/mcp';
-        }
-
-        return $url;
     }
 }
