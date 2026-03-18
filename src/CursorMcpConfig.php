@@ -8,8 +8,13 @@ class CursorMcpConfig
 
     public static function getDefaultServerConfig(): array
     {
+        $url = rtrim(config('neo4j-boost.http.url', 'http://localhost:8080/mcp'), '/');
+        if (! str_ends_with($url, '/mcp')) {
+            $url .= '/mcp';
+        }
+
         return [
-            'url' => config('neo4j-boost.http.url', 'http://localhost:8080/mcp'),
+            'url' => $url,
         ];
     }
 

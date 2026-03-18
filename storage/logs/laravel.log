@@ -1,0 +1,250 @@
+[2026-03-11 09:41:19] production.ERROR: There are no commands defined in the "neo4j-boost" namespace. {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"neo4j-boost\" namespace. at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:52:26] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:52:27] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:54:18] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:54:52] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:59:03] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:59:22] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 09:59:28] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:00:33] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:02:19] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:03:45] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:05:45] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:05:59] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:07:23] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:07:25] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2026-03-11 10:07:34] production.ERROR: There are no commands defined in the "boost" namespace.
+
+Did you mean this?
+    neo4j-boost {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"boost\" namespace.
+
+Did you mean this?
+    neo4j-boost at /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php:694)
+[stacktrace]
+#0 /home/ankush/dev/neo4j-boost/neo4j-boostvendor/symfony/console/Application.php(743): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#2 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#4 /home/ankush/dev/neo4j-boost/neo4j-boost/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1235): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/ankush/dev/neo4j-boost/neo4j-boost/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 

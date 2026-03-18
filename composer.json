@@ -1,5 +1,6 @@
 {
     "name": "neo4j/laravel-boost",
+    "version": "1.0.0",
     "description": "Official Neo4j MCP server integration for Laravel",
     "type": "library",
     "license": "MIT",
@@ -20,6 +21,9 @@
       "laravel/framework": "^11.0|^12.0",
       "laravel/boost": "^2.0",
       "laravel/mcp": "^0.5.1"
+    },
+    "require-dev": {
+      "phpunit/phpunit": "^10.5|^11.0"
     }
   }
   

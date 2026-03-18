@@ -35,8 +35,9 @@ Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` where the Neo4j MCP serv
 
 Publish with `php artisan vendor:publish --tag=neo4j-boost-config`. Options in `config/neo4j-boost.php`: `http.url`, `http.username`, `http.password`.
 
-### Cursor: "Loading tools" stuck
+### Cursor: "Loading tools" stuck or HTTP 404
 
 - Open your **Laravel app folder** (the project where you ran `composer require neo4j/laravel-boost`) as the Cursor workspace, not the neo4j-boost package folder.
 - If `.cursor/mcp.json` is missing, run `php artisan neo4j-boost:cursor-config` to create it.
 - Ensure the Neo4j MCP server is running at the URL set in `NEO4J_MCP_URL` and that it is started with HTTP transport.
+- If you see **404 "This server only handles requests to /mcp"**: Cursor may send GET requests (e.g. for SSE); the Neo4j MCP server only accepts POST on `/mcp`. Using **Boost** (one server: `boost:mcp`) avoids this—Cursor uses stdio and this package calls Neo4j MCP over HTTP. Otherwise ensure the URL ends with `/mcp` and the server is running with HTTP transport.

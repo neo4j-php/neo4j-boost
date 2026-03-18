@@ -1,5 +1,6 @@
 <?php
 
 return [
-    App\Providers\AppServiceProvider::class,
+    Laravel\Boost\BoostServiceProvider::class,
+    Neo4j\LaravelBoost\Neo4jBoostServiceProvider::class,
 ];
