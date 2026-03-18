@@ -22,3 +22,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Laravel logs
+storage/logs/*.log

@@ -2,9 +2,13 @@
 
 namespace Neo4j\LaravelBoost;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
+use Neo4j\LaravelBoost\Boost\Tools\ListGdsProceduresTool;
+use Neo4j\LaravelBoost\Boost\Tools\ReadCypherTool;
+use Neo4j\LaravelBoost\Boost\Tools\WriteCypherTool;
 use Neo4j\LaravelBoost\Console\CursorConfigCommand;
+use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 
 class Neo4jBoostServiceProvider extends ServiceProvider
@@ -13,7 +17,13 @@ class Neo4jBoostServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/neo4j-boost.php', 'neo4j-boost');
 
-        $this->app->singleton(Neo4jMcpClientInterface::class, fn () => new Neo4jHttpClient);
+        $this->app->singleton(Neo4jMcpClientInterface::class, function () {
+            $transport = config('neo4j-boost.transport', 'http');
+            $driver = is_string($transport) ? $transport : ($transport['driver'] ?? 'http');
+            return $driver === 'stdio'
+                ? new Neo4jStdioClient
+                : new Neo4jHttpClient;
+        });
     }
 
     public function boot(): void
@@ -22,38 +32,27 @@ class Neo4jBoostServiceProvider extends ServiceProvider
             __DIR__ . '/../config/neo4j-boost.php' => config_path('neo4j-boost.php'),
         ], 'neo4j-boost-config');
 
-        $this->mergeBoostToolsWhenBoostPresent();
+        $this->mergeBoostTools();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CursorConfigCommand::class,
+                TestStdioCommand::class,
             ]);
         }
     }
 
     /**
-     * When Laravel Boost is present, add our Neo4j tools to boost.mcp.tools.include
-     * so one MCP server (boost:mcp) exposes both Boost and official Neo4j tools.
-     * Gate on Boost being installed (ToolRegistry) rather than config file existence.
+     * Add Neo4j tools to boost.mcp.tools.include so one MCP server (boost:mcp)
+     * exposes both Boost and official Neo4j tools.
      */
-    private function mergeBoostToolsWhenBoostPresent(): void
+    private function mergeBoostTools(): void
     {
-        if (! class_exists(\Laravel\Mcp\Server\Tool::class)) {
-            Log::warning('Laravel MCP is not installed. Neo4j MCP tools will not be added to Boost. Install laravel/boost to expose them via boost:mcp.');
-
-            return;
-        }
-        if (! class_exists(\Laravel\Boost\Mcp\ToolRegistry::class)) {
-            Log::warning('Laravel Boost is not installed. Neo4j MCP tools will not be added to Boost. Install laravel/boost to expose them via boost:mcp.');
-
-            return;
-        }
-
         $ourTools = [
-            \Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool::class,
-            \Neo4j\LaravelBoost\Boost\Tools\ReadCypherTool::class,
-            \Neo4j\LaravelBoost\Boost\Tools\WriteCypherTool::class,
-            \Neo4j\LaravelBoost\Boost\Tools\ListGdsProceduresTool::class,
+            GetSchemaTool::class,
+            ReadCypherTool::class,
+            WriteCypherTool::class,
+            ListGdsProceduresTool::class,
         ];
 
         $include = config('boost.mcp.tools.include', []);
