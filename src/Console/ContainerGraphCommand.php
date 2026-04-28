@@ -12,6 +12,7 @@ use ReflectionFunction;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionUnionType;
+use Throwable;
 
 class ContainerGraphCommand extends Command
 {
@@ -46,8 +47,14 @@ class ContainerGraphCommand extends Command
             return self::SUCCESS;
         }
 
-        $writer->connect();
-        $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
+        try {
+            $writer->connect();
+            $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
+        } catch (Throwable $e) {
+            $this->error('Failed to write container graph: ' . $e->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->info('Container graph written to Neo4j successfully.');
 
@@ -148,8 +155,8 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @param array<int, string> $left
-     * @param array<int, string> $right
+     * @param  array<int, string>  $left
+     * @param  array<int, string>  $right
      * @return array<int, string>
      */
     private function mergeClassLists(array $left, array $right): array
@@ -169,8 +176,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @param array<int, string> $classes
-     *
+     * @param  array<int, string>  $classes
      * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string}>, 1: array<int, array{class: string, name: string, reason: string}>}
      */
     private function extractDependencyRows(array $classes): array
@@ -179,7 +185,11 @@ class ContainerGraphCommand extends Command
         $unresolvedRows = [];
 
         foreach ($classes as $className) {
-            $reflection = new ReflectionClass($className);
+            try {
+                $reflection = new ReflectionClass($className);
+            } catch (Throwable) {
+                continue;
+            }
 
             $constructor = $reflection->getConstructor();
             if ($constructor === null) {
@@ -218,18 +228,22 @@ class ContainerGraphCommand extends Command
         }
 
         if ($concrete instanceof Closure) {
-            $reflection = new ReflectionFunction($concrete);
-            $static = $reflection->getStaticVariables();
-            if (isset($static['concrete']) && is_string($static['concrete'])) {
-                return $static['concrete'];
-            }
-            if (isset($static['abstract']) && is_string($static['abstract'])) {
-                return $static['abstract'];
-            }
+            try {
+                $reflection = new ReflectionFunction($concrete);
+                $static = $reflection->getStaticVariables();
+                if (isset($static['concrete']) && is_string($static['concrete'])) {
+                    return $static['concrete'];
+                }
+                if (isset($static['abstract']) && is_string($static['abstract'])) {
+                    return $static['abstract'];
+                }
 
-            $returnType = $reflection->getReturnType();
-            if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
-                return $returnType->getName();
+                $returnType = $reflection->getReturnType();
+                if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
+                    return $returnType->getName();
+                }
+            } catch (Throwable) {
+                return null;
             }
         }
 
@@ -251,6 +265,7 @@ class ContainerGraphCommand extends Command
             if ($resolved !== null) {
                 return [$resolved, $this->kindForTypeName($resolved), null];
             }
+
             return [null, 'Ignored', null];
         }
 
@@ -294,7 +309,7 @@ class ContainerGraphCommand extends Command
     /**
      * @template T of array<string, mixed>
      *
-     * @param array<int, T> $rows
+     * @param  array<int, T>  $rows
      * @return array<int, T>
      */
     private function uniqueRows(array $rows): array
@@ -315,10 +330,10 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @param array<int, array{class: string}> $classRows
-     * @param array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}> $bindingRows
-     * @param array<int, array{class: string, dependency: string, dependencyKind: string}> $dependencyRows
-     * @param array<int, array{class: string, name: string, reason: string}> $unresolvedRows
+     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */
     private function printCypher(ContainerGraphWriter $writer, array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
