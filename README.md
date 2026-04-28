@@ -189,8 +189,8 @@ php artisan container:graph --print-cypher
 
 ### Graph model
 
-- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is an interface
-- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is a class
+- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is an interface
+- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is a class
 - `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
 - `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
 - `(:UnresolvedDependency:Abstract {name, reason})`
@@ -216,19 +216,19 @@ LIMIT 200;
 Cycle-only patterns such as `(x:Abstract)-[*..]->(x)` mostly surface self-binds or trivial paths; prefer outward or undirected expansion above.
 
 ```cypher
-MATCH (i:Interface)-[:BINDS_TO]->(c:Class)
+MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
 RETURN i.name, c.name
 LIMIT 25;
 ```
 
 ```cypher
-MATCH p = (:Class {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
+MATCH p = (:Class:Abstract {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
 RETURN p
 LIMIT 10;
 ```
 
 ```cypher
-MATCH (c:Class)-[:DEPENDS_ON]->(u:UnresolvedDependency)
+MATCH (c:Class:Abstract)-[:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
 RETURN c.name, u.name, u.reason
 LIMIT 25;
 ```
