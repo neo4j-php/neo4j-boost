@@ -147,6 +147,59 @@ When developing the package and running Artisan from the repo (e.g. e2e testing 
 | Command | Description |
 |--------|-------------|
 | `php artisan neo4j-boost:cursor-config` | Create or update `.cursor/mcp.json` with the Neo4j MCP server URL (merge with existing servers) |
+| `php artisan container:graph` | Export Laravel container bindings/dependencies into Neo4j graph (`--dry-run`, `--print-cypher`) |
+
+---
+
+## Container Graph POC (LLM Debugging)
+
+This spike exports runtime Laravel container wiring into Neo4j so dependency resolution can be queried as a graph.
+
+### Environment variables
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
+`NEO4J_USERNAME` is also supported as a fallback for `NEO4J_USER`.
+
+### Run
+
+```bash
+php artisan container:graph
+php artisan container:graph --dry-run
+php artisan container:graph --print-cypher
+```
+
+### Graph model
+
+- `(:Interface)-[:BINDS_TO {shared}]->(:Class)`
+- `(:Class)-[:DEPENDS_ON]->(:Class|:Interface|:UnresolvedDependency)`
+- `(:UnresolvedDependency {name, reason})`
+
+### Example Cypher queries
+
+```cypher
+MATCH (i:Interface)-[:BINDS_TO]->(c:Class)
+RETURN i.name, c.name
+LIMIT 25;
+```
+
+```cypher
+MATCH p = (:Class {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
+RETURN p
+LIMIT 10;
+```
+
+```cypher
+MATCH (c:Class)-[:DEPENDS_ON]->(u:UnresolvedDependency)
+RETURN c.name, u.name, u.reason
+LIMIT 25;
+```
+
+Re-running the command is idempotent (`MERGE`-based), so nodes/relationships are not duplicated.
 
 ---
 

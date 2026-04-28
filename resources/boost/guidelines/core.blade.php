@@ -35,6 +35,24 @@ Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` where the Neo4j MCP serv
 
 Publish with `php artisan vendor:publish --tag=neo4j-boost-config`. Options in `config/neo4j-boost.php`: `http.url`, `http.username`, `http.password`.
 
+### Container graph POC
+
+Export Laravel container wiring into Neo4j for dependency debugging:
+
+```bash
+php artisan container:graph
+php artisan container:graph --dry-run
+php artisan container:graph --print-cypher
+```
+
+Env vars for direct Neo4j connection:
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
 ### Cursor: "Loading tools" stuck or HTTP 404
 
 - Open your **Laravel app folder** (the project where you ran `composer require neo4j/laravel-boost`) as the Cursor workspace, not the neo4j-boost package folder.
