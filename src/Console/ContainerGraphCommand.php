@@ -10,7 +10,6 @@ use ReflectionFunction;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionUnionType;
-use Throwable;
 
 class ContainerGraphCommand extends Command
 {
@@ -39,14 +38,8 @@ class ContainerGraphCommand extends Command
             return self::SUCCESS;
         }
 
-        try {
-            $writer->connect();
-            $writer->write($bindingRows, $dependencyRows, $unresolvedRows);
-        } catch (Throwable $e) {
-            $this->error('Failed to write container graph: ' . $e->getMessage());
-
-            return self::FAILURE;
-        }
+        $writer->connect();
+        $writer->write($bindingRows, $dependencyRows, $unresolvedRows);
 
         $this->info('Container graph written to Neo4j successfully.');
 
@@ -92,11 +85,7 @@ class ContainerGraphCommand extends Command
         $unresolvedRows = [];
 
         foreach ($classes as $className) {
-            try {
-                $reflection = new ReflectionClass($className);
-            } catch (Throwable) {
-                continue;
-            }
+            $reflection = new ReflectionClass($className);
 
             $constructor = $reflection->getConstructor();
             if ($constructor === null) {
@@ -135,22 +124,18 @@ class ContainerGraphCommand extends Command
         }
 
         if ($concrete instanceof Closure) {
-            try {
-                $reflection = new ReflectionFunction($concrete);
-                $static = $reflection->getStaticVariables();
-                if (isset($static['concrete']) && is_string($static['concrete'])) {
-                    return $static['concrete'];
-                }
-                if (isset($static['abstract']) && is_string($static['abstract'])) {
-                    return $static['abstract'];
-                }
+            $reflection = new ReflectionFunction($concrete);
+            $static = $reflection->getStaticVariables();
+            if (isset($static['concrete']) && is_string($static['concrete'])) {
+                return $static['concrete'];
+            }
+            if (isset($static['abstract']) && is_string($static['abstract'])) {
+                return $static['abstract'];
+            }
 
-                $returnType = $reflection->getReturnType();
-                if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
-                    return $returnType->getName();
-                }
-            } catch (Throwable) {
-                return null;
+            $returnType = $reflection->getReturnType();
+            if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
+                return $returnType->getName();
             }
         }
 
