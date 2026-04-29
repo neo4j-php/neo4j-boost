@@ -13,13 +13,13 @@ class ContainerGraphWriter
     private const CYPHER_BINDINGS = <<<'CYPHER'
 UNWIND $rows AS row
 FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (a:Interface {name: row.abstract})
+  MERGE (a:Interface:Abstract {name: row.abstract})
   MERGE (c:Class {name: row.concrete})
   MERGE (a)-[r:BINDS_TO]->(c)
   SET r.shared = row.shared
 )
 FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (a:Class {name: row.abstract})
+  MERGE (a:Class:Abstract {name: row.abstract})
   MERGE (c:Class {name: row.concrete})
   MERGE (a)-[r:BINDS_TO]->(c)
   SET r.shared = row.shared

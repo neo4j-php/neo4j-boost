@@ -189,11 +189,21 @@ php artisan container:graph --print-cypher
 
 ### Graph model
 
-- `(:Interface)-[:BINDS_TO {shared}]->(:Class)`
+- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is an interface
+- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is a class
+- **`Abstract`** – added only on the **container binding key** (left side of `BINDS_TO`). Use it as the entry label for “start from registered abstractions and walk the graph”.
 - `(:Class)-[:DEPENDS_ON]->(:Class|:Interface|:UnresolvedDependency)`
 - `(:UnresolvedDependency {name, reason})`
 
 ### Example Cypher queries
+
+**Explore from container binding keys outward (graph view in Neo4j Browser):**
+
+```cypher
+MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n)
+RETURN p
+LIMIT 200;
+```
 
 ```cypher
 MATCH (i:Interface)-[:BINDS_TO]->(c:Class)
