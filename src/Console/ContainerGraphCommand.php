@@ -12,6 +12,7 @@ use ReflectionFunction;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionUnionType;
+use Throwable;
 
 class ContainerGraphCommand extends Command
 {

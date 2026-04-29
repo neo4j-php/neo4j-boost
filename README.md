@@ -192,6 +192,7 @@ php artisan container:graph --print-cypher
 - `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is an interface
 - `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is a class
 - `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
+- **`Abstract`** – use as the entry label to start from registered binding keys and walk the graph (`MATCH (a:Abstract) …`).
 - `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
 - `(:UnresolvedDependency:Abstract {name, reason})`
 
