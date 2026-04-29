@@ -90,9 +90,7 @@ CYPHER;
             return $this->client;
         }
 
-        $uri = (string) env('NEO4J_URI', 'bolt://localhost:7687');
-        $user = (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j'));
-        $password = (string) env('NEO4J_PASSWORD', '');
+        [$uri, $user, $password] = $this->buildConnectionParams();
 
         $this->client = ClientBuilder::create()
             ->withDriver(self::DRIVER_ALIAS, $uri, Authenticate::basic($user, $password))
@@ -100,5 +98,100 @@ CYPHER;
             ->build();
 
         return $this->client;
+    }
+
+    /**
+     * NEO4J_URI wins; else NEO4J_DEFAULT_CONNECTION_DSN (e.g. neo4j://user:pass@host:7687 from Docker);
+     * else defaults to local Bolt.
+     *
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private function buildConnectionParams(): array
+    {
+        $explicitUri = trim((string) config('neo4j-boost.container_graph.uri', ''));
+        if ($explicitUri === '') {
+            $explicitUri = trim($this->rawProcessEnv('NEO4J_URI'));
+        }
+        if ($explicitUri !== '') {
+            return [
+                $explicitUri,
+                (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
+                (string) env('NEO4J_PASSWORD', ''),
+            ];
+        }
+
+        $dsn = trim((string) config('neo4j-boost.container_graph.default_connection_dsn', ''));
+        if ($dsn === '') {
+            $dsn = trim($this->rawProcessEnv('NEO4J_DEFAULT_CONNECTION_DSN'));
+        }
+        if ($dsn !== '') {
+            $fromDsn = self::parseDsnToConnection($dsn);
+            if ($fromDsn !== null) {
+                return array_values($fromDsn);
+            }
+        }
+
+        return [
+            'bolt://localhost:7687',
+            (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
+            (string) env('NEO4J_PASSWORD', ''),
+        ];
+    }
+
+    private function rawProcessEnv(string $key): string
+    {
+        if (getenv($key) !== false && (string) getenv($key) !== '') {
+            return (string) getenv($key);
+        }
+        if (isset($_ENV[$key]) && (string) $_ENV[$key] !== '') {
+            return (string) $_ENV[$key];
+        }
+        if (isset($_SERVER[$key]) && (string) $_SERVER[$key] !== '') {
+            return (string) $_SERVER[$key];
+        }
+
+        return '';
+    }
+
+    /**
+     * @return null|array{uri: string, user: string, password: string}
+     */
+    private static function parseDsnToConnection(string $dsn): ?array
+    {
+        $parts = parse_url($dsn);
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        if (isset($parts['user']) && $parts['user'] !== '') {
+            $user = rawurldecode($parts['user']);
+        } else {
+            $user = (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j'));
+        }
+        if (array_key_exists('pass', $parts) && (string) $parts['pass'] !== '') {
+            $password = rawurldecode($parts['pass']);
+        } else {
+            $password = (string) env('NEO4J_PASSWORD', '');
+        }
+
+        $uri = $parts['scheme'] . '://' . $parts['host'];
+        if (isset($parts['port'])) {
+            $uri .= ':' . (int) $parts['port'];
+        }
+        if (isset($parts['path']) && $parts['path'] !== '' && $parts['path'] !== '/') {
+            $uri .= $parts['path'];
+        }
+        if (isset($parts['query'])) {
+            $uri .= '?' . $parts['query'];
+        }
+        if (isset($parts['fragment'])) {
+            $uri .= '#' . $parts['fragment'];
+        }
+
+        return [
+            'uri' => $uri,
+            'user' => $user,
+            'password' => $password,
+        ];
     }
 }

@@ -45,7 +45,7 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-Env vars for direct Neo4j connection:
+Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused.
 
 ```env
 NEO4J_URI=bolt://localhost:7687

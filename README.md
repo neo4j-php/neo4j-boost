@@ -157,6 +157,8 @@ This spike exports runtime Laravel container wiring into Neo4j so dependency res
 
 ### Environment variables
 
+**Option A – explicit URI (recommended for local dev):**
+
 ```env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
@@ -164,6 +166,18 @@ NEO4J_PASSWORD=password
 ```
 
 `NEO4J_USERNAME` is also supported as a fallback for `NEO4J_USER`.
+
+**Option B – only a DSN (e.g. Docker / Laravel `NEO4J_DEFAULT_CONNECTION_DSN`):**
+
+If `NEO4J_URI` is not set, `container:graph` uses `NEO4J_DEFAULT_CONNECTION_DSN` when it looks like a Neo4j URL (user and password can be embedded: `neo4j://user:pass@host:7687`).
+
+This matches setups that already set the DSN in `docker-compose` and avoids duplicating the host. Inside Docker, use the Neo4j service host name (for example `neo4j-core1:7687`), not `localhost` in the DSN.
+
+`config/neo4j-boost.php` exposes `container_graph.uri` and `container_graph.default_connection_dsn` (both read from the env vars above). Re-publish the config after upgrading the package if you use a published copy:
+
+```bash
+php artisan vendor:publish --tag=neo4j-boost-config --force
+```
 
 ### Run
 
@@ -215,6 +229,7 @@ Edit `config/neo4j-boost.php`:
 
 - **`http.url`** – MCP endpoint (e.g. `http://localhost:8080/mcp`). Env: `NEO4J_MCP_URL`.
 - **`http.username`** / **`http.password`** – Optional Basic Auth for the HTTP endpoint. Env: `NEO4J_MCP_USERNAME`, `NEO4J_MCP_PASSWORD` (fallback to `NEO4J_USERNAME` / `NEO4J_PASSWORD`).
+- **`container_graph.uri`** / **`container_graph.default_connection_dsn`** – Used by `php artisan container:graph` for the direct Neo4j driver. Env: `NEO4J_URI`, `NEO4J_DEFAULT_CONNECTION_DSN` (DSN is used when `NEO4J_URI` is empty).
 
 ---
 
@@ -228,6 +243,9 @@ Edit `config/neo4j-boost.php`:
 
 - **Neo4j MCP HTTP errors**  
   Ensure the Neo4j MCP server is running with HTTP transport and that `NEO4J_MCP_URL` matches. Check the MCP server logs for connection or Neo4j errors.
+
+- **`container:graph` connects to `bolt://localhost:7687` in Docker (or "Cannot connect to any server on alias: container-graph")**  
+  Set `NEO4J_URI` to your Neo4j host on the container network, or set `NEO4J_DEFAULT_CONNECTION_DSN` to a full URL (for example `neo4j://neo4j:password@neo4j-core1:7687`). In Docker, `localhost` in the DSN/URI is the app container, not the Neo4j service. Re-publish `neo4j-boost` config after upgrading and run `php artisan config:clear` if you use `config:cache`.
 
 - **HTTP 404: "This server only handles requests to /mcp"**  
   Cursor may try several connection methods (streamable HTTP, SSE) and can send **GET** requests. The official Neo4j MCP server in HTTP mode typically only accepts **POST** on `/mcp`, so those GETs return this 404.  
