@@ -243,24 +243,47 @@ class ContainerGraphCommand extends Command
     {
         $type = $parameter->getType();
         if ($type === null) {
-            return [$parameter->getName(), 'UnresolvedDependency', 'missing_type_hint'];
+            return [null, 'Ignored', null];
         }
 
         if ($type instanceof ReflectionUnionType) {
-            return [$parameter->getName(), 'UnresolvedDependency', 'union_type'];
+            $resolved = $this->classNameFromUnionType($type);
+            if ($resolved !== null) {
+                return [$resolved, $this->kindForTypeName($resolved), null];
+            }
+            return [null, 'Ignored', null];
         }
 
         if (! $type instanceof ReflectionNamedType) {
-            return [$parameter->getName(), 'UnresolvedDependency', 'unsupported_type'];
+            return [null, 'Ignored', null];
         }
 
         if ($type->isBuiltin()) {
-            return [$parameter->getName(), 'UnresolvedDependency', 'builtin_' . $type->getName()];
+            return [null, 'Ignored', null];
         }
 
         $name = $type->getName();
 
         return [$name, $this->kindForTypeName($name), null];
+    }
+
+    private function classNameFromUnionType(ReflectionUnionType $type): ?string
+    {
+        $candidate = null;
+
+        foreach ($type->getTypes() as $namedType) {
+            if (! $namedType instanceof ReflectionNamedType || $namedType->isBuiltin()) {
+                continue;
+            }
+
+            if ($candidate !== null) {
+                return null;
+            }
+
+            $candidate = $namedType->getName();
+        }
+
+        return $candidate;
     }
 
     private function kindForTypeName(string $name): string
