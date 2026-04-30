@@ -52,6 +52,11 @@ SET u.reason = row.reason
 MERGE (c)-[:DEPENDS_ON]->(u)
 CYPHER;
 
+    private const CYPHER_CYCLE_BACKLINKS = <<<'CYPHER'
+MATCH (from)-[r:BINDS_TO|DEPENDS_ON]->(to)
+MERGE (to)-[back:CYCLE_BACK {kind: type(r)}]->(from)
+CYPHER;
+
     private ?ClientInterface $client = null;
 
     public function connect(): void
@@ -79,6 +84,7 @@ CYPHER;
         if ($unresolvedRows !== []) {
             $this->client()->run(self::CYPHER_UNRESOLVED, ['rows' => $unresolvedRows], self::DRIVER_ALIAS);
         }
+        $this->client()->run(self::CYPHER_CYCLE_BACKLINKS, [], self::DRIVER_ALIAS);
     }
 
     /**
@@ -91,6 +97,7 @@ CYPHER;
             'bindings' => self::CYPHER_BINDINGS,
             'dependencies' => self::CYPHER_DEPENDENCIES,
             'unresolved' => self::CYPHER_UNRESOLVED,
+            'cycle_backlinks' => self::CYPHER_CYCLE_BACKLINKS,
         ];
     }
 

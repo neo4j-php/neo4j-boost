@@ -195,6 +195,7 @@ php artisan container:graph --print-cypher
 - **`Abstract`** – use as the entry label to start from registered binding keys and walk the graph (`MATCH (a:Abstract) …`).
 - `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
 - `(:UnresolvedDependency:Abstract {name, reason})`
+- `(:AnyLabel)-[:CYCLE_BACK {kind}]->(:AnyLabel)` helper reverse edge (`kind` is `BINDS_TO` or `DEPENDS_ON`) so cycle-only queries can still traverse inter-node relationships.
 
 ### Example Cypher queries
 
@@ -210,6 +211,14 @@ LIMIT 200;
 
 ```cypher
 MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..6]-(n)
+RETURN p
+LIMIT 200;
+```
+
+**Optional cycle-only traversal from `:Abstract` (works with exported `CYCLE_BACK` edges):**
+
+```cypher
+MATCH p = (x:Abstract)-[*0..20]->(x)
 RETURN p
 LIMIT 200;
 ```
