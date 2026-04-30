@@ -14,37 +14,47 @@ class ContainerGraphWriter
 UNWIND $rows AS row
 FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END |
   MERGE (a:Interface:Abstract {name: row.abstract})
-  MERGE (c:Class {name: row.concrete})
+  MERGE (c:Class:Abstract {name: row.concrete})
   MERGE (a)-[r:BINDS_TO]->(c)
   SET r.shared = row.shared
 )
 FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' THEN [1] ELSE [] END |
   MERGE (a:Class:Abstract {name: row.abstract})
-  MERGE (c:Class {name: row.concrete})
+  MERGE (c:Class:Abstract {name: row.concrete})
   MERGE (a)-[r:BINDS_TO]->(c)
   SET r.shared = row.shared
 )
 CYPHER;
 
+    private const CYPHER_CLASSES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (:Class:Abstract {name: row.class})
+CYPHER;
+
     private const CYPHER_DEPENDENCIES = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (c:Class {name: row.class})
+MERGE (c:Class:Abstract {name: row.class})
 FOREACH (_ IN CASE WHEN row.dependencyKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Interface {name: row.dependency})
+  MERGE (d:Interface:Abstract {name: row.dependency})
   MERGE (c)-[:DEPENDS_ON]->(d)
 )
 FOREACH (_ IN CASE WHEN row.dependencyKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Class {name: row.dependency})
+  MERGE (d:Class:Abstract {name: row.dependency})
   MERGE (c)-[:DEPENDS_ON]->(d)
 )
 CYPHER;
 
     private const CYPHER_UNRESOLVED = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (c:Class {name: row.class})
-MERGE (u:UnresolvedDependency {name: row.name})
+MERGE (c:Class:Abstract {name: row.class})
+MERGE (u:UnresolvedDependency:Abstract {name: row.name})
 SET u.reason = row.reason
 MERGE (c)-[:DEPENDS_ON]->(u)
+CYPHER;
+
+    private const CYPHER_CYCLE_BACKLINKS = <<<'CYPHER'
+MATCH (from)-[r:BINDS_TO|DEPENDS_ON]->(to)
+MERGE (to)-[back:CYCLE_BACK {kind: type(r)}]->(from)
 CYPHER;
 
     private ?ClientInterface $client = null;
@@ -55,12 +65,16 @@ CYPHER;
     }
 
     /**
+     * @param array<int, array{class: string}> $classRows
      * @param array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}> $bindingRows
      * @param array<int, array{class: string, dependency: string, dependencyKind: string}> $dependencyRows
      * @param array<int, array{class: string, name: string, reason: string}> $unresolvedRows
      */
-    public function write(array $bindingRows, array $dependencyRows, array $unresolvedRows): void
+    public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
+        if ($classRows !== []) {
+            $this->client()->run(self::CYPHER_CLASSES, ['rows' => $classRows], self::DRIVER_ALIAS);
+        }
         if ($bindingRows !== []) {
             $this->client()->run(self::CYPHER_BINDINGS, ['rows' => $bindingRows], self::DRIVER_ALIAS);
         }
@@ -70,6 +84,7 @@ CYPHER;
         if ($unresolvedRows !== []) {
             $this->client()->run(self::CYPHER_UNRESOLVED, ['rows' => $unresolvedRows], self::DRIVER_ALIAS);
         }
+        $this->client()->run(self::CYPHER_CYCLE_BACKLINKS, [], self::DRIVER_ALIAS);
     }
 
     /**
@@ -78,9 +93,11 @@ CYPHER;
     public function cypherTemplates(): array
     {
         return [
+            'classes' => self::CYPHER_CLASSES,
             'bindings' => self::CYPHER_BINDINGS,
             'dependencies' => self::CYPHER_DEPENDENCIES,
             'unresolved' => self::CYPHER_UNRESOLVED,
+            'cycle_backlinks' => self::CYPHER_CYCLE_BACKLINKS,
         ];
     }
 

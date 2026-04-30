@@ -5,6 +5,8 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionNamedType;
@@ -20,16 +22,22 @@ class ContainerGraphCommand extends Command
     public function handle(ContainerGraphWriter $writer): int
     {
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
+        $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
         [$dependencyRows, $unresolvedRows] = $this->extractDependencyRows($concreteClasses);
+        $classRows = array_map(
+            static fn (string $className): array => ['class' => $className],
+            $concreteClasses
+        );
 
         $this->line('Container graph summary:');
         $this->line('- Bindings: ' . count($bindingRows));
         $this->line('- Concrete classes inspected: ' . count($concreteClasses));
+        $this->line('- Class nodes: ' . count($classRows));
         $this->line('- Dependency edges: ' . count($dependencyRows));
         $this->line('- Unresolved dependencies: ' . count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $bindingRows, $dependencyRows, $unresolvedRows);
+            $this->printCypher($writer, $classRows, $bindingRows, $dependencyRows, $unresolvedRows);
         }
 
         if ($this->option('dry-run')) {
@@ -39,7 +47,7 @@ class ContainerGraphCommand extends Command
         }
 
         $writer->connect();
-        $writer->write($bindingRows, $dependencyRows, $unresolvedRows);
+        $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
 
         $this->info('Container graph written to Neo4j successfully.');
 
@@ -72,6 +80,92 @@ class ContainerGraphCommand extends Command
         }
 
         return [array_values($rows), array_values($concreteClasses)];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractCustomClassNames(): array
+    {
+        $composerJson = base_path('composer.json');
+        if (! is_file($composerJson)) {
+            return [];
+        }
+
+        $decoded = json_decode((string) file_get_contents($composerJson), true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $autoload = $decoded['autoload']['psr-4'] ?? [];
+        if (! is_array($autoload)) {
+            return [];
+        }
+
+        $classes = [];
+
+        foreach ($autoload as $namespacePrefix => $paths) {
+            if (! is_string($namespacePrefix)) {
+                continue;
+            }
+
+            $pathList = is_array($paths) ? $paths : [$paths];
+            foreach ($pathList as $path) {
+                if (! is_string($path) || str_starts_with($path, 'vendor/')) {
+                    continue;
+                }
+
+                $baseDir = base_path(trim($path, '/'));
+                if (! is_dir($baseDir)) {
+                    continue;
+                }
+
+                $iterator = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($baseDir, RecursiveDirectoryIterator::SKIP_DOTS)
+                );
+
+                foreach ($iterator as $file) {
+                    if (! $file->isFile() || $file->getExtension() !== 'php') {
+                        continue;
+                    }
+
+                    $relativePath = ltrim(str_replace($baseDir, '', $file->getPathname()), DIRECTORY_SEPARATOR);
+                    $classSuffix = str_replace(
+                        [DIRECTORY_SEPARATOR, '.php'],
+                        ['\\', ''],
+                        $relativePath
+                    );
+                    $className = rtrim($namespacePrefix, '\\') . '\\' . $classSuffix;
+
+                    if (class_exists($className) && ! interface_exists($className) && ! trait_exists($className)) {
+                        $classes[$className] = $className;
+                    }
+                }
+            }
+        }
+
+        return array_values($classes);
+    }
+
+    /**
+     * @param array<int, string> $left
+     * @param array<int, string> $right
+     * @return array<int, string>
+     */
+    private function mergeClassLists(array $left, array $right): array
+    {
+        $merged = [];
+
+        foreach ([$left, $right] as $list) {
+            foreach ($list as $className) {
+                if (! is_string($className) || $className === '') {
+                    continue;
+                }
+                $merged[$className] = $className;
+            }
+        }
+
+        return array_values($merged);
     }
 
     /**
@@ -198,11 +292,12 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param array<int, array{class: string}> $classRows
      * @param array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}> $bindingRows
      * @param array<int, array{class: string, dependency: string, dependencyKind: string}> $dependencyRows
      * @param array<int, array{class: string, name: string, reason: string}> $unresolvedRows
      */
-    private function printCypher(ContainerGraphWriter $writer, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
+    private function printCypher(ContainerGraphWriter $writer, array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
         $this->line('');
         $this->line('Cypher templates:');
@@ -213,6 +308,7 @@ class ContainerGraphCommand extends Command
         }
 
         $this->line('Sample params:');
+        $this->line('- classes: ' . json_encode(array_slice($classRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- bindings: ' . json_encode(array_slice($bindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- dependencies: ' . json_encode(array_slice($dependencyRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- unresolved: ' . json_encode(array_slice($unresolvedRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

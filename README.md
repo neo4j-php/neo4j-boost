@@ -191,9 +191,10 @@ php artisan container:graph --print-cypher
 
 - `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is an interface
 - `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class)` when the binding key is a class
-- **`Abstract`** – added only on the **container binding key** (left side of `BINDS_TO`). Use it as the entry label for “start from registered abstractions and walk the graph”.
-- `(:Class)-[:DEPENDS_ON]->(:Class|:Interface|:UnresolvedDependency)`
-- `(:UnresolvedDependency {name, reason})`
+- `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
+- `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
+- `(:UnresolvedDependency:Abstract {name, reason})`
+- `(:AnyLabel)-[:CYCLE_BACK {kind}]->(:AnyLabel)` helper reverse edge (`kind` is `BINDS_TO` or `DEPENDS_ON`) so cycle-only queries can still traverse inter-node relationships.
 
 ### Example Cypher queries
 
@@ -201,6 +202,14 @@ php artisan container:graph --print-cypher
 
 ```cypher
 MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n)
+RETURN p
+LIMIT 200;
+```
+
+**Use this if you intentionally want cycle-only traversal from `:Abstract`:**
+
+```cypher
+MATCH p = (x:Abstract)-[*0..20]->(x)
 RETURN p
 LIMIT 200;
 ```
