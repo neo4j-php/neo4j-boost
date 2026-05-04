@@ -25,10 +25,12 @@ final class ListGdsProceduresTool extends Tool
 
         if (! empty($result['isError'])) {
             $msg = $this->extractErrorText($result['content'] ?? []);
+
             return Response::error($msg ?: 'Neo4j MCP tool error');
         }
 
         $content = $result['content'] ?? $result;
+
         return Response::json(is_array($content) ? $content : ['result' => $content]);
     }
 
@@ -39,6 +41,7 @@ final class ListGdsProceduresTool extends Tool
         if (is_array($first) && isset($first['text'])) {
             return (string) $first['text'];
         }
+
         return '';
     }
 }

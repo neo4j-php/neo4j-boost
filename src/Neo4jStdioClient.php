@@ -49,15 +49,11 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
         $this->writeLine($payload);
         $body = $this->readResponseForId($id);
 
-        if (! is_array($body)) {
-            throw new \RuntimeException('Neo4j MCP STDIO: invalid JSON response.');
-        }
-
         if (isset($body['error'])) {
             $message = is_array($body['error']) && isset($body['error']['message'])
                 ? $body['error']['message']
                 : (string) json_encode($body['error']);
-            throw new \RuntimeException('Neo4j MCP STDIO: ' . $message);
+            throw new \RuntimeException('Neo4j MCP STDIO: '.$message);
         }
 
         return $body['result'] ?? [];
@@ -70,9 +66,10 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
         }
 
         $command = config('neo4j-boost.transport.stdio.command', 'neo4j-mcp');
-        $baseEnv = getenv() ?: [];
+        $fromGetenv = getenv();
+        $baseEnv = is_array($fromGetenv) ? $fromGetenv : [];
         $envOverrides = config('neo4j-boost.transport.stdio.env', []);
-        $env = array_merge(is_array($baseEnv) ? $baseEnv : [], is_array($envOverrides) ? $envOverrides : []);
+        $env = array_merge($baseEnv, is_array($envOverrides) ? $envOverrides : []);
 
         $descriptorspec = [
             0 => ['pipe', 'r'],
@@ -90,7 +87,7 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
         );
 
         if (! is_resource($proc)) {
-            throw new \RuntimeException('Neo4j MCP STDIO: failed to start process "' . $command . '".');
+            throw new \RuntimeException('Neo4j MCP STDIO: failed to start process "'.$command.'".');
         }
 
         $this->process = $proc;
@@ -121,11 +118,11 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
         $this->writeLine($initPayload);
         $initBody = $this->readResponseForId(self::INIT_ID);
 
-        if (is_array($initBody) && isset($initBody['error'])) {
+        if (isset($initBody['error'])) {
             $msg = is_array($initBody['error']) && isset($initBody['error']['message'])
                 ? $initBody['error']['message']
                 : (string) json_encode($initBody['error']);
-            throw new \RuntimeException('Neo4j MCP STDIO initialize: ' . $msg);
+            throw new \RuntimeException('Neo4j MCP STDIO initialize: '.$msg);
         }
 
         $notifyPayload = [
@@ -139,7 +136,7 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
 
     private function writeLine(array $payload): void
     {
-        $line = json_encode($payload, JSON_UNESCAPED_SLASHES) . "\n";
+        $line = json_encode($payload, JSON_UNESCAPED_SLASHES)."\n";
         $written = @fwrite($this->pipes[0], $line);
         if ($written !== strlen($line)) {
             throw new \RuntimeException('Neo4j MCP STDIO: failed to write to process stdin.');
@@ -150,7 +147,7 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
     /**
      * Read stdout line-by-line until we get a JSON-RPC response with the given id.
      */
-    private function readResponseForId(int $id): ?array
+    private function readResponseForId(int $id): array
     {
         $deadline = time() + self::READ_TIMEOUT_SECONDS;
         $buffer = '';
@@ -179,12 +176,12 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
             }
 
             if (time() >= $deadline) {
-                throw new \RuntimeException('Neo4j MCP STDIO: read timeout waiting for response id ' . $id . '.');
+                throw new \RuntimeException('Neo4j MCP STDIO: read timeout waiting for response id '.$id.'.');
             }
 
             if ($chunk === false || $chunk === '') {
                 $status = proc_get_status($this->process);
-                if ($status !== false && $status['running'] === false) {
+                if ($status['running'] === false) {
                     throw new \RuntimeException('Neo4j MCP STDIO: process exited before response.');
                 }
                 usleep(10_000);

@@ -2,6 +2,8 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Laravel\Boost\Mcp\ToolRegistry;
+
 class CursorMcpConfig
 {
     public const SERVER_NAME = 'neo4j-boost';
@@ -14,8 +16,8 @@ class CursorMcpConfig
      */
     public static function writeOrMerge(string $basePath): bool
     {
-        $dir = $basePath . '/.cursor';
-        $file = $dir . '/mcp.json';
+        $dir = $basePath.'/.cursor';
+        $file = $dir.'/mcp.json';
 
         $serverToAdd = self::getServerConfigForEnvironment();
         $existing = [];
@@ -34,7 +36,7 @@ class CursorMcpConfig
         }
         $servers = array_merge($existing, $serverToAdd);
         $data = ['mcpServers' => $servers];
-        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n";
 
         if (! is_dir($dir)) {
             if (! @mkdir($dir, 0755, true)) {
@@ -52,7 +54,7 @@ class CursorMcpConfig
      */
     private static function getServerConfigForEnvironment(): array
     {
-        if (class_exists(\Laravel\Boost\Mcp\ToolRegistry::class)) {
+        if (class_exists(ToolRegistry::class)) {
             return [
                 self::LARAVEL_BOOST_SERVER_NAME => [
                     'command' => 'php',
@@ -70,6 +72,6 @@ class CursorMcpConfig
 
     public static function getPath(string $basePath): string
     {
-        return $basePath . '/.cursor/mcp.json';
+        return $basePath.'/.cursor/mcp.json';
     }
 }

@@ -41,18 +41,19 @@ class TestStdioCommand extends Command
         );
 
         if ($transport !== 'stdio') {
-            $this->warn('⚠ Transport is set to "' . $transport . '", not "stdio".');
+            $this->warn('⚠ Transport is set to "'.$transport.'", not "stdio".');
             $this->line('  Set NEO4J_MCP_TRANSPORT=stdio in .env to use STDIO transport.');
             $this->newLine();
         }
 
         // Check if binary exists
-        $binaryPath = trim(shell_exec('which ' . escapeshellarg($command) . ' 2>/dev/null') ?? '');
+        $binaryPath = trim(shell_exec('which '.escapeshellarg($command).' 2>/dev/null') ?? '');
         if (empty($binaryPath)) {
-            $this->error('✗ Command "' . $command . '" not found in PATH.');
+            $this->error('✗ Command "'.$command.'" not found in PATH.');
+
             return self::FAILURE;
         }
-        $this->info('✓ Found binary: ' . $binaryPath);
+        $this->info('✓ Found binary: '.$binaryPath);
         $this->newLine();
 
         // Test MCP handshake
@@ -73,7 +74,8 @@ class TestStdioCommand extends Command
         $process = @proc_open($command, $descriptorspec, $pipes, null, $env);
 
         if (! is_resource($process)) {
-            $this->error('✗ Failed to start process: ' . $command);
+            $this->error('✗ Failed to start process: '.$command);
+
             return self::FAILURE;
         }
 
@@ -93,10 +95,10 @@ class TestStdioCommand extends Command
         ];
         $initJson = json_encode($initPayload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         $this->line('<fg=green>→ Sending initialize request:</>');
-        $this->line('<fg=gray>' . $initJson . '</>');
+        $this->line('<fg=gray>'.$initJson.'</>');
         $this->newLine();
 
-        fwrite($pipes[0], json_encode($initPayload, JSON_UNESCAPED_SLASHES) . "\n");
+        fwrite($pipes[0], json_encode($initPayload, JSON_UNESCAPED_SLASHES)."\n");
         fflush($pipes[0]);
 
         // Read response with timeout
@@ -105,29 +107,31 @@ class TestStdioCommand extends Command
 
         if ($stderr) {
             $this->line('<fg=red>STDERR output:</>');
-            $this->line('<fg=red>' . $stderr . '</>');
+            $this->line('<fg=red>'.$stderr.'</>');
         }
 
         if (empty($response)) {
             $this->error('✗ No response received (timeout or process exited)');
             proc_terminate($process);
             proc_close($process);
+
             return self::FAILURE;
         }
 
         $this->line('<fg=blue>← Received response:</>');
         $decoded = json_decode($response, true);
         if ($decoded) {
-            $this->line('<fg=gray>' . json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . '</>');
+            $this->line('<fg=gray>'.json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).'</>');
         } else {
-            $this->line('<fg=gray>' . $response . '</>');
+            $this->line('<fg=gray>'.$response.'</>');
         }
         $this->newLine();
 
         if (isset($decoded['error'])) {
-            $this->error('✗ Initialize failed: ' . ($decoded['error']['message'] ?? json_encode($decoded['error'])));
+            $this->error('✗ Initialize failed: '.($decoded['error']['message'] ?? json_encode($decoded['error'])));
             proc_terminate($process);
             proc_close($process);
+
             return self::FAILURE;
         }
 
@@ -137,7 +141,7 @@ class TestStdioCommand extends Command
         // Send initialized notification
         $notifyPayload = ['jsonrpc' => '2.0', 'method' => 'notifications/initialized'];
         $this->line('<fg=green>→ Sending initialized notification</>');
-        fwrite($pipes[0], json_encode($notifyPayload, JSON_UNESCAPED_SLASHES) . "\n");
+        fwrite($pipes[0], json_encode($notifyPayload, JSON_UNESCAPED_SLASHES)."\n");
         fflush($pipes[0]);
         $this->newLine();
 
@@ -158,13 +162,13 @@ class TestStdioCommand extends Command
             ],
         ];
 
-        $this->line('<fg=cyan>Calling tool: ' . $toolName . '</>');
+        $this->line('<fg=cyan>Calling tool: '.$toolName.'</>');
         $toolJson = json_encode($toolPayload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         $this->line('<fg=green>→ Sending tools/call request:</>');
-        $this->line('<fg=gray>' . $toolJson . '</>');
+        $this->line('<fg=gray>'.$toolJson.'</>');
         $this->newLine();
 
-        fwrite($pipes[0], json_encode($toolPayload, JSON_UNESCAPED_SLASHES) . "\n");
+        fwrite($pipes[0], json_encode($toolPayload, JSON_UNESCAPED_SLASHES)."\n");
         fflush($pipes[0]);
 
         $toolResponse = $this->readWithTimeout($pipes[1], 30);
@@ -172,15 +176,15 @@ class TestStdioCommand extends Command
 
         if ($stderr) {
             $this->line('<fg=red>STDERR:</>');
-            $this->line('<fg=red>' . $stderr . '</>');
+            $this->line('<fg=red>'.$stderr.'</>');
         }
 
         $this->line('<fg=blue>← Tool response:</>');
         $toolDecoded = json_decode($toolResponse, true);
         if ($toolDecoded) {
-            $this->line('<fg=gray>' . json_encode($toolDecoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . '</>');
+            $this->line('<fg=gray>'.json_encode($toolDecoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).'</>');
         } else {
-            $this->line('<fg=gray>' . ($toolResponse ?: '(empty)') . '</>');
+            $this->line('<fg=gray>'.($toolResponse ?: '(empty)').'</>');
         }
         $this->newLine();
 
@@ -195,11 +199,12 @@ class TestStdioCommand extends Command
             $this->info('╔══════════════════════════════════════════════════════════════╗');
             $this->info('║  ✓ STDIO Transport is working correctly!                     ║');
             $this->info('╚══════════════════════════════════════════════════════════════╝');
+
             return self::SUCCESS;
         }
 
         if (isset($toolDecoded['error'])) {
-            $this->warn('Tool returned error (but STDIO transport worked): ' . ($toolDecoded['error']['message'] ?? ''));
+            $this->warn('Tool returned error (but STDIO transport worked): '.($toolDecoded['error']['message'] ?? ''));
         }
 
         return self::SUCCESS;

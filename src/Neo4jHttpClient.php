@@ -12,7 +12,9 @@ use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 class Neo4jHttpClient implements Neo4jMcpClientInterface
 {
     private const int TIMEOUT = 60;
+
     private const int INIT_ID = 1;
+
     private const int TOOL_CALL_ID = 2;
 
     public function callTool(string $toolName, array $arguments = []): array
@@ -46,7 +48,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
         $initResponse = $client->post($url, $initPayload);
         if ($initResponse->failed()) {
             throw new \RuntimeException(
-                'Neo4j MCP HTTP initialize failed (status ' . $initResponse->status() . '). ' . trim((string) $initResponse->body())
+                'Neo4j MCP HTTP initialize failed (status '.$initResponse->status().'). '.trim((string) $initResponse->body())
             );
         }
         $initBody = $initResponse->json();
@@ -54,14 +56,12 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
             $msg = is_array($initBody['error']) && isset($initBody['error']['message'])
                 ? $initBody['error']['message']
                 : (string) json_encode($initBody['error']);
-            throw new \RuntimeException('Neo4j MCP HTTP initialize: ' . $msg);
+            throw new \RuntimeException('Neo4j MCP HTTP initialize: '.$msg);
         }
 
-        $sessionId = $initResponse->header('Mcp-Session-Id') ?? $initResponse->header('mcp-session-id');
-        if (is_array($sessionId)) {
-            $sessionId = $sessionId[0] ?? null;
-        }
-        if ($sessionId !== null && $sessionId !== '') {
+        $sessionId = self::normalizeSessionHeader($initResponse->header('Mcp-Session-Id'))
+            ?? self::normalizeSessionHeader($initResponse->header('mcp-session-id'));
+        if ($sessionId !== null) {
             $client = $client->withHeaders(['Mcp-Session-Id' => $sessionId]);
         }
 
@@ -85,7 +85,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
 
         if ($response->failed()) {
             throw new \RuntimeException(
-                'Neo4j MCP HTTP request failed (status ' . $response->status() . '). ' . trim((string) $response->body())
+                'Neo4j MCP HTTP request failed (status '.$response->status().'). '.trim((string) $response->body())
             );
         }
 
@@ -98,9 +98,26 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
             $message = is_array($body['error']) && isset($body['error']['message'])
                 ? $body['error']['message']
                 : (string) json_encode($body['error']);
-            throw new \RuntimeException('Neo4j MCP HTTP: ' . $message);
+            throw new \RuntimeException('Neo4j MCP HTTP: '.$message);
         }
 
         return $body['result'] ?? [];
+    }
+
+    /**
+     * @param  array<int, string>|string|null  $value
+     */
+    private static function normalizeSessionHeader(array|string|null $value): ?string
+    {
+        if (is_string($value)) {
+            return $value !== '' ? $value : null;
+        }
+        if (is_array($value)) {
+            $first = $value[0] ?? '';
+
+            return $first !== '' ? $first : null;
+        }
+
+        return null;
     }
 }
