@@ -1,6 +1,9 @@
 <?php
 
+use Laravel\Boost\BoostServiceProvider;
+use Neo4j\LaravelBoost\Neo4jBoostServiceProvider;
+
 return [
-    Laravel\Boost\BoostServiceProvider::class,
-    Neo4j\LaravelBoost\Neo4jBoostServiceProvider::class,
+    BoostServiceProvider::class,
+    Neo4jBoostServiceProvider::class,
 ];

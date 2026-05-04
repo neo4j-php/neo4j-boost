@@ -4,6 +4,17 @@ Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j
 
 **Requirements:** PHP 8.2+, Laravel 12 or 13, [Laravel Boost](https://github.com/laravel/boost).
 
+### CI (this repository)
+
+GitHub Actions are split into three workflows (PHP 8.2, 8.3, 8.4, and 8.5 each): [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), and PHPUnit (`.github/workflows/phpunit.yml`).
+
+Locally after `composer install`:
+
+```bash
+composer run ci
+# or: ./vendor/bin/pint --test && ./vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress && ./vendor/bin/phpunit -c phpunit.xml.dist
+```
+
 ---
 
 ## Installation

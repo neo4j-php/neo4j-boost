@@ -15,11 +15,12 @@ class Neo4jBoostServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../config/neo4j-boost.php', 'neo4j-boost');
+        $this->mergeConfigFrom(__DIR__.'/../config/neo4j-boost.php', 'neo4j-boost');
 
         $this->app->singleton(Neo4jMcpClientInterface::class, function () {
             $transport = config('neo4j-boost.transport', 'http');
             $driver = is_string($transport) ? $transport : ($transport['driver'] ?? 'http');
+
             return $driver === 'stdio'
                 ? new Neo4jStdioClient
                 : new Neo4jHttpClient;
@@ -29,7 +30,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->publishes([
-            __DIR__ . '/../config/neo4j-boost.php' => config_path('neo4j-boost.php'),
+            __DIR__.'/../config/neo4j-boost.php' => config_path('neo4j-boost.php'),
         ], 'neo4j-boost-config');
 
         $this->mergeBoostTools();
