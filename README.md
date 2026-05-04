@@ -2,6 +2,8 @@
 
 Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases). Use Neo4j tools (get-schema, read-cypher, write-cypher, etc.) from MCP clients like Cursor or Claude.
 
+Release notes: [CHANGELOG.md](CHANGELOG.md).
+
 **Requirements:** PHP 8.2+, Laravel 12 or 13, [Laravel Boost](https://github.com/laravel/boost).
 
 ### CI (this repository)

@@ -90,7 +90,7 @@ class TestStdioCommand extends Command
             'params' => [
                 'protocolVersion' => '2024-11-05',
                 'capabilities' => new \stdClass,
-                'clientInfo' => ['name' => 'neo4j-boost-test', 'version' => '1.0'],
+                'clientInfo' => ['name' => 'neo4j-boost-test', 'version' => '0.1.0'],
             ],
         ];
         $initJson = json_encode($initPayload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
