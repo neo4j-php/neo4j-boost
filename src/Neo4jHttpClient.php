@@ -41,7 +41,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
                 'capabilities' => new \stdClass,
                 'clientInfo' => [
                     'name' => 'neo4j-laravel-boost',
-                    'version' => '0.1.0',
+                    'version' => '1.0',
                 ],
             ],
         ];
