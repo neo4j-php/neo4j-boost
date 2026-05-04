@@ -1,0 +1,11 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - src
+
+    level: 5
+
+    # getenv() / JSON decode shapes differ between stubs and runtime
+    treatPhpDocTypesAsCertain: false
