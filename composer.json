@@ -9,6 +9,11 @@
         "Neo4j\\LaravelBoost\\": "src/"
       }
     },
+    "autoload-dev": {
+      "psr-4": {
+        "Neo4j\\LaravelBoost\\Tests\\": "tests/"
+      }
+    },
     "extra": {
       "laravel": {
         "providers": [
@@ -23,11 +28,24 @@
       "laravel/mcp": "^0.5.1"
     },
     "require-dev": {
-      "phpunit/phpunit": "^10.5|^11.0"
+      "larastan/larastan": "^3.0",
+      "laravel/pint": "^1.18",
+      "orchestra/testbench": "^9.7|^10.0",
+      "phpunit/phpunit": "^11.0"
     },
     "config": {
         "allow-plugins": {
             "php-http/discovery": true
         }
+    },
+    "scripts": {
+        "test": "phpunit -c phpunit.xml.dist",
+        "analyse": "phpstan analyse -c phpstan.neon.dist --no-progress",
+        "format": "pint",
+        "ci": [
+            "./vendor/bin/pint --test",
+            "./vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress",
+            "./vendor/bin/phpunit -c phpunit.xml.dist"
+        ]
     }
 }
