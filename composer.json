@@ -1,6 +1,6 @@
 {
     "name": "neo4j/laravel-boost",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "description": "Official Neo4j MCP server integration for Laravel",
     "type": "library",
     "license": "MIT",
