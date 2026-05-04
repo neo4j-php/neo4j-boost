@@ -11,11 +11,11 @@ use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
  */
 class Neo4jHttpClient implements Neo4jMcpClientInterface
 {
-    private const int TIMEOUT = 60;
+    private const TIMEOUT = 60;
 
-    private const int INIT_ID = 1;
+    private const INIT_ID = 1;
 
-    private const int TOOL_CALL_ID = 2;
+    private const TOOL_CALL_ID = 2;
 
     public function callTool(string $toolName, array $arguments = []): array
     {

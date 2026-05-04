@@ -12,9 +12,9 @@ use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
  */
 class Neo4jStdioClient implements Neo4jMcpClientInterface
 {
-    private const int INIT_ID = 1;
+    private const INIT_ID = 1;
 
-    private const int READ_TIMEOUT_SECONDS = 60;
+    private const READ_TIMEOUT_SECONDS = 60;
 
     /** @var resource|null */
     private $process = null;
