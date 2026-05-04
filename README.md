@@ -6,7 +6,7 @@ Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j
 
 ### CI (this repository)
 
-GitHub Actions are split into three workflows (PHP 8.2 and 8.3 each): [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), and PHPUnit (`.github/workflows/phpunit.yml`).
+GitHub Actions are split into three workflows (PHP 8.2, 8.3, 8.4, and 8.5 each): [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), and PHPUnit (`.github/workflows/phpunit.yml`).
 
 Locally after `composer install`:
 
