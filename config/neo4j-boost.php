@@ -65,5 +65,7 @@ return [
     'container_graph' => [
         'uri' => env('NEO4J_URI', ''),
         'default_connection_dsn' => env('NEO4J_DEFAULT_CONNECTION_DSN', ''),
+        'username' => env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
+        'password' => env('NEO4J_PASSWORD', ''),
     ],
 ];

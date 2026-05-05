@@ -60,10 +60,10 @@ CYPHER;
     }
 
     /**
-     * @param array<int, array{class: string}> $classRows
-     * @param array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}> $bindingRows
-     * @param array<int, array{class: string, dependency: string, dependencyKind: string}> $dependencyRows
-     * @param array<int, array{class: string, name: string, reason: string}> $unresolvedRows
+     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */
     public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
@@ -125,8 +125,8 @@ CYPHER;
         if ($explicitUri !== '') {
             return [
                 $explicitUri,
-                (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
-                (string) env('NEO4J_PASSWORD', ''),
+                (string) config('neo4j-boost.container_graph.username'),
+                (string) config('neo4j-boost.container_graph.password'),
             ];
         }
 
@@ -143,8 +143,8 @@ CYPHER;
 
         return [
             'bolt://localhost:7687',
-            (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
-            (string) env('NEO4J_PASSWORD', ''),
+            (string) config('neo4j-boost.container_graph.username'),
+            (string) config('neo4j-boost.container_graph.password'),
         ];
     }
 
@@ -176,26 +176,26 @@ CYPHER;
         if (isset($parts['user']) && $parts['user'] !== '') {
             $user = rawurldecode($parts['user']);
         } else {
-            $user = (string) env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j'));
+            $user = (string) config('neo4j-boost.container_graph.username');
         }
         if (array_key_exists('pass', $parts) && (string) $parts['pass'] !== '') {
             $password = rawurldecode($parts['pass']);
         } else {
-            $password = (string) env('NEO4J_PASSWORD', '');
+            $password = (string) config('neo4j-boost.container_graph.password');
         }
 
-        $uri = $parts['scheme'] . '://' . $parts['host'];
+        $uri = $parts['scheme'].'://'.$parts['host'];
         if (isset($parts['port'])) {
-            $uri .= ':' . (int) $parts['port'];
+            $uri .= ':'.(int) $parts['port'];
         }
         if (isset($parts['path']) && $parts['path'] !== '' && $parts['path'] !== '/') {
             $uri .= $parts['path'];
         }
         if (isset($parts['query'])) {
-            $uri .= '?' . $parts['query'];
+            $uri .= '?'.$parts['query'];
         }
         if (isset($parts['fragment'])) {
-            $uri .= '#' . $parts['fragment'];
+            $uri .= '#'.$parts['fragment'];
         }
 
         return [

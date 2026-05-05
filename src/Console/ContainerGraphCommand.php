@@ -31,11 +31,11 @@ class ContainerGraphCommand extends Command
         );
 
         $this->line('Container graph summary:');
-        $this->line('- Bindings: ' . count($bindingRows));
-        $this->line('- Concrete classes inspected: ' . count($concreteClasses));
-        $this->line('- Class nodes: ' . count($classRows));
-        $this->line('- Dependency edges: ' . count($dependencyRows));
-        $this->line('- Unresolved dependencies: ' . count($unresolvedRows));
+        $this->line('- Bindings: '.count($bindingRows));
+        $this->line('- Concrete classes inspected: '.count($concreteClasses));
+        $this->line('- Class nodes: '.count($classRows));
+        $this->line('- Dependency edges: '.count($dependencyRows));
+        $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
             $this->printCypher($writer, $classRows, $bindingRows, $dependencyRows, $unresolvedRows);
@@ -51,7 +51,7 @@ class ContainerGraphCommand extends Command
             $writer->connect();
             $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
         } catch (Throwable $e) {
-            $this->error('Failed to write container graph: ' . $e->getMessage());
+            $this->error('Failed to write container graph: '.$e->getMessage());
 
             return self::FAILURE;
         }
@@ -86,7 +86,7 @@ class ContainerGraphCommand extends Command
             $concreteClasses[$concreteName] = $concreteName;
         }
 
-        return [array_values($rows), array_values($concreteClasses)];
+        return [$rows, array_values($concreteClasses)];
     }
 
     /**
@@ -142,7 +142,7 @@ class ContainerGraphCommand extends Command
                         ['\\', ''],
                         $relativePath
                     );
-                    $className = rtrim($namespacePrefix, '\\') . '\\' . $classSuffix;
+                    $className = rtrim($namespacePrefix, '\\').'\\'.$classSuffix;
 
                     if (class_exists($className) && ! interface_exists($className) && ! trait_exists($className)) {
                         $classes[$className] = $className;
@@ -340,16 +340,16 @@ class ContainerGraphCommand extends Command
         $this->line('');
         $this->line('Cypher templates:');
         foreach ($writer->cypherTemplates() as $label => $cypher) {
-            $this->line('[' . $label . ']');
+            $this->line('['.$label.']');
             $this->line($cypher);
             $this->line('');
         }
 
         $this->line('Sample params:');
-        $this->line('- classes: ' . json_encode(array_slice($classRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->line('- bindings: ' . json_encode(array_slice($bindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->line('- dependencies: ' . json_encode(array_slice($dependencyRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->line('- unresolved: ' . json_encode(array_slice($unresolvedRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- classes: '.json_encode(array_slice($classRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- bindings: '.json_encode(array_slice($bindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- dependencies: '.json_encode(array_slice($dependencyRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- unresolved: '.json_encode(array_slice($unresolvedRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }
