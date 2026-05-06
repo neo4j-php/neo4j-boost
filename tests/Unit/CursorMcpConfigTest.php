@@ -3,7 +3,7 @@
 namespace Neo4j\LaravelBoost\Tests\Unit;
 
 use Neo4j\LaravelBoost\CursorMcpConfig;
-use Neo4j\LaravelBoost\Tests\TestCase;
+use PHPUnit\Framework\TestCase;
 
 class CursorMcpConfigTest extends TestCase
 {
