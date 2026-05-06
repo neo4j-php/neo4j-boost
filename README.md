@@ -17,6 +17,14 @@ composer run ci
 # or: ./vendor/bin/pint --test && ./vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress && ./vendor/bin/phpunit -c phpunit.xml.dist
 ```
 
+### Workbench (`composer run serve`)
+
+The [Orchestra Testbench](https://packages.tools/testbench.html) workbench is a small Laravel app inside this repo. **`composer run build`** only runs asset steps so it works **without** the PHP SQLite extension (`pdo_sqlite`). Session/cache/queue defaults are set in `testbench.yaml` (`env:`) so the skeleton does not need a SQL database for a quick `composer run serve`.
+
+**Neo4j** is configured separately via **`NEO4J_*`** (Bolt) and **`NEO4J_MCP_*`** (MCP HTTP), not via `DB_*`. Defaults are in `testbench.yaml` under `env:`; override them by copying `workbench/.env.example` to `workbench/.env` and editing.
+
+**Optional SQL (migrations / `DatabaseSeeder`):** install `php-sqlite3` (or configure MySQL in `workbench/.env`), then run `./vendor/bin/testbench workbench:create-sqlite-db` and `./vendor/bin/testbench migrate:fresh` if you need the database.
+
 ---
 
 ## Installation
