@@ -1,0 +1,43 @@
+laravel: '@testbench'
+
+# Injected into the Testbench app (Neo4j is separate from Laravel DB_* below).
+env:
+  NEO4J_URI: 'bolt://localhost:7687'
+  NEO4J_USERNAME: 'neo4j'
+  NEO4J_PASSWORD: ''
+  NEO4J_MCP_URL: 'http://localhost:8080/mcp'
+  SESSION_DRIVER: cookie
+  CACHE_STORE: 'array'
+  QUEUE_CONNECTION: sync
+
+providers:
+  # - Workbench\App\Providers\WorkbenchServiceProvider
+
+migrations:
+  - workbench/database/migrations
+
+seeders:
+  - Workbench\Database\Seeders\DatabaseSeeder
+
+workbench:
+  start: '/'
+  install: true
+  health: false
+  discovers:
+    web: true
+    api: true
+    commands: true
+    components: false
+    factories: true
+    views: false
+  # No SQLite/MySQL steps: `composer run build` must work without pdo_sqlite.
+  # To run migrations/seeders locally, install php-sqlite3 (or another DB driver),
+  # then: ./vendor/bin/testbench workbench:create-sqlite-db && ./vendor/bin/testbench migrate:fresh
+  build:
+    - asset-publish
+  assets:
+    - laravel-assets
+  sync:
+    - from: storage
+      to: workbench/storage
+      reverse: true

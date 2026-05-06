@@ -1,6 +1,6 @@
 <?php
 
-namespace Neo4j\LaravelBoost\Tests\Unit;
+namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;

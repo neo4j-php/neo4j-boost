@@ -23,6 +23,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!workbench/.env.example
 
 # Laravel logs
 storage/logs/*.log

@@ -11,9 +11,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.2', '8.3', '8.4', '8.5']
+        # Laravel 13 requires PHP ^8.3; package allows PHP ^8.2 for Laravel 12 only.
+        include:
+          - php: '8.2'
+            laravel: '12'
+            testbench: '^10.11'
+          - php: '8.3'
+            laravel: '13'
+            testbench: '^11.0'
+          - php: '8.5'
+            laravel: '12'
+            testbench: '^10.11'
+          - php: '8.5'
+            laravel: '13'
+            testbench: '^11.0'
 
-    name: PHP ${{ matrix.php }}
+    name: PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}
 
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +45,15 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.json') }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.json') }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}
           restore-keys: |
             ${{ runner.os }}-composer-
 
+      # No composer.lock in repo: partial `composer update pkg` fails. Resolve framework first (creates lock), then Testbench.
       - name: Install dependencies
-        run: composer update --no-interaction --no-progress --prefer-dist
+        run: |
+          composer require "laravel/framework:^${{ matrix.laravel }}.0" --no-interaction --no-progress -W
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-progress -W
 
       - name: Run PHPStan
         run: ./vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress
