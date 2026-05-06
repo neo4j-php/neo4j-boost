@@ -61,5 +61,6 @@ jobs:
       - name: Run Testbench workbench build
         run: composer run build
 
-      - name: Run package tests (Orchestra Testbench / PHPUnit)
+      # PHPUnit is the runner; tests extend TestCase with WithWorkbench + testbench.yaml (see tests/TestCase.php).
+      - name: PHPUnit (package tests boot Laravel via Orchestra Testbench + WithWorkbench)
         run: ./vendor/bin/phpunit -c phpunit.xml.dist
