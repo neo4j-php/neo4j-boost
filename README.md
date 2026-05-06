@@ -8,7 +8,7 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ### CI (this repository)
 
-GitHub Actions are split into three workflows (PHP 8.2, 8.3, 8.4, and 8.5 each): [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), and PHPUnit (`.github/workflows/phpunit.yml`).
+GitHub Actions include four workflows (PHP 8.2, 8.3, 8.4, and 8.5 each): [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), PHPUnit (`.github/workflows/phpunit.yml`), and **[Testbench](https://packages.tools/testbench.html)** (`.github/workflows/testbench.yml`) — which runs `composer run build` then PHPUnit against [`Orchestra\Testbench\TestCase`](tests/TestCase.php).
 
 Locally after `composer install`:
 
