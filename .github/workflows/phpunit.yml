@@ -48,11 +48,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-composer-
 
+      # No composer.lock in repo: partial `composer update pkg` fails. Resolve framework first (creates lock), then Testbench.
       - name: Install dependencies
         run: |
-          composer update --no-interaction --no-progress --prefer-dist -W \
-            "laravel/framework:^${{ matrix.laravel }}.0" \
-            "orchestra/testbench:${{ matrix.testbench }}"
+          composer require "laravel/framework:^${{ matrix.laravel }}.0" --no-interaction --no-progress -W
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-progress -W
 
       - name: Run PHPUnit
         run: ./vendor/bin/phpunit -c phpunit.xml.dist
