@@ -11,11 +11,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Laravel 13 requires PHP ^8.3; package allows PHP ^8.2 for Laravel 12 only.
         include:
           - php: '8.2'
             laravel: '12'
             testbench: '^10.11'
-          - php: '8.2'
+          - php: '8.3'
             laravel: '13'
             testbench: '^11.0'
           - php: '8.5'

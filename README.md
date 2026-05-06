@@ -8,7 +8,7 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ### CI (this repository)
 
-GitHub Actions include four workflows, each on a matrix of **PHP 8.2 & 8.5** (lowest and highest supported) × **Laravel 12 & 13**: [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), PHPUnit (`.github/workflows/phpunit.yml`), and **[Testbench](https://packages.tools/testbench.html)** (`.github/workflows/testbench.yml`) — which runs `composer run build` then PHPUnit against [`Orchestra\Testbench\TestCase`](tests/TestCase.php).
+GitHub Actions include four workflows on a **PHP × Laravel** matrix compatible with upstream constraints: **Laravel 12** on PHP **8.2** and **8.5**; **Laravel 13** (requires PHP **^8.3**) on PHP **8.3** and **8.5**. Workflows: [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), PHPUnit (`.github/workflows/phpunit.yml`), and **[Testbench](https://packages.tools/testbench.html)** (`.github/workflows/testbench.yml`) — which runs `composer run build` then PHPUnit against [`Orchestra\Testbench\TestCase`](tests/TestCase.php).
 
 Locally after `composer install`:
 
