@@ -32,6 +32,7 @@ FOREACH (_ IN CASE WHEN row.concreteKind <> 'Interface' AND row.concreteKind <> 
   MERGE (c:AbstractType:Abstract {name: row.concrete})
   SET c.kind = row.concreteKind
 )
+WITH row
 MATCH (a:Abstract {name: row.abstract})
 MATCH (c:Abstract {name: row.concrete})
 MERGE (a)-[r:BINDS_TO]->(c)
