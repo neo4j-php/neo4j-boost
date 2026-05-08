@@ -17,6 +17,15 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertSame(['bindings', 'classes', 'dependencies', 'unresolved'], $keys);
     }
 
+    public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
+    {
+        $writer = new ContainerGraphWriter;
+        $bindingsTemplate = $writer->cypherTemplates()['bindings'];
+
+        $this->assertStringContainsString('row.concreteKind', $bindingsTemplate);
+        $this->assertStringContainsString('AbstractType:Abstract', $bindingsTemplate);
+    }
+
     public function test_parse_dsn_extracts_uri_and_credentials(): void
     {
         $method = new ReflectionMethod(ContainerGraphWriter::class, 'parseDsnToConnection');

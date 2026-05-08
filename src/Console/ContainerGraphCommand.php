@@ -62,7 +62,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}>, 1: array<int, string>}
+     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>, 1: array<int, string>}
      */
     private function extractBindingRows(): array
     {
@@ -72,18 +72,22 @@ class ContainerGraphCommand extends Command
         $concreteClasses = [];
 
         foreach ($bindings as $abstract => $binding) {
-            $concreteName = $this->resolveConcreteName($binding['concrete'] ?? null);
-            if ($concreteName === null || ! class_exists($concreteName)) {
+            $resolved = $this->resolveConcreteDescriptor($abstract, $binding['concrete'] ?? null);
+            if ($resolved === null) {
                 continue;
             }
 
             $rows[] = [
                 'abstract' => $abstract,
                 'abstractKind' => $this->kindForTypeName($abstract),
-                'concrete' => $concreteName,
+                'concrete' => $resolved['name'],
+                'concreteKind' => $resolved['kind'],
                 'shared' => (bool) ($binding['shared'] ?? false),
             ];
-            $concreteClasses[$concreteName] = $concreteName;
+
+            if ($resolved['kind'] === 'Class' && class_exists($resolved['name']) && ! interface_exists($resolved['name'])) {
+                $concreteClasses[$resolved['name']] = $resolved['name'];
+            }
         }
 
         return [$rows, array_values($concreteClasses)];
@@ -221,10 +225,17 @@ class ContainerGraphCommand extends Command
         return [$this->uniqueRows($dependencyRows), $this->uniqueRows($unresolvedRows)];
     }
 
-    private function resolveConcreteName(mixed $concrete): ?string
+    /**
+     * @return null|array{name: string, kind: string}
+     */
+    private function resolveConcreteDescriptor(string $abstract, mixed $concrete): ?array
     {
         if (is_string($concrete)) {
-            return $concrete;
+            $name = trim($concrete);
+
+            return $name === ''
+                ? null
+                : ['name' => $name, 'kind' => $this->kindForTypeName($name)];
         }
 
         if ($concrete instanceof Closure) {
@@ -232,19 +243,34 @@ class ContainerGraphCommand extends Command
                 $reflection = new ReflectionFunction($concrete);
                 $static = $reflection->getStaticVariables();
                 if (isset($static['concrete']) && is_string($static['concrete'])) {
-                    return $static['concrete'];
+                    return [
+                        'name' => $static['concrete'],
+                        'kind' => $this->kindForTypeName($static['concrete']),
+                    ];
                 }
                 if (isset($static['abstract']) && is_string($static['abstract'])) {
-                    return $static['abstract'];
+                    return [
+                        'name' => $static['abstract'],
+                        'kind' => $this->kindForTypeName($static['abstract']),
+                    ];
                 }
 
                 $returnType = $reflection->getReturnType();
                 if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
-                    return $returnType->getName();
+                    return [
+                        'name' => $returnType->getName(),
+                        'kind' => $this->kindForTypeName($returnType->getName()),
+                    ];
                 }
             } catch (Throwable) {
                 return null;
             }
+
+            return ['name' => 'closure@'.$abstract, 'kind' => 'Closure'];
+        }
+
+        if (is_object($concrete)) {
+            return ['name' => get_debug_type($concrete), 'kind' => 'Object'];
         }
 
         return null;
@@ -303,7 +329,15 @@ class ContainerGraphCommand extends Command
 
     private function kindForTypeName(string $name): string
     {
-        return interface_exists($name) ? 'Interface' : 'Class';
+        if (interface_exists($name)) {
+            return 'Interface';
+        }
+
+        if (class_exists($name)) {
+            return 'Class';
+        }
+
+        return 'Alias';
     }
 
     /**
@@ -331,7 +365,7 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}>  $bindingRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
      * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
      * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */

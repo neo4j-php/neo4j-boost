@@ -13,17 +13,29 @@ class ContainerGraphWriter
     private const CYPHER_BINDINGS = <<<'CYPHER'
 UNWIND $rows AS row
 FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (a:Interface:Abstract {name: row.abstract})
-  MERGE (c:Class:Abstract {name: row.concrete})
-  MERGE (a)-[r:BINDS_TO]->(c)
-  SET r.shared = row.shared
+  MERGE (:Interface:Abstract {name: row.abstract})
 )
-FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (a:Class:Abstract {name: row.abstract})
-  MERGE (c:Class:Abstract {name: row.concrete})
-  MERGE (a)-[r:BINDS_TO]->(c)
-  SET r.shared = row.shared
+FOREACH (_ IN CASE WHEN row.abstractKind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.abstract})
 )
+FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' AND row.abstractKind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (a:AbstractType:Abstract {name: row.abstract})
+  SET a.kind = row.abstractKind
+)
+FOREACH (_ IN CASE WHEN row.concreteKind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.concrete})
+)
+FOREACH (_ IN CASE WHEN row.concreteKind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.concrete})
+)
+FOREACH (_ IN CASE WHEN row.concreteKind <> 'Interface' AND row.concreteKind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (c:AbstractType:Abstract {name: row.concrete})
+  SET c.kind = row.concreteKind
+)
+MATCH (a:Abstract {name: row.abstract})
+MATCH (c:Abstract {name: row.concrete})
+MERGE (a)-[r:BINDS_TO]->(c)
+SET r.shared = row.shared
 CYPHER;
 
     private const CYPHER_CLASSES = <<<'CYPHER'
@@ -61,7 +73,7 @@ CYPHER;
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, shared: bool}>  $bindingRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
      * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
      * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */

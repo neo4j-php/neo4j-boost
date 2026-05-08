@@ -2,7 +2,9 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit;
 
+use Neo4j\LaravelBoost\Console\ContainerGraphCommand;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use ReflectionMethod;
 
 class ContainerGraphCommandTest extends TestCase
 {
@@ -11,5 +13,26 @@ class ContainerGraphCommandTest extends TestCase
         $this->artisan('container:graph', ['--dry-run' => true])
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
+    }
+
+    public function test_extract_binding_rows_keeps_non_class_bindings(): void
+    {
+        $this->app->bind('test.binding.alias', fn (): object => new \stdClass);
+
+        $command = $this->app->make(ContainerGraphCommand::class);
+        $method = new ReflectionMethod($command, 'extractBindingRows');
+        $method->setAccessible(true);
+
+        /** @var array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>, 1: array<int, string>} $result */
+        $result = $method->invoke($command);
+        [$bindingRows] = $result;
+
+        $matching = array_values(array_filter(
+            $bindingRows,
+            static fn (array $row): bool => $row['abstract'] === 'test.binding.alias'
+        ));
+
+        $this->assertNotEmpty($matching);
+        $this->assertArrayHasKey('concreteKind', $matching[0]);
     }
 }
