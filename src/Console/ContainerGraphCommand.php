@@ -108,10 +108,10 @@ class ContainerGraphCommand extends Command
             return [];
         }
 
-        $autoload = $decoded['autoload']['psr-4'] ?? [];
-        if (! is_array($autoload)) {
-            return [];
-        }
+        $autoload = array_merge(
+            $decoded['autoload']['psr-4'] ?? [],
+            $decoded['autoload-dev']['psr-4'] ?? [],
+        );
 
         $classes = [];
 
