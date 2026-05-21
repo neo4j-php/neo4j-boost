@@ -7,6 +7,7 @@ use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Boost\Tools\ListGdsProceduresTool;
 use Neo4j\LaravelBoost\Boost\Tools\ReadCypherTool;
 use Neo4j\LaravelBoost\Boost\Tools\WriteCypherTool;
+use Neo4j\LaravelBoost\Console\ContainerGraphCommand;
 use Neo4j\LaravelBoost\Console\CursorConfigCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
@@ -37,6 +38,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                ContainerGraphCommand::class,
                 CursorConfigCommand::class,
                 TestStdioCommand::class,
             ]);
