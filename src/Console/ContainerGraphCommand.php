@@ -108,10 +108,9 @@ class ContainerGraphCommand extends Command
             return [];
         }
 
-        $autoload = array_merge(
-            $decoded['autoload']['psr-4'] ?? [],
-            $decoded['autoload-dev']['psr-4'] ?? [],
-        );
+        // Production autoload only: autoload-dev often maps tests/ and Pest bootstrap
+        // files (e.g. Tests\Pest) that fatal when class_exists() runs outside ./vendor/bin/pest.
+        $autoload = $decoded['autoload']['psr-4'] ?? [];
 
         $classes = [];
 

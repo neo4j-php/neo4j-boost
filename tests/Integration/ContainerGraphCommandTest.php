@@ -35,4 +35,28 @@ class ContainerGraphCommandTest extends TestCase
         $this->assertNotEmpty($matching);
         $this->assertArrayHasKey('concreteKind', $matching[0]);
     }
+
+    public function test_extract_custom_class_names_ignores_autoload_dev_paths(): void
+    {
+        $composerJson = base_path('composer.json');
+        $backup = (string) file_get_contents($composerJson);
+        $decoded = json_decode($backup, true);
+        $this->assertIsArray($decoded);
+
+        $decoded['autoload-dev']['psr-4']['Tests\\'] = 'tests/';
+        file_put_contents($composerJson, json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+
+        try {
+            $command = $this->app->make(ContainerGraphCommand::class);
+            $method = new ReflectionMethod($command, 'extractCustomClassNames');
+            $method->setAccessible(true);
+
+            /** @var array<int, string> $classes */
+            $classes = $method->invoke($command);
+
+            $this->assertNotContains('Tests\\Pest', $classes);
+        } finally {
+            file_put_contents($composerJson, $backup);
+        }
+    }
 }
