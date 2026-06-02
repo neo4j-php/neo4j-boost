@@ -59,9 +59,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
         }
 
         if (in_array($initResponse->status(), [401, 403], true)) {
-            return $this->errorResult(
-                'Neo4j MCP authentication failed. Check NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD.'
-            );
+            return $this->errorResult(Neo4jMcpHealth::httpAuthFailedMessage());
         }
 
         if ($initResponse->failed()) {
@@ -107,9 +105,7 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
         }
 
         if (in_array($response->status(), [401, 403], true)) {
-            return $this->errorResult(
-                'Neo4j MCP authentication failed. Check NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD.'
-            );
+            return $this->errorResult(Neo4jMcpHealth::httpAuthFailedMessage());
         }
 
         if ($response->failed()) {
@@ -170,14 +166,10 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
     private function reachabilityErrorResult(string $url, Neo4jMcpHealth $health): array
     {
         if (! $health->isBinaryInstalled()) {
-            return $this->errorResult(
-                'Neo4j MCP binary not found. Run php artisan neo4j-boost:install-mcp or neo4j-boost:setup.'
-            );
+            return $this->errorResult(Neo4jMcpHealth::stdioBinaryMissingMessage());
         }
 
-        return $this->errorResult(
-            'Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.'
-        );
+        return $this->errorResult(Neo4jMcpHealth::serverUnreachableMessage($url));
     }
 
     /**

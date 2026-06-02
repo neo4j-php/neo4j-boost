@@ -7,6 +7,10 @@ use Throwable;
 
 final class Neo4jMcpHealth
 {
+    private const STDIO_BINARY_MISSING_MESSAGE = 'Neo4j MCP binary not found. Run php artisan neo4j-boost:setup to install it.';
+
+    private const HTTP_AUTH_FAILED_MESSAGE = 'Neo4j MCP authentication failed. Check NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD.';
+
     public function isBinaryInstalled(): bool
     {
         $installer = new Neo4jMcpInstaller;
@@ -16,6 +20,15 @@ final class Neo4jMcpHealth
 
     public function isServerReachable(): bool
     {
+        if ($this->transport() === 'stdio') {
+            $binaryInstalled = $this->isBinaryInstalled();
+            if (! $binaryInstalled) {
+                $this->emitStdioBinaryMissingMessageForTinker();
+            }
+
+            return $binaryInstalled;
+        }
+
         $url = $this->httpUrl();
 
         try {
@@ -69,6 +82,7 @@ final class Neo4jMcpHealth
     {
         $binaryInstalled = $this->isBinaryInstalled();
         $serverReachable = $this->isServerReachable();
+        $transport = $this->transport();
 
         $status = match (true) {
             $binaryInstalled && $serverReachable => 'healthy',
@@ -79,20 +93,28 @@ final class Neo4jMcpHealth
         $suggestedResolutions = [];
 
         if (! $binaryInstalled) {
-            $suggestedResolutions[] = 'Install the official binary: php artisan neo4j-boost:install-mcp';
+            if ($transport === 'stdio') {
+                $suggestedResolutions[] = self::STDIO_BINARY_MISSING_MESSAGE;
+            } else {
+                $suggestedResolutions[] = 'Install the official binary: php artisan neo4j-boost:install-mcp';
+            }
         }
 
-        if (! $serverReachable) {
+        if ($transport === 'stdio' && ! Neo4jMcpConfig::hasNeo4jPassword()) {
+            $suggestedResolutions[] = Neo4jMcpConfig::stdioPasswordRequiredMessage();
+        }
+
+        if ($transport === 'http' && ! $serverReachable) {
             $suggestedResolutions[] = 'Start neo4j-mcp in HTTP mode and verify NEO4J_MCP_URL points to /mcp.';
             $suggestedResolutions[] = 'Verify Neo4j MCP auth settings (NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD) if your endpoint requires authentication.';
         }
 
-        if ($binaryInstalled && ! $serverReachable) {
+        if ($transport === 'http' && $binaryInstalled && ! $serverReachable) {
             $installer = new Neo4jMcpInstaller;
             $suggestedResolutions[] = 'Try running local binary in HTTP mode: '.$installer->getBinaryPath().' --neo4j-transport-mode http';
         }
 
-        if ($serverReachable && ! $binaryInstalled) {
+        if ($transport === 'http' && $serverReachable && ! $binaryInstalled) {
             $suggestedResolutions[] = 'Binary installation is optional when using a remote MCP server URL.';
         }
 
@@ -123,16 +145,47 @@ final class Neo4jMcpHealth
         return 'http://localhost:8080/mcp';
     }
 
+    private function transport(): string
+    {
+        return Neo4jMcpConfig::transport();
+    }
+
     private function emitUnreachableMessageForTinker(string $url): void
     {
         if (! $this->runningInTinker()) {
             return;
         }
 
-        fwrite(
-            STDOUT,
-            'Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.'.PHP_EOL
-        );
+        fwrite(STDOUT, self::serverUnreachableMessage($url).PHP_EOL);
+    }
+
+    private function emitStdioBinaryMissingMessageForTinker(): void
+    {
+        if (! $this->runningInTinker()) {
+            return;
+        }
+
+        fwrite(STDOUT, self::STDIO_BINARY_MISSING_MESSAGE.PHP_EOL);
+    }
+
+    public static function stdioBinaryMissingMessage(): string
+    {
+        return self::STDIO_BINARY_MISSING_MESSAGE;
+    }
+
+    public static function httpAuthFailedMessage(): string
+    {
+        return self::HTTP_AUTH_FAILED_MESSAGE;
+    }
+
+    public static function serverUnreachableMessage(string $url): string
+    {
+        return 'Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.';
+    }
+
+    public static function stdioProcessFailedMessage(): string
+    {
+        return 'Neo4j MCP STDIO process failed. Run php artisan neo4j-boost:setup and ensure the neo4j-mcp binary is installed.';
     }
 
     private function runningInTinker(): bool

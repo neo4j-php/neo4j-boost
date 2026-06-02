@@ -3,6 +3,7 @@
 namespace Neo4j\LaravelBoost\Console;
 
 use Illuminate\Console\Command;
+use Neo4j\LaravelBoost\Support\Neo4jMcpConfig;
 use Neo4j\LaravelBoost\Support\Neo4jMcpHealth;
 
 class DoctorCommand extends Command
@@ -13,7 +14,9 @@ class DoctorCommand extends Command
 
     public function handle(): int
     {
-        $this->printProxyArchitecture();
+        $transport = Neo4jMcpConfig::transport();
+
+        $this->printProxyArchitecture($transport);
 
         $health = new Neo4jMcpHealth;
         $diagnosis = $health->diagnose();
@@ -22,13 +25,28 @@ class DoctorCommand extends Command
         $serverReachable = (bool) ($diagnosis['server_reachable'] ?? false);
         $httpUrl = (string) ($diagnosis['http_url'] ?? 'http://localhost:8080/mcp');
 
+        $this->components->twoColumnDetail('Transport', $transport);
         $this->components->twoColumnDetail('Neo4j MCP binary', $binaryInstalled ? 'installed' : 'missing');
-        $this->components->twoColumnDetail('Neo4j MCP HTTP', $serverReachable ? 'reachable' : 'not reachable');
-        $this->components->twoColumnDetail('Configured URL', $httpUrl);
+        $this->components->twoColumnDetail('NEO4J_PASSWORD', Neo4jMcpConfig::hasNeo4jPassword() ? 'set' : 'missing');
+
+        if ($transport === 'stdio') {
+            $this->components->twoColumnDetail(
+                'STDIO readiness',
+                ($binaryInstalled && Neo4jMcpConfig::hasNeo4jPassword()) ? 'ready' : 'not ready'
+            );
+        } else {
+            $this->components->twoColumnDetail('Neo4j MCP HTTP', $serverReachable ? 'reachable' : 'not reachable');
+            $this->components->twoColumnDetail('Configured URL', $httpUrl);
+        }
+
+        if ($transport === 'stdio' && ! Neo4jMcpConfig::hasNeo4jPassword()) {
+            $this->newLine();
+            $this->components->error(Neo4jMcpConfig::stdioPasswordRequiredMessage());
+        }
 
         if (! $binaryInstalled) {
             $this->newLine();
-            $this->components->warn('Neo4j MCP binary is missing for local install flows.');
+            $this->components->warn('Neo4j MCP binary is missing for local STDIO flows.');
 
             if ($this->canPromptInteractively()) {
                 $shouldInstall = $this->confirm('Install the Neo4j MCP server binary now?', true);
@@ -41,14 +59,24 @@ class DoctorCommand extends Command
             }
         }
 
+        foreach ($diagnosis['suggested_resolutions'] ?? [] as $resolution) {
+            $this->line('  - '.$resolution);
+        }
+
         return self::SUCCESS;
     }
 
-    private function printProxyArchitecture(): void
+    private function printProxyArchitecture(string $transport): void
     {
         $this->newLine();
         $this->components->info('Neo4j MCP proxy architecture');
-        $this->line('  Cursor / IDE -> Laravel Boost MCP (php artisan boost:mcp) -> HTTP -> neo4j-mcp -> Neo4j');
+
+        if ($transport === 'stdio') {
+            $this->line('  Cursor / IDE -> Laravel Boost MCP (php artisan boost:mcp) -> STDIO -> neo4j-mcp binary -> Neo4j');
+        } else {
+            $this->line('  Cursor / IDE -> Laravel Boost MCP (php artisan boost:mcp) -> HTTP -> neo4j-mcp -> Neo4j');
+        }
+
         $this->newLine();
     }
 

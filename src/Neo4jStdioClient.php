@@ -2,7 +2,11 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Laravel\Mcp\Response;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\Support\Neo4jMcpConfig;
+use Neo4j\LaravelBoost\Support\Neo4jMcpHealth;
+use Throwable;
 
 /**
  * STDIO client for the Neo4j MCP server.
@@ -33,30 +37,61 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
 
     public function callTool(string $toolName, array $arguments = []): array
     {
-        $this->ensureProcessStarted();
-        $this->ensureInitialized();
-
-        $id = $this->nextToolCallId++;
-        $payload = [
-            'jsonrpc' => '2.0',
-            'id' => $id,
-            'method' => 'tools/call',
-            'params' => [
-                'name' => $toolName,
-                'arguments' => $arguments === [] ? new \stdClass : $arguments,
-            ],
-        ];
-        $this->writeLine($payload);
-        $body = $this->readResponseForId($id);
-
-        if (isset($body['error'])) {
-            $message = is_array($body['error']) && isset($body['error']['message'])
-                ? $body['error']['message']
-                : (string) json_encode($body['error']);
-            throw new \RuntimeException('Neo4j MCP STDIO: '.$message);
+        if (! Neo4jMcpConfig::hasNeo4jPassword()) {
+            return $this->errorResult(Neo4jMcpConfig::stdioPasswordRequiredMessage());
         }
 
-        return $body['result'] ?? [];
+        try {
+            $this->ensureProcessStarted();
+            $this->ensureInitialized();
+
+            $id = $this->nextToolCallId++;
+            $payload = [
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'method' => 'tools/call',
+                'params' => [
+                    'name' => $toolName,
+                    'arguments' => $arguments === [] ? new \stdClass : $arguments,
+                ],
+            ];
+            $this->writeLine($payload);
+            $body = $this->readResponseForId($id);
+
+            if (isset($body['error'])) {
+                $message = is_array($body['error']) && isset($body['error']['message'])
+                    ? $body['error']['message']
+                    : (string) json_encode($body['error']);
+
+                return $this->errorResult('Neo4j MCP STDIO: '.$message);
+            }
+
+            return $body['result'] ?? [];
+        } catch (Throwable $exception) {
+            $health = new Neo4jMcpHealth;
+            if (! $health->isBinaryInstalled()) {
+                return $this->errorResult(Neo4jMcpHealth::stdioBinaryMissingMessage());
+            }
+
+            return $this->errorResult(Neo4jMcpHealth::stdioProcessFailedMessage());
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function errorResult(string $message): array
+    {
+        $response = Response::error($message);
+        $content = $response->content();
+
+        return [
+            'content' => [[
+                'type' => 'text',
+                'text' => (string) $content,
+            ]],
+            'isError' => true,
+        ];
     }
 
     private function ensureProcessStarted(): void
@@ -65,11 +100,8 @@ class Neo4jStdioClient implements Neo4jMcpClientInterface
             return;
         }
 
-        $command = config('neo4j-boost.transport.stdio.command', 'neo4j-mcp');
-        $fromGetenv = getenv();
-        $baseEnv = is_array($fromGetenv) ? $fromGetenv : [];
-        $envOverrides = config('neo4j-boost.transport.stdio.env', []);
-        $env = array_merge($baseEnv, is_array($envOverrides) ? $envOverrides : []);
+        $command = Neo4jMcpConfig::stdioCommand();
+        $env = Neo4jMcpConfig::stdioEnvironment();
 
         $descriptorspec = [
             0 => ['pipe', 'r'],

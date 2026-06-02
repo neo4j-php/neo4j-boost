@@ -3,9 +3,8 @@
 namespace Neo4j\LaravelBoost\Console;
 
 use Illuminate\Console\Command;
-use Neo4j\LaravelBoost\Support\EnvFileWriter;
+use Neo4j\LaravelBoost\Support\Neo4jMcpConfig;
 use Neo4j\LaravelBoost\Support\Neo4jMcpInstaller;
-use Symfony\Component\Process\Process;
 
 class SetupCommand extends Command
 {
@@ -14,7 +13,7 @@ class SetupCommand extends Command
                             {--skip-mcp : Skip Neo4j MCP binary installation}
                             {--no-cursor-config : Skip running neo4j-boost:cursor-config}';
 
-    protected $description = 'Interactive setup for Neo4j Laravel Boost (binary, HTTP server, .env, Cursor). Use -n/--no-interaction for manual steps only.';
+    protected $description = 'Interactive setup for Neo4j Laravel Boost (STDIO binary + Cursor config). Use -n/--no-interaction for manual steps only.';
 
     public function handle(): int
     {
@@ -26,6 +25,9 @@ class SetupCommand extends Command
             return self::SUCCESS;
         }
 
+        $installer = new Neo4jMcpInstaller;
+        $firstSetupRun = $this->isFirstSetupRun();
+
         if ($this->shouldInstallMcpBinary()) {
             $exitCode = $this->call('neo4j-boost:install-mcp', [
                 '--no-cursor-config' => true,
@@ -36,13 +38,16 @@ class SetupCommand extends Command
             }
         }
 
-        if ($this->shouldStartHttpServer()) {
-            $this->startOrShowHttpServerInstructions();
-        }
+        if ($firstSetupRun) {
+            $this->newLine();
+            $this->components->info('First-time setup detected. Attempting to start local Neo4j...');
+            $startNeo4jExitCode = $this->call('neo4j-boost:start-neo4j');
 
-        $envExitCode = $this->ensureNeo4jMcpUrlInEnv();
-        if ($envExitCode !== self::SUCCESS) {
-            return $envExitCode;
+            if ($startNeo4jExitCode === self::SUCCESS) {
+                $this->markSetupCompleted();
+            } else {
+                $this->components->warn('Could not auto-start Neo4j. Run php artisan neo4j-boost:start-neo4j after reviewing your Docker setup.');
+            }
         }
 
         if (! $this->option('no-cursor-config')) {
@@ -54,7 +59,20 @@ class SetupCommand extends Command
         }
 
         $this->newLine();
-        $this->components->info('Neo4j Laravel Boost setup complete.');
+
+        if ($installer->isInstalled() && Neo4jMcpConfig::hasNeo4jPassword()) {
+            $this->components->info('Neo4j Laravel Boost setup complete. STDIO transport is ready with the local neo4j-mcp binary.');
+
+            return self::SUCCESS;
+        }
+
+        if ($installer->isInstalled() && ! Neo4jMcpConfig::hasNeo4jPassword()) {
+            $this->components->warn(Neo4jMcpConfig::stdioPasswordRequiredMessage());
+
+            return self::SUCCESS;
+        }
+
+        $this->components->warn('Setup finished, but neo4j-mcp binary is not installed. Run php artisan neo4j-boost:install-mcp or re-run setup.');
 
         return self::SUCCESS;
     }
@@ -63,10 +81,14 @@ class SetupCommand extends Command
     {
         $this->newLine();
         $this->components->info('Neo4j Laravel Boost setup');
-        $this->line('This package uses a <fg=cyan>proxy model</>:');
-        $this->line('  <fg=yellow>Cursor / IDE</> → <fg=cyan>Laravel Boost MCP</> (<fg=gray>php artisan boost:mcp</>) → <fg=cyan>HTTP</> → <fg=cyan>neo4j-mcp</> → <fg=cyan>Neo4j</>');
+        $this->line('Default proxy path: <fg=cyan>Boost MCP -> STDIO -> neo4j-mcp binary</>');
+        $this->line('STDIO is the default transport, so installing the binary is enough for local setup.');
         $this->newLine();
-        $this->line('You run <fg=cyan>neo4j-mcp</> in HTTP mode separately; Boost tools call it at <fg=cyan>NEO4J_MCP_URL</>.');
+        $this->line('Add these lines to your <fg=cyan>.env</> (reminder):');
+        $this->line('  <fg=gray>NEO4J_TRANSPORT_MODE=stdio</>');
+        $this->line('  <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
+        $this->line('  <fg=gray>NEO4J_USERNAME=neo4j</>');
+        $this->line('  <fg=gray>NEO4J_PASSWORD=password</>');
         $this->newLine();
     }
 
@@ -77,24 +99,17 @@ class SetupCommand extends Command
         $this->line('  1. Install the Neo4j MCP binary:');
         $this->line('     <fg=gray>php artisan neo4j-boost:install-mcp</>');
         $this->newLine();
-        $this->line('  2. Start neo4j-mcp in HTTP mode (choose one):');
-        $this->line('     <fg=gray>'.$this->localBinaryHttpCommand().'</>');
+        $this->line('  2. Start local Neo4j:');
+        $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
         $this->newLine();
-        $this->line('     Or with Docker:');
-        $this->line('     <fg=gray>'.$this->dockerHttpRunCommand().'</>');
-        $this->newLine();
-        $this->line('  3. Add to your <fg=cyan>.env</>:');
-        foreach (EnvFileWriter::neo4jMcpUrlTemplateLines() as $line) {
-            if ($line === '') {
-                continue;
-            }
-            $this->line('     <fg=gray>'.$line.'</>');
-        }
+        $this->line('  3. Ensure .env contains:');
+        $this->line('     <fg=gray>NEO4J_TRANSPORT_MODE=stdio</>');
+        $this->line('     <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
+        $this->line('     <fg=gray>NEO4J_USERNAME=neo4j</>');
+        $this->line('     <fg=gray>NEO4J_PASSWORD=password</>');
         $this->newLine();
         $this->line('  4. Configure Cursor MCP:');
         $this->line('     <fg=gray>php artisan neo4j-boost:cursor-config</>');
-        $this->newLine();
-        $this->line('  5. Open your Laravel app in Cursor and enable the <fg=cyan>laravel-boost</> MCP server.');
         $this->newLine();
     }
 
@@ -118,157 +133,30 @@ class SetupCommand extends Command
         );
     }
 
-    protected function shouldStartHttpServer(): bool
-    {
-        if (! $this->canPromptInteractively()) {
-            return false;
-        }
-
-        return $this->confirm(
-            'Start MCP server in HTTP mode now?',
-            true
-        );
-    }
-
     protected function canPromptInteractively(): bool
     {
-        return $this->input->isInteractive() && stream_isatty(STDIN);
+        return $this->input->isInteractive();
     }
 
-    protected function startOrShowHttpServerInstructions(): void
+    private function isFirstSetupRun(): bool
     {
-        $installer = new Neo4jMcpInstaller;
-
-        if ($installer->isInstalled()) {
-            $this->components->task(
-                'Starting neo4j-mcp in HTTP mode (background)',
-                function () use ($installer): bool {
-                    return $this->startNeo4jMcpHttpProcess($installer->getBinaryPath());
-                }
-            );
-            $this->line('  MCP endpoint: <fg=cyan>'.config('neo4j-boost.transport.http.url', 'http://localhost:8080/mcp').'</>');
-            $this->line('  Stop the process when you are done developing.');
-
-            return;
-        }
-
-        $this->components->warn('Neo4j MCP binary is not installed yet.');
-        $this->line('  Run locally after install:');
-        $this->line('  <fg=gray>'.$this->localBinaryHttpCommand().'</>');
-        $this->newLine();
-        $this->line('  Or use Docker:');
-        $this->line('  <fg=gray>'.$this->dockerHttpRunCommand().'</>');
-        $this->newLine();
+        return ! is_file($this->setupMarkerPath());
     }
 
-    protected function startNeo4jMcpHttpProcess(string $binaryPath): bool
+    private function markSetupCompleted(): void
     {
-        $env = $this->neo4jMcpProcessEnvironment();
+        $markerPath = $this->setupMarkerPath();
+        $markerDirectory = dirname($markerPath);
 
-        $process = new Process(
-            [$binaryPath, '--neo4j-transport-mode', 'http'],
-            base_path(),
-            $env,
-            null,
-            null
-        );
-
-        $process->start();
-
-        if (! $process->isRunning()) {
-            return false;
+        if (! is_dir($markerDirectory)) {
+            @mkdir($markerDirectory, 0755, true);
         }
 
-        $this->line('  Background PID: <fg=cyan>'.$process->getPid().'</>');
-
-        return true;
+        @file_put_contents($markerPath, (string) time());
     }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function neo4jMcpProcessEnvironment(): array
+    private function setupMarkerPath(): string
     {
-        $fromGetenv = getenv();
-        $base = is_array($fromGetenv) ? $fromGetenv : [];
-        $configured = config('neo4j-boost.transport.stdio.env', []);
-        $overrides = is_array($configured) ? $configured : [];
-
-        return array_merge($base, array_filter(
-            $overrides,
-            static fn (mixed $value): bool => is_string($value) || is_numeric($value)
-        ));
-    }
-
-    protected function localBinaryHttpCommand(): string
-    {
-        $installer = new Neo4jMcpInstaller;
-        $binary = $installer->getBinaryPath();
-
-        return 'NEO4J_URI=bolt://localhost:7687 NEO4J_TRANSPORT_MODE=http '.$binary.' --neo4j-transport-mode http';
-    }
-
-    protected function dockerHttpRunCommand(): string
-    {
-        return 'docker run --rm -p 8080:8080 '
-            .'-e NEO4J_URI=bolt://host.docker.internal:7687 '
-            .'-e NEO4J_TRANSPORT_MODE=http '
-            .'docker.io/mcp/neo4j:latest';
-    }
-
-    protected function ensureNeo4jMcpUrlInEnv(): int
-    {
-        $envPath = base_path('.env');
-        $examplePath = base_path('.env.example');
-
-        if (! EnvFileWriter::ensureEnvFileExists($envPath, $examplePath)) {
-            $this->components->error('No .env file found. Create .env in your project root, then run this command again.');
-
-            return self::FAILURE;
-        }
-
-        if (EnvFileWriter::hasNeo4jMcpUrl($envPath)) {
-            $this->components->info('NEO4J_MCP_URL is already set in .env.');
-
-            return self::SUCCESS;
-        }
-
-        $this->components->warn('NEO4J_MCP_URL is missing from .env.');
-
-        if ($this->canPromptInteractively()) {
-            $shouldAppend = $this->confirm(
-                'Append Neo4j MCP URL settings from the package template to .env?',
-                true
-            );
-
-            if (! $shouldAppend) {
-                $this->line('Add these lines to .env manually:');
-                foreach (EnvFileWriter::neo4jMcpUrlTemplateLines() as $line) {
-                    $this->line('  <fg=gray>'.$line.'</>');
-                }
-
-                return self::SUCCESS;
-            }
-        } else {
-            if (! EnvFileWriter::appendNeo4jMcpUrlTemplate($envPath)) {
-                $this->components->error('Could not append NEO4J_MCP_URL to .env.');
-
-                return self::FAILURE;
-            }
-
-            $this->components->info('Appended NEO4J_MCP_URL template to .env.');
-
-            return self::SUCCESS;
-        }
-
-        if (! EnvFileWriter::appendNeo4jMcpUrlTemplate($envPath)) {
-            $this->components->error('Could not append NEO4J_MCP_URL to .env.');
-
-            return self::FAILURE;
-        }
-
-        $this->components->info('Appended NEO4J_MCP_URL template to .env.');
-
-        return self::SUCCESS;
+        return storage_path('app/neo4j-mcp/.setup-complete');
     }
 }

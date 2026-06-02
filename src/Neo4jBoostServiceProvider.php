@@ -13,6 +13,7 @@ use Neo4j\LaravelBoost\Console\CursorConfigCommand;
 use Neo4j\LaravelBoost\Console\DoctorCommand;
 use Neo4j\LaravelBoost\Console\InstallMcpCommand;
 use Neo4j\LaravelBoost\Console\SetupCommand;
+use Neo4j\LaravelBoost\Console\StartNeo4jCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
@@ -25,8 +26,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/neo4j-boost.php', 'neo4j-boost');
 
         $this->app->singleton(Neo4jMcpClientInterface::class, function () {
-            $transport = config('neo4j-boost.transport', 'http');
-            $driver = is_string($transport) ? $transport : ($transport['driver'] ?? 'http');
+            $driver = strtolower((string) config('neo4j-boost.neo4j_mcp.transport', 'stdio'));
 
             return $driver === 'stdio'
                 ? new Neo4jStdioClient
@@ -53,6 +53,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
                 DoctorCommand::class,
                 InstallMcpCommand::class,
                 SetupCommand::class,
+                StartNeo4jCommand::class,
                 TestStdioCommand::class,
             ]);
         }

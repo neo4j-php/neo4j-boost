@@ -21,6 +21,7 @@ class Neo4jMcpHealthTest extends TestCase
     public function test_diagnose_maps_unhealthy_messages_when_binary_missing_and_server_unreachable(): void
     {
         config([
+            'neo4j-boost.neo4j_mcp.transport' => 'http',
             'neo4j-boost.neo4j_mcp.binary_path' => storage_path('app/neo4j-mcp/missing-binary'),
             'neo4j-boost.http.url' => 'http://localhost:8080/mcp',
         ]);
@@ -48,6 +49,7 @@ class Neo4jMcpHealthTest extends TestCase
     public function test_diagnose_maps_degraded_message_when_server_reachable_but_binary_missing(): void
     {
         config([
+            'neo4j-boost.neo4j_mcp.transport' => 'http',
             'neo4j-boost.neo4j_mcp.binary_path' => storage_path('app/neo4j-mcp/missing-binary'),
             'neo4j-boost.http.url' => 'http://localhost:8080/mcp',
         ]);
@@ -66,6 +68,46 @@ class Neo4jMcpHealthTest extends TestCase
             'Binary installation is optional when using a remote MCP server URL.',
             $diagnosis['suggested_resolutions']
         );
+    }
+
+    public function test_stdio_transport_marks_server_reachable_when_binary_exists_without_http_ping(): void
+    {
+        $binaryPath = storage_path('app/neo4j-mcp/neo4j-mcp');
+        @mkdir(dirname($binaryPath), 0755, true);
+        file_put_contents($binaryPath, 'neo4j-mcp');
+        @chmod($binaryPath, 0755);
+
+        config([
+            'neo4j-boost.neo4j_mcp.transport' => 'stdio',
+            'neo4j-boost.neo4j_mcp.binary_path' => $binaryPath,
+        ]);
+
+        Http::fake();
+
+        $health = new Neo4jMcpHealth;
+
+        $this->assertTrue($health->isServerReachable());
+        Http::assertNothingSent();
+    }
+
+    public function test_stdio_transport_returns_expected_missing_binary_message_in_diagnose(): void
+    {
+        config([
+            'neo4j-boost.neo4j_mcp.transport' => 'stdio',
+            'neo4j-boost.neo4j_mcp.binary_path' => storage_path('app/neo4j-mcp/missing-binary'),
+        ]);
+
+        Http::fake();
+
+        $health = new Neo4jMcpHealth;
+        $diagnosis = $health->diagnose();
+
+        $this->assertFalse($diagnosis['server_reachable']);
+        $this->assertContains(
+            'Neo4j MCP binary not found. Run php artisan neo4j-boost:setup to install it.',
+            $diagnosis['suggested_resolutions']
+        );
+        Http::assertNothingSent();
     }
 
     private function removeDirectory(string $directory): void

@@ -3,6 +3,8 @@
 namespace Neo4j\LaravelBoost\Console;
 
 use Illuminate\Console\Command;
+use Neo4j\LaravelBoost\Support\Neo4jMcpConfig;
+use Neo4j\LaravelBoost\Support\Neo4jMcpInstaller;
 
 /**
  * Test command to verify STDIO transport is working.
@@ -23,11 +25,16 @@ class TestStdioCommand extends Command
         $this->info('╚══════════════════════════════════════════════════════════════╝');
         $this->newLine();
 
-        // Show current configuration
-        $transport = config('neo4j-boost.transport.driver', 'http');
-        $command = config('neo4j-boost.transport.stdio.command', 'neo4j-mcp');
+        $transport = Neo4jMcpConfig::transport();
+        $command = Neo4jMcpConfig::stdioCommand();
         $uri = config('neo4j-boost.transport.stdio.env.NEO4J_URI', 'not set');
         $user = config('neo4j-boost.transport.stdio.env.NEO4J_USERNAME', 'not set');
+
+        if (! Neo4jMcpConfig::hasNeo4jPassword()) {
+            $this->error(Neo4jMcpConfig::stdioPasswordRequiredMessage());
+
+            return self::FAILURE;
+        }
 
         $this->line('<fg=cyan>Configuration:</>');
         $this->table(
@@ -46,24 +53,20 @@ class TestStdioCommand extends Command
             $this->newLine();
         }
 
-        // Check if binary exists
-        $binaryPath = trim(shell_exec('which '.escapeshellarg($command).' 2>/dev/null') ?? '');
-        if (empty($binaryPath)) {
-            $this->error('✗ Command "'.$command.'" not found in PATH.');
+        $installer = new Neo4jMcpInstaller;
+        if (! $installer->isInstalled() && ! is_file($command)) {
+            $this->error('✗ Neo4j MCP binary not found. Run php artisan neo4j-boost:install-mcp or neo4j-boost:setup.');
 
             return self::FAILURE;
         }
-        $this->info('✓ Found binary: '.$binaryPath);
+        $this->info('✓ Using binary: '.$command);
         $this->newLine();
 
         // Test MCP handshake
         $this->line('<fg=cyan>Testing MCP STDIO Handshake...</>');
         $this->newLine();
 
-        $env = array_merge(
-            getenv() ?: [],
-            config('neo4j-boost.transport.stdio.env', [])
-        );
+        $env = Neo4jMcpConfig::stdioEnvironment();
 
         $descriptorspec = [
             0 => ['pipe', 'r'],
