@@ -10,6 +10,9 @@ use Neo4j\LaravelBoost\Boost\Tools\ReadCypherTool;
 use Neo4j\LaravelBoost\Boost\Tools\WriteCypherTool;
 use Neo4j\LaravelBoost\Console\ContainerGraphCommand;
 use Neo4j\LaravelBoost\Console\CursorConfigCommand;
+use Neo4j\LaravelBoost\Console\DoctorCommand;
+use Neo4j\LaravelBoost\Console\InstallMcpCommand;
+use Neo4j\LaravelBoost\Console\SetupCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
@@ -47,6 +50,9 @@ class Neo4jBoostServiceProvider extends ServiceProvider
             $this->commands([
                 ContainerGraphCommand::class,
                 CursorConfigCommand::class,
+                DoctorCommand::class,
+                InstallMcpCommand::class,
+                SetupCommand::class,
                 TestStdioCommand::class,
             ]);
         }

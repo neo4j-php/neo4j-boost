@@ -36,19 +36,11 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | HTTP (when transport.driver = http)
-    |--------------------------------------------------------------------------
-    |
-    | MCP server endpoint and optional Basic Auth. Used when the Neo4j MCP
-    | server is already running elsewhere (e.g. Docker on port 8080).
-    |
-    */
     'neo4j_mcp' => [
-        'version' => 'v1.4.0',
-        'binary_path' => null, // null = use storage_path('app/neo4j-mcp/neo4j-mcp'); set to absolute path to override.
-        'platform_asset' => null, // null = auto-detect (Linux_x86_64, Linux_arm64, Darwin_*, Windows_*). Override e.g. 'Linux_x86_64'.
+        'version' => env('NEO4J_MCP_VERSION', 'v1.4.0'),
+        'binary_path' => env('NEO4J_MCP_BINARY_PATH'),
+        'platform_asset' => env('NEO4J_MCP_PLATFORM_ASSET'),
+        'auto_install' => env('NEO4J_MCP_AUTO_INSTALL', false),
     ],
 
     /*

@@ -6,6 +6,8 @@ env:
   NEO4J_USERNAME: 'neo4j'
   NEO4J_PASSWORD: ''
   NEO4J_MCP_URL: 'http://localhost:8080/mcp'
+  NEO4J_MCP_VERSION: 'v1.4.0'
+  NEO4J_MCP_BINARY_PATH: ''
   SESSION_DRIVER: cookie
   CACHE_STORE: 'array'
   QUEUE_CONNECTION: sync

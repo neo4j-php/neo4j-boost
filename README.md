@@ -35,17 +35,26 @@ The [Orchestra Testbench](https://packages.tools/testbench.html) workbench is a 
 composer require neo4j/laravel-boost
 ```
 
-### 2. Run the Neo4j MCP server (HTTP)
+### 2. Run interactive setup
 
-The package talks to the Neo4j MCP server over **HTTP only**. Run the official [Neo4j MCP server](https://github.com/neo4j/mcp/releases) elsewhere (e.g. Docker) with HTTP transport, then point this package at its URL.
+```bash
+php artisan neo4j-boost:setup
+```
 
-**Example with Docker:** run neo4j-mcp with `--neo4j-transport-mode http` and expose the HTTP port (e.g. 8080). Set in your Laravel app `.env`:
+The setup command walks through installing the Neo4j MCP binary, starting HTTP mode, ensuring `.env` has `NEO4J_MCP_URL`, and writing Cursor MCP config.
 
-```env
-NEO4J_MCP_URL=http://localhost:8080/mcp
-# Optional Basic Auth if your MCP server requires it:
-NEO4J_MCP_USERNAME=neo4j
-NEO4J_MCP_PASSWORD=your-password
+### Optional: automate setup with a Composer hook
+
+Add this to your app `composer.json` to run setup automatically after `composer update`:
+
+```json
+{
+  "scripts": {
+    "post-update-cmd": [
+      "@php artisan neo4j-boost:setup --no-interaction"
+    ]
+  }
+}
 ```
 
 ### 3. Configure Neo4j connection (for the MCP server)
