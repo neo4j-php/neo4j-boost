@@ -309,6 +309,24 @@ Re-running the command is idempotent (`MERGE`-based), so nodes/relationships are
 | `php artisan neo4j-boost:doctor` | Diagnose transport, binary, password, and readiness |
 | `php artisan neo4j-boost:test-stdio --tool=get-schema` | Verbose end-to-end STDIO handshake/tool test |
 
+### Auto-install supported platforms (`neo4j-boost:install-mcp`)
+
+The binary is downloaded from the [official Neo4j MCP GitHub releases](https://github.com/neo4j/mcp/releases) and auto-detected for the current platform. Override with `NEO4J_MCP_PLATFORM_ASSET` in `.env`.
+
+| OS | Architecture | Archive | PHP requirement |
+|---|---|---|---|
+| Linux | x86\_64 / amd64 | `.tar.gz` | — |
+| Linux | arm64 / aarch64 | `.tar.gz` | — |
+| Linux | i386 / i686 | `.tar.gz` | — |
+| macOS | x86\_64 / amd64 | `.tar.gz` | — |
+| macOS | arm64 (Apple Silicon) | `.tar.gz` | — |
+| Windows | x86\_64 / amd64 | `.zip` | **ext-zip** required |
+| Windows | arm64 | `.zip` | **ext-zip** required |
+| Windows | i386 | `.zip` | **ext-zip** required |
+
+> [!NOTE]
+> Windows platforms use ZIP archives. The `ext-zip` PHP extension must be enabled (`extension=zip` in `php.ini`). On Linux and macOS, only the built-in `PharData` class is used — no extra extensions needed.
+
 ---
 
 ## Configuration

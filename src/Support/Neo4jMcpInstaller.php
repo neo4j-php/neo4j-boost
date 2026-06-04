@@ -4,7 +4,6 @@ namespace Neo4j\LaravelBoost\Support;
 
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
-use ZipArchive;
 
 class Neo4jMcpInstaller
 {
@@ -227,7 +226,14 @@ class Neo4jMcpInstaller
 
     protected function extractZip(string $archivePath, string $destinationDirectory): void
     {
-        $zip = new ZipArchive;
+        if (! extension_loaded('zip')) {
+            throw new RuntimeException(
+                'The PHP ext-zip extension is required to install the Neo4j MCP binary on Windows. '
+                .'Please enable ext-zip in your php.ini or install it via your package manager.'
+            );
+        }
+
+        $zip = new \ZipArchive;
         if ($zip->open($archivePath) !== true) {
             throw new RuntimeException('Failed to open ZIP archive: '.$archivePath);
         }
