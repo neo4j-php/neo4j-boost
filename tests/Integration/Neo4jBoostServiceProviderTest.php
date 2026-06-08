@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\Neo4jDriverClient;
 use Neo4j\LaravelBoost\Neo4jHttpClient;
 use Neo4j\LaravelBoost\Neo4jStdioClient;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
@@ -27,6 +28,16 @@ class Neo4jBoostServiceProviderTest extends TestCase
         $client = $this->app->make(Neo4jMcpClientInterface::class);
 
         $this->assertInstanceOf(Neo4jHttpClient::class, $client);
+    }
+
+    public function test_resolves_driver_client_when_transport_is_driver(): void
+    {
+        config(['neo4j-boost.neo4j_mcp.transport' => 'driver']);
+
+        $this->app->forgetInstance(Neo4jMcpClientInterface::class);
+        $client = $this->app->make(Neo4jMcpClientInterface::class);
+
+        $this->assertInstanceOf(Neo4jDriverClient::class, $client);
     }
 
     public function test_resolves_neo4j_bolt_client_and_connection_as_singletons(): void

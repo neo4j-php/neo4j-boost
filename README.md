@@ -339,7 +339,8 @@ php artisan vendor:publish --tag=neo4j-boost-config
 
 Edit `config/neo4j-boost.php`:
 
-- **`neo4j_mcp.transport`** – Driver used by the package (`stdio` default, `http` optional). Env: `NEO4J_MCP_TRANSPORT`.
+- **`neo4j_mcp.transport`** – How Neo4j MCP tools run (`stdio` default, `http`, or `driver` for in-process Bolt). Env: `NEO4J_MCP_TRANSPORT`.
+- **`bolt.uri`** / **`bolt.username`** / **`bolt.password`** – Bolt connection when `NEO4J_MCP_TRANSPORT=driver`. Env: `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` (or `NEO4J_DEFAULT_CONNECTION_DSN`).
 - **`neo4j_mcp.binary_path`** / **`neo4j_mcp.version`** – Local binary install path and version.
 - **`http.url`** – MCP endpoint (e.g. `http://localhost:8080/mcp`). Env: `NEO4J_MCP_URL`.
 - **`http.username`** / **`http.password`** – Optional Basic Auth for the HTTP endpoint. Env: `NEO4J_MCP_USERNAME`, `NEO4J_MCP_PASSWORD` (fallback to `NEO4J_USERNAME` / `NEO4J_PASSWORD`).
