@@ -2,8 +2,12 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Laravel\Mcp\Response;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\Support\Neo4jMcpHealth;
+use Throwable;
 
 /**
  * HTTP client for the Neo4j MCP server.
@@ -19,9 +23,10 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
 
     public function callTool(string $toolName, array $arguments = []): array
     {
-        $url = config('neo4j-boost.http.url', 'http://localhost:8080/mcp');
+        $url = $this->httpUrl();
         $username = config('neo4j-boost.http.username');
         $password = config('neo4j-boost.http.password');
+        $health = new Neo4jMcpHealth;
 
         $client = Http::timeout(self::TIMEOUT)
             ->withHeaders(['Accept' => 'application/json, text/event-stream'])
@@ -45,18 +50,28 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
                 ],
             ],
         ];
-        $initResponse = $client->post($url, $initPayload);
+        try {
+            $initResponse = $client->post($url, $initPayload);
+        } catch (ConnectionException $exception) {
+            return $this->reachabilityErrorResult($url, $health);
+        } catch (Throwable $exception) {
+            return $this->reachabilityErrorResult($url, $health);
+        }
+
+        if (in_array($initResponse->status(), [401, 403], true)) {
+            return $this->errorResult(Neo4jMcpHealth::httpAuthFailedMessage());
+        }
+
         if ($initResponse->failed()) {
-            throw new \RuntimeException(
-                'Neo4j MCP HTTP initialize failed (status '.$initResponse->status().'). '.trim((string) $initResponse->body())
-            );
+            return $this->reachabilityErrorResult($url, $health);
         }
         $initBody = $initResponse->json();
         if (is_array($initBody) && isset($initBody['error'])) {
             $msg = is_array($initBody['error']) && isset($initBody['error']['message'])
                 ? $initBody['error']['message']
                 : (string) json_encode($initBody['error']);
-            throw new \RuntimeException('Neo4j MCP HTTP initialize: '.$msg);
+
+            return $this->errorResult('Neo4j MCP HTTP initialize: '.$msg);
         }
 
         $sessionId = self::normalizeSessionHeader($initResponse->header('Mcp-Session-Id'))
@@ -81,27 +96,80 @@ class Neo4jHttpClient implements Neo4jMcpClientInterface
                 'arguments' => $arguments === [] ? new \stdClass : $arguments,
             ],
         ];
-        $response = $client->post($url, $payload);
+        try {
+            $response = $client->post($url, $payload);
+        } catch (ConnectionException $exception) {
+            return $this->reachabilityErrorResult($url, $health);
+        } catch (Throwable $exception) {
+            return $this->reachabilityErrorResult($url, $health);
+        }
+
+        if (in_array($response->status(), [401, 403], true)) {
+            return $this->errorResult(Neo4jMcpHealth::httpAuthFailedMessage());
+        }
 
         if ($response->failed()) {
-            throw new \RuntimeException(
-                'Neo4j MCP HTTP request failed (status '.$response->status().'). '.trim((string) $response->body())
-            );
+            return $this->reachabilityErrorResult($url, $health);
         }
 
         $body = $response->json();
         if (! is_array($body)) {
-            throw new \RuntimeException('Neo4j MCP HTTP: invalid JSON response.');
+            return $this->errorResult('Neo4j MCP HTTP: invalid JSON response.');
         }
 
         if (isset($body['error'])) {
             $message = is_array($body['error']) && isset($body['error']['message'])
                 ? $body['error']['message']
                 : (string) json_encode($body['error']);
-            throw new \RuntimeException('Neo4j MCP HTTP: '.$message);
+
+            return $this->errorResult('Neo4j MCP HTTP: '.$message);
         }
 
         return $body['result'] ?? [];
+    }
+
+    private function httpUrl(): string
+    {
+        $httpUrl = config('neo4j-boost.http.url');
+        if (is_string($httpUrl) && $httpUrl !== '') {
+            return $httpUrl;
+        }
+
+        $transportHttpUrl = config('neo4j-boost.transport.http.url');
+        if (is_string($transportHttpUrl) && $transportHttpUrl !== '') {
+            return $transportHttpUrl;
+        }
+
+        return 'http://localhost:8080/mcp';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function errorResult(string $message): array
+    {
+        $response = Response::error($message);
+        $content = $response->content();
+
+        return [
+            'content' => [[
+                'type' => 'text',
+                'text' => (string) $content,
+            ]],
+            'isError' => true,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reachabilityErrorResult(string $url, Neo4jMcpHealth $health): array
+    {
+        if (! $health->isBinaryInstalled()) {
+            return $this->errorResult(Neo4jMcpHealth::stdioBinaryMissingMessage());
+        }
+
+        return $this->errorResult(Neo4jMcpHealth::serverUnreachableMessage($url));
     }
 
     /**
