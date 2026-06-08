@@ -50,4 +50,22 @@ return [
         'binary_path' => null, // null = use storage_path('app/neo4j-mcp/neo4j-mcp'); set to absolute path to override.
         'platform_asset' => null, // null = auto-detect (Linux_x86_64, Linux_arm64, Darwin_*, Windows_*). Override e.g. 'Linux_x86_64'.
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | container:graph
+    |--------------------------------------------------------------------------
+    |
+    | `php artisan container:graph` connects directly to Neo4j. Prefer NEO4J_URI
+    | (e.g. neo4j:// or bolt://) plus NEO4J_USER / NEO4J_PASSWORD. If NEO4J_URI is
+    | not set, NEO4J_DEFAULT_CONNECTION_DSN (full URL, optionally with user:pass@)
+    | is used so the same DSN as Docker or database config can drive this command.
+    |
+    */
+    'container_graph' => [
+        'uri' => env('NEO4J_URI', ''),
+        'default_connection_dsn' => env('NEO4J_DEFAULT_CONNECTION_DSN', ''),
+        'username' => env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
+        'password' => env('NEO4J_PASSWORD', ''),
+    ],
 ];
