@@ -3,12 +3,18 @@
 namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
 /**
  * In-memory stand-in for Neo4j used by container:graph E2E tests.
  */
 class RecordingContainerGraphWriter extends ContainerGraphWriter
 {
+    public function __construct()
+    {
+        parent::__construct(new UnusedContainerGraphConnection);
+    }
+
     /** @var array<int, array{class: string}> */
     public array $classRows = [];
 

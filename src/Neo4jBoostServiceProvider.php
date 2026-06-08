@@ -3,6 +3,7 @@
 namespace Neo4j\LaravelBoost;
 
 use Illuminate\Support\ServiceProvider;
+use Neo4j\LaravelBoost\Boost\Tools\GetClassDependencyGraphTool;
 use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Boost\Tools\ListGdsProceduresTool;
 use Neo4j\LaravelBoost\Boost\Tools\ReadCypherTool;
@@ -11,6 +12,8 @@ use Neo4j\LaravelBoost\Console\ContainerGraphCommand;
 use Neo4j\LaravelBoost\Console\CursorConfigCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 
 class Neo4jBoostServiceProvider extends ServiceProvider
 {
@@ -26,6 +29,10 @@ class Neo4jBoostServiceProvider extends ServiceProvider
                 ? new Neo4jStdioClient
                 : new Neo4jHttpClient;
         });
+
+        $this->app->singleton(Neo4jBoltClient::class);
+        $this->app->singleton(ContainerGraphConnection::class);
+        $this->app->singleton(ClassDependencyGraphReader::class);
     }
 
     public function boot(): void
@@ -53,6 +60,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
     {
         $ourTools = [
             GetSchemaTool::class,
+            GetClassDependencyGraphTool::class,
             ReadCypherTool::class,
             WriteCypherTool::class,
             ListGdsProceduresTool::class,
