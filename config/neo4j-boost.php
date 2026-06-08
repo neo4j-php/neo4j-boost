@@ -17,6 +17,10 @@ return [
     |           The subprocess receives NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD
     |           from transport.stdio.env so it can connect to Neo4j.
     |
+    | - driver : Run MCP tools in PHP via laudis/neo4j-php-client (Bolt). No
+    |           neo4j-mcp binary required. Set NEO4J_MCP_TRANSPORT=driver and
+    |           NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD (or DSN).
+    |
     */
     'transport' => [
         'driver' => env('NEO4J_MCP_TRANSPORT', 'stdio'),
@@ -42,6 +46,26 @@ return [
         'binary_path' => env('NEO4J_MCP_BINARY_PATH'),
         'platform_asset' => env('NEO4J_MCP_PLATFORM_ASSET'),
         'auto_install' => env('NEO4J_MCP_AUTO_INSTALL', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Bolt / driver transport (when NEO4J_MCP_TRANSPORT=driver)
+    |--------------------------------------------------------------------------
+    |
+    | Direct Bolt connection used by Neo4jDriverClient via Neo4jBoltClient.
+    | Reuses NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD (or DSN fallback).
+    |
+    | get-schema uses apoc.meta.schema when APOC is installed; otherwise a
+    | simpler catalog fallback (db.labels / db.relationshipTypes) is returned.
+    |
+    */
+    'bolt' => [
+        'uri' => env('NEO4J_URI', 'bolt://localhost:7687'),
+        'username' => env('NEO4J_USERNAME', 'neo4j'),
+        'password' => env('NEO4J_PASSWORD', ''),
+        'database' => env('NEO4J_DATABASE', 'neo4j'),
+        'schema_sample_size' => (int) env('NEO4J_SCHEMA_SAMPLE_SIZE', 100),
     ],
 
     /*
