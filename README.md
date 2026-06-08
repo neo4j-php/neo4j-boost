@@ -149,6 +149,8 @@ When developing the package and running Artisan from the repo (e.g. e2e testing 
 | `php artisan neo4j-boost:cursor-config` | Create or update `.cursor/mcp.json` with the Neo4j MCP server URL (merge with existing servers) |
 | `php artisan container:graph` | Export Laravel container bindings/dependencies into Neo4j graph (`--dry-run`, `--print-cypher`) |
 
+Neo4j tools exposed via Laravel Boost MCP (`php artisan boost:mcp`) include **get-class-dependency-graph**, which returns a structured dependency graph for a fully-qualified class (requires `container:graph` export first). Other tools: get-schema, read-cypher, write-cypher, list-gds-procedures.
+
 ---
 
 ## Container Graph POC (LLM Debugging)
@@ -197,6 +199,14 @@ php artisan container:graph --print-cypher
 - `(:UnresolvedDependency:Abstract {name, reason})`
 
 ### Example Cypher queries
+
+For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questions, prefer the **get-class-dependency-graph** MCP tool (after running `container:graph`):
+
+```json
+{ "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
+```
+
+Returns structured JSON with `dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries.
 
 **Explore from container binding keys outward (graph view in Neo4j Browser):**
 

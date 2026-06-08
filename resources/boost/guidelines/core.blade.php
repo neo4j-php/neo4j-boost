@@ -24,7 +24,7 @@ This creates or updates `.cursor/mcp.json` with the server URL from config (merg
 
 ### Run the MCP server
 
-- **With Laravel Boost:** Use a single MCP server: run `php artisan boost:mcp`. This package adds the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures) to Boost’s server automatically. Tools call the HTTP MCP URL from `config/neo4j-boost.http`.
+- **With Laravel Boost:** Use a single MCP server: run `php artisan boost:mcp`. This package adds the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, **get-class-dependency-graph**) to Boost’s server automatically. Tools call the HTTP MCP URL from `config/neo4j-boost.http` except **get-class-dependency-graph**, which reads the container graph directly from Neo4j using `config/neo4j-boost.container_graph`.
 - **Without Boost:** Add the Neo4j MCP server to Cursor as an HTTP server. Run `php artisan neo4j-boost:cursor-config` so `.cursor/mcp.json` includes the `neo4j-boost` server with the configured URL.
 
 Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` where the Neo4j MCP server runs (and in Laravel if you use the Neo4j driver).
@@ -46,6 +46,8 @@ php artisan container:graph --print-cypher
 ```
 
 Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Binding keys and discovered project classes use `:Abstract` plus `:Interface` or `:Class`; explore with `MATCH p=(a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n) RETURN p LIMIT 200` or undirected `-[r:BINDS_TO|DEPENDS_ON]-` in Neo4j Browser.
+
+**get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
 ```env
 NEO4J_URI=bolt://localhost:7687
