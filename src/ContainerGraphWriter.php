@@ -3,6 +3,8 @@
 namespace Neo4j\LaravelBoost;
 
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 
 class ContainerGraphWriter
 {
@@ -32,7 +34,7 @@ WITH row
 MATCH (a:Abstract {name: row.abstract})
 MATCH (c:Abstract {name: row.concrete})
 MERGE (a)-[r:BINDS_TO]->(c)
-SET r.shared = row.shared
+SET r.type = row.type
 CYPHER;
 
     private const CYPHER_CLASSES = <<<'CYPHER'
@@ -45,11 +47,13 @@ UNWIND $rows AS row
 MERGE (c:Class:Abstract {name: row.class})
 FOREACH (_ IN CASE WHEN row.dependencyKind = 'Interface' THEN [1] ELSE [] END |
   MERGE (d:Interface:Abstract {name: row.dependency})
-  MERGE (c)-[:DEPENDS_ON]->(d)
+  MERGE (c)-[r:DEPENDS_ON]->(d)
+  SET r.type = row.type
 )
 FOREACH (_ IN CASE WHEN row.dependencyKind <> 'Interface' THEN [1] ELSE [] END |
   MERGE (d:Class:Abstract {name: row.dependency})
-  MERGE (c)-[:DEPENDS_ON]->(d)
+  MERGE (c)-[r:DEPENDS_ON]->(d)
+  SET r.type = row.type
 )
 CYPHER;
 
@@ -58,7 +62,8 @@ UNWIND $rows AS row
 MERGE (c:Class:Abstract {name: row.class})
 MERGE (u:UnresolvedDependency:Abstract {name: row.name})
 SET u.reason = row.reason
-MERGE (c)-[:DEPENDS_ON]->(u)
+MERGE (c)-[r:DEPENDS_ON]->(u)
+SET r.type = row.type
 CYPHER;
 
     public function __construct(
@@ -72,12 +77,16 @@ CYPHER;
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      */
     public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
+        $this->validateBindingRows($bindingRows);
+        $this->validateDependencyRows($dependencyRows);
+        $this->validateUnresolvedRows($unresolvedRows);
+
         if ($classRows !== []) {
             $this->connection->run(self::CYPHER_CLASSES, ['rows' => $classRows]);
         }
@@ -103,5 +112,35 @@ CYPHER;
             'dependencies' => self::CYPHER_DEPENDENCIES,
             'unresolved' => self::CYPHER_UNRESOLVED,
         ];
+    }
+
+    /**
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     */
+    private function validateBindingRows(array $bindingRows): void
+    {
+        foreach ($bindingRows as $row) {
+            BindsToType::assertAllowed((string) ($row['type'] ?? ''));
+        }
+    }
+
+    /**
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
+     */
+    private function validateDependencyRows(array $dependencyRows): void
+    {
+        foreach ($dependencyRows as $row) {
+            DependsOnType::assertAllowed((string) ($row['type'] ?? ''));
+        }
+    }
+
+    /**
+     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     */
+    private function validateUnresolvedRows(array $unresolvedRows): void
+    {
+        foreach ($unresolvedRows as $row) {
+            DependsOnType::assertAllowed((string) ($row['type'] ?? ''));
+        }
     }
 }
