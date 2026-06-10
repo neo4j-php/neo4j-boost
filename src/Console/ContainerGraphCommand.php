@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
+use Neo4j\LaravelBoost\Support\Graph\DependencySource;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -64,7 +65,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>, 1: array<int, string>}
+     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string}>, 1: array<int, string>}
      */
     private function extractBindingRows(): array
     {
@@ -88,6 +89,7 @@ class ContainerGraphCommand extends Command
                 'concreteKind' => $resolved['kind'],
                 'shared' => $shared,
                 'type' => BindsToType::fromShared($shared)->value,
+                'source' => DependencySource::StaticAnalysis->value,
             ];
 
             if ($resolved['kind'] === 'Class' && class_exists($resolved['name']) && ! interface_exists($resolved['name'])) {
@@ -185,7 +187,7 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, string>  $classes
-     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>, 1: array<int, array{class: string, name: string, reason: string, type: string}>}
+     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string}>, 1: array<int, array{class: string, name: string, reason: string, type: string, source: string}>}
      */
     private function extractDependencyRows(array $classes): array
     {
@@ -216,6 +218,7 @@ class ContainerGraphCommand extends Command
                         'name' => $name,
                         'reason' => $reason ?? 'unresolved',
                         'type' => DependsOnType::ConstructorInjection->value,
+                        'source' => DependencySource::StaticAnalysis->value,
                     ];
                 } else {
                     $dependencyRows[] = [
@@ -223,6 +226,7 @@ class ContainerGraphCommand extends Command
                         'dependency' => $name,
                         'dependencyKind' => $kind,
                         'type' => DependsOnType::ConstructorInjection->value,
+                        'source' => DependencySource::StaticAnalysis->value,
                     ];
                 }
             }
