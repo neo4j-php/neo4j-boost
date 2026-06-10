@@ -179,7 +179,7 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->assertSame('constructor_injection', $podcastParserDependency['type']);
 
         $bindingPayload = $this->callTool([
-            'class' => EventPusherInterface::class,
+            'class' => RedisEventPusher::class,
             'include_bindings' => true,
         ]);
 
