@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost;
 
 use Laudis\Neo4j\Types\CypherList;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 
 class ClassDependencyGraphReader
 {
@@ -82,14 +83,14 @@ class ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -102,7 +103,7 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -111,18 +112,27 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
         $result = $this->connection->run($cypher, $parameters);
 
         foreach ($result as $record) {
-            return [
+            $typeMeta = RelationshipTypeReader::bindsTo($record->get('type'), $record->get('shared'));
+
+            $binding = [
                 'abstract' => (string) $record->get('abstract'),
                 'concrete' => (string) $record->get('concrete'),
-                'shared' => (bool) $record->get('shared'),
+                'shared' => $typeMeta['shared'],
+                'type' => $typeMeta['type'],
             ];
+
+            if (isset($typeMeta['confidence'])) {
+                $binding['confidence'] = $typeMeta['confidence'];
+            }
+
+            return $binding;
         }
 
         return null;
@@ -251,10 +261,10 @@ CYPHER,
         $cypher = sprintf(
             <<<'CYPHER'
 MATCH path = (c:Abstract {name: $class})%s(d:Abstract)
-WITH d, min(length(path)) AS depth
+WITH d, min(length(path)) AS depth, [rel IN relationships(path) | rel.type][-1] AS type
 ORDER BY depth ASC, d.name ASC
 SKIP $skip LIMIT $limit
-RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth
+RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type
 CYPHER,
             sprintf($relationship, $depth),
         );
@@ -275,8 +285,8 @@ CYPHER,
     {
         $result = $this->connection->run(
             <<<'CYPHER'
-MATCH (c:Abstract {name: $class})-[:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN u.name AS name, u.reason AS reason
+MATCH (c:Abstract {name: $class})-[r:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
+RETURN u.name AS name, u.reason AS reason, r.type AS type
 ORDER BY u.name ASC
 CYPHER,
             ['class' => $class],
@@ -290,6 +300,7 @@ CYPHER,
                 'relationship' => 'DEPENDS_ON',
                 'reason' => (string) $record->get('reason'),
                 'depth' => 1,
+                ...RelationshipTypeReader::dependsOn($record->get('type')),
             ];
         }
 
@@ -314,6 +325,7 @@ CYPHER,
                 'kind' => $this->resolveNodeKind($labelList, $record->get('kind')),
                 'relationship' => $relationship,
                 'depth' => (int) $record->get('depth'),
+                ...RelationshipTypeReader::dependsOn($record->get('type')),
             ];
         }
 
