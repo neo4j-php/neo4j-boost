@@ -4,6 +4,8 @@ namespace Neo4j\LaravelBoost;
 
 use Laudis\Neo4j\Types\CypherList;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\DependencyVisibility;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 
 class ClassDependencyGraphReader
@@ -31,12 +33,12 @@ class ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExistsInGraph($class)) {
-            return [
+            return $this->finalizeResponse([
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ];
+            ]);
         }
 
         $result = [
@@ -56,6 +58,8 @@ class ClassDependencyGraphReader
             $paginated = $this->fetchDependencies($class, $depth, $page, $perPage);
             $result['dependencies'] = $paginated['items'];
             $result['dependencies_pagination'] = $paginated['pagination'];
+            $result = $this->appendDependencyBuckets($result, $paginated['items']);
+            $result['graph_completeness'] = $this->buildGraphCompleteness($class, $depth);
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
@@ -64,7 +68,7 @@ class ClassDependencyGraphReader
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $result;
+        return $this->finalizeResponse($result);
     }
 
     private function classExistsInGraph(string $class): bool
@@ -83,14 +87,14 @@ class ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared, r.source AS source
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -103,7 +107,7 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared, r.source AS source
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -112,27 +116,27 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
         $result = $this->connection->run($cypher, $parameters);
 
         foreach ($result as $record) {
-            $typeMeta = RelationshipTypeReader::bindsTo($record->get('type'), $record->get('shared'));
+            $typeMeta = RelationshipTypeReader::bindsTo(
+                $record->get('type'),
+                $record->get('shared'),
+                $record->get('source'),
+            );
 
-            $binding = [
+            return [
                 'abstract' => (string) $record->get('abstract'),
                 'concrete' => (string) $record->get('concrete'),
                 'shared' => $typeMeta['shared'],
                 'type' => $typeMeta['type'],
+                'source' => $typeMeta['source'],
+                'confidence' => $typeMeta['confidence'],
             ];
-
-            if (isset($typeMeta['confidence'])) {
-                $binding['confidence'] = $typeMeta['confidence'];
-            }
-
-            return $binding;
         }
 
         return null;
@@ -245,6 +249,52 @@ CYPHER,
     }
 
     /**
+     * @return array{declared_count: int, hidden_count: int, total_count: int, coverage: string, detectors_active: list<string>, detectors_pending: list<string>}
+     */
+    private function buildGraphCompleteness(string $class, int $depth): array
+    {
+        [$declaredCount, $hiddenCount] = $this->countDependencyVisibility($class, $depth);
+
+        return GraphCompleteness::build($declaredCount, $hiddenCount);
+    }
+
+    /**
+     * @return array{0: int, 1: int}
+     */
+    private function countDependencyVisibility(string $class, int $depth): array
+    {
+        $cypher = sprintf(
+            <<<'CYPHER'
+MATCH path = (c:Abstract {name: $class})-[:DEPENDS_ON*1..%d]->(d:Abstract)
+WITH d, [rel IN relationships(path) | rel.type][-1] AS type
+RETURN type, count(DISTINCT d) AS total
+CYPHER,
+            $depth,
+        );
+
+        $result = $this->connection->run($cypher, ['class' => $class]);
+
+        $declaredCount = 0;
+        $hiddenCount = 0;
+
+        foreach ($result as $record) {
+            $metadata = RelationshipTypeReader::dependsOn($record->get('type'));
+            $count = (int) $record->get('total');
+
+            if ($metadata['visibility'] === DependencyVisibility::Declared->value) {
+                $declaredCount += $count;
+            } else {
+                $hiddenCount += $count;
+            }
+        }
+
+        $unresolvedCount = count($this->fetchUnresolvedDependencies($class));
+        $declaredCount += $unresolvedCount;
+
+        return [$declaredCount, $hiddenCount];
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private function fetchDependencyPaths(
@@ -261,10 +311,10 @@ CYPHER,
         $cypher = sprintf(
             <<<'CYPHER'
 MATCH path = (c:Abstract {name: $class})%s(d:Abstract)
-WITH d, min(length(path)) AS depth, [rel IN relationships(path) | rel.type][-1] AS type
+WITH d, min(length(path)) AS depth, [rel IN relationships(path) | rel.type][-1] AS type, [rel IN relationships(path) | rel.source][-1] AS source
 ORDER BY depth ASC, d.name ASC
 SKIP $skip LIMIT $limit
-RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type
+RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type, source
 CYPHER,
             sprintf($relationship, $depth),
         );
@@ -286,7 +336,7 @@ CYPHER,
         $result = $this->connection->run(
             <<<'CYPHER'
 MATCH (c:Abstract {name: $class})-[r:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN u.name AS name, u.reason AS reason, r.type AS type
+RETURN u.name AS name, u.reason AS reason, r.type AS type, r.source AS source
 ORDER BY u.name ASC
 CYPHER,
             ['class' => $class],
@@ -300,7 +350,7 @@ CYPHER,
                 'relationship' => 'DEPENDS_ON',
                 'reason' => (string) $record->get('reason'),
                 'depth' => 1,
-                ...RelationshipTypeReader::dependsOn($record->get('type')),
+                ...RelationshipTypeReader::dependsOn($record->get('type'), $record->get('source')),
             ];
         }
 
@@ -325,7 +375,7 @@ CYPHER,
                 'kind' => $this->resolveNodeKind($labelList, $record->get('kind')),
                 'relationship' => $relationship,
                 'depth' => (int) $record->get('depth'),
-                ...RelationshipTypeReader::dependsOn($record->get('type')),
+                ...RelationshipTypeReader::dependsOn($record->get('type'), $record->get('source')),
             ];
         }
 
@@ -372,5 +422,58 @@ CYPHER,
         }
 
         return $unique;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @param  array<int, array<string, mixed>>  $dependencies
+     * @return array<string, mixed>
+     */
+    protected function appendDependencyBuckets(array $result, array $dependencies): array
+    {
+        $split = $this->splitDependenciesByVisibility($dependencies);
+
+        $result['declared_dependencies'] = $split['declared'];
+        $result['hidden_dependencies'] = $split['hidden'];
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $dependencies
+     * @return array{declared: array<int, array<string, mixed>>, hidden: array<int, array<string, mixed>>}
+     */
+    protected function splitDependenciesByVisibility(array $dependencies): array
+    {
+        $declared = [];
+        $hidden = [];
+
+        foreach ($dependencies as $dependency) {
+            if (($dependency['visibility'] ?? null) === DependencyVisibility::Hidden->value) {
+                $hidden[] = $dependency;
+            } else {
+                $declared[] = $dependency;
+            }
+        }
+
+        return [
+            'declared' => $declared,
+            'hidden' => $hidden,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function finalizeResponse(array $result): array
+    {
+        if (! isset($result['graph_completeness'])) {
+            $result['graph_completeness'] = ($result['found'] ?? false)
+                ? GraphCompleteness::empty()
+                : GraphCompleteness::unknown();
+        }
+
+        return $result;
     }
 }
