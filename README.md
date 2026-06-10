@@ -264,7 +264,7 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies`, `dependents`, `binding` (each includes relationship `type`), pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries. Legacy graphs without `type` return inferred values with `confidence: inferred`; re-run `container:graph` after upgrading.
+Returns structured JSON with `dependencies` (backward compatible), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, and `graph_completeness`. Each dependency includes `type`, `source`, `confidence`, and `visibility` (`declared` or `hidden`). Pagination metadata (`dependencies_pagination` / `dependents_pagination`) and `graph_export_required` are included when relevant. Default page size is 100 entries. Legacy graphs without `type` return inferred values with `confidence: inferred`; re-run `container:graph` after upgrading.
 
 **Explore from container binding keys outward (graph view in Neo4j Browser):**
 
