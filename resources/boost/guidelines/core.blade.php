@@ -49,6 +49,8 @@ Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or se
 
 **get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
+**Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
+
 ```env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
