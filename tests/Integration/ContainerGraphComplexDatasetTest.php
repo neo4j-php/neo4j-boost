@@ -82,6 +82,7 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $transistorDependency = $this->graph->findDependencyRow(Transistor::class, PodcastParser::class);
         $this->assertNotNull($transistorDependency);
         $this->assertSame('constructor_injection', $transistorDependency['type']);
+        $this->assertSame('static_analysis', $transistorDependency['source']);
     }
 
     public function test_complex_dataset_writes_class_nodes_and_summary_counts(): void
