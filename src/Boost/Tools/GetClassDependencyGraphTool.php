@@ -11,6 +11,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
+use Neo4j\LaravelBoost\Support\Graph\GraphRelationshipGlossary;
 use Throwable;
 
 #[IsReadOnly]
@@ -18,7 +19,7 @@ final class GetClassDependencyGraphTool extends Tool
 {
     protected string $name = 'get-class-dependency-graph';
 
-    protected string $description = 'Returns the Laravel container dependency graph for a fully-qualified PHP class: constructor dependencies, binding targets, dependents, and unresolved types. Requires php artisan container:graph to have exported data to Neo4j. Use when exploring architecture, DI wiring, or "what depends on / is injected into X?"';
+    protected string $description = 'Returns the Laravel container dependency graph for a fully-qualified PHP class: constructor dependencies, binding targets, dependents, and unresolved types. Requires php artisan container:graph to have exported data to Neo4j. Use when exploring architecture, DI wiring, or "what depends on / is injected into X?".'.GraphRelationshipGlossary::MCP_TOOL_DESCRIPTION_SUFFIX;
 
     public function __construct(
         private ClassDependencyGraphReader $reader,
