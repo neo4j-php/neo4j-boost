@@ -249,11 +249,11 @@ php artisan container:graph --print-cypher
 
 ### Graph model
 
-- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is an interface
-- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is a class
+- `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)
+- `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
 - `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
 - **`Abstract`** – use as the entry label to start from registered binding keys and walk the graph (`MATCH (a:Abstract) …`).
-- `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
+- `(:Class:Abstract)-[:DEPENDS_ON {type}]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)` — `type` values: `constructor_injection`, `method_injection`, `facade`, `global_helper`, `service_location`, `instantiation`
 - `(:UnresolvedDependency:Abstract {name, reason})`
 
 ### Example Cypher queries
@@ -264,7 +264,7 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries.
+Returns structured JSON with `dependencies`, `dependents`, `binding` (each includes relationship `type`), pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries. Legacy graphs without `type` return inferred values with `confidence: inferred`; re-run `container:graph` after upgrading.
 
 **Explore from container binding keys outward (graph view in Neo4j Browser):**
 
