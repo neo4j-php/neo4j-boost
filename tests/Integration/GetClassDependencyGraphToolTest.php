@@ -177,6 +177,9 @@ class GetClassDependencyGraphToolTest extends TestCase
 
         $this->assertIsArray($podcastParserDependency);
         $this->assertSame('constructor_injection', $podcastParserDependency['type']);
+        $this->assertSame('static_analysis', $podcastParserDependency['source']);
+        $this->assertSame('high', $podcastParserDependency['confidence']);
+        $this->assertSame('declared', $podcastParserDependency['visibility']);
 
         $bindingPayload = $this->callTool([
             'class' => RedisEventPusher::class,
@@ -184,6 +187,55 @@ class GetClassDependencyGraphToolTest extends TestCase
         ]);
 
         $this->assertSame('singleton', $bindingPayload['binding']['type'] ?? null);
+        $this->assertSame('static_analysis', $bindingPayload['binding']['source'] ?? null);
+        $this->assertSame('high', $bindingPayload['binding']['confidence'] ?? null);
+    }
+
+    public function test_tool_splits_declared_and_hidden_dependencies_on_current_page(): void
+    {
+        $payload = $this->callTool([
+            'class' => Transistor::class,
+            'direction' => 'outbound',
+        ]);
+
+        $this->assertArrayHasKey('declared_dependencies', $payload);
+        $this->assertArrayHasKey('hidden_dependencies', $payload);
+        $this->assertNotEmpty($payload['declared_dependencies']);
+        $this->assertSame($payload['declared_dependencies'], $payload['dependencies']);
+        $this->assertSame([], $payload['hidden_dependencies']);
+    }
+
+    public function test_tool_always_returns_graph_completeness_metadata(): void
+    {
+        $knownPayload = $this->callTool([
+            'class' => Transistor::class,
+            'direction' => 'outbound',
+        ]);
+
+        $this->assertArrayHasKey('graph_completeness', $knownPayload);
+        $this->assertSame('partial', $knownPayload['graph_completeness']['coverage']);
+        $this->assertGreaterThan(0, $knownPayload['graph_completeness']['declared_count']);
+        $this->assertContains('constructor_injection', $knownPayload['graph_completeness']['detectors_active']);
+        $this->assertContains('facade', $knownPayload['graph_completeness']['detectors_pending']);
+
+        $missingPayload = $this->callTool([
+            'class' => 'App\\Services\\DoesNotExist',
+        ]);
+
+        $this->assertArrayHasKey('graph_completeness', $missingPayload);
+        $this->assertSame('unknown', $missingPayload['graph_completeness']['coverage']);
+    }
+
+    public function test_tool_keeps_backward_compatible_dependencies_key(): void
+    {
+        $payload = $this->callTool([
+            'class' => Firewall::class,
+            'direction' => 'outbound',
+        ]);
+
+        $this->assertArrayHasKey('dependencies', $payload);
+        $this->assertArrayHasKey('dependencies_pagination', $payload);
+        $this->assertContains(Logger::class, array_column($payload['dependencies'], 'name'));
     }
 
     /**
