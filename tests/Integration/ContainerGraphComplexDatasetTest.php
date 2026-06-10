@@ -64,6 +64,7 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $singletonBinding = $this->graph->findBinding(RedisEventPusher::class);
         $this->assertNotNull($singletonBinding);
         $this->assertTrue($singletonBinding['shared']);
+        $this->assertSame('singleton', $singletonBinding['type']);
 
         $closureBinding = $this->graph->findBinding('reports.analyzer');
         $this->assertNotNull($closureBinding);
@@ -77,6 +78,10 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertTrue($this->graph->hasDependsOnEdge(Transistor::class, PodcastParser::class));
         $this->assertTrue($this->graph->hasDependsOnEdge(Firewall::class, Logger::class));
         $this->assertTrue($this->graph->hasDependsOnEdge(Firewall::class, Filter::class));
+
+        $transistorDependency = $this->graph->findDependencyRow(Transistor::class, PodcastParser::class);
+        $this->assertNotNull($transistorDependency);
+        $this->assertSame('constructor_injection', $transistorDependency['type']);
     }
 
     public function test_complex_dataset_writes_class_nodes_and_summary_counts(): void
