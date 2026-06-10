@@ -18,13 +18,13 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{class: string}> */
     public array $classRows = [];
 
-    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}> */
+    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     public array $bindingRows = [];
 
-    /** @var array<int, array{class: string, dependency: string, dependencyKind: string}> */
+    /** @var array<int, array{class: string, dependency: string, dependencyKind: string, type: string}> */
     public array $dependencyRows = [];
 
-    /** @var array<int, array{class: string, name: string, reason: string}> */
+    /** @var array<int, array{class: string, name: string, reason: string, type: string}> */
     public array $unresolvedRows = [];
 
     public function connect(): void
@@ -34,9 +34,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      */
     public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
     {
@@ -47,7 +47,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     }
 
     /**
-     * @return null|array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}
+     * @return null|array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}
      */
     public function findBinding(string $abstract): ?array
     {
@@ -69,13 +69,21 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
 
     public function hasDependsOnEdge(string $class, string $dependency): bool
     {
+        return $this->findDependencyRow($class, $dependency) !== null;
+    }
+
+    /**
+     * @return null|array{class: string, dependency: string, dependencyKind: string, type: string}
+     */
+    public function findDependencyRow(string $class, string $dependency): ?array
+    {
         foreach ($this->dependencyRows as $row) {
             if ($row['class'] === $class && $row['dependency'] === $dependency) {
-                return true;
+                return $row;
             }
         }
 
-        return false;
+        return null;
     }
 
     public function hasClassNode(string $class): bool
