@@ -5,6 +5,8 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -62,7 +64,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>, 1: array<int, string>}
+     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>, 1: array<int, string>}
      */
     private function extractBindingRows(): array
     {
@@ -77,12 +79,15 @@ class ContainerGraphCommand extends Command
                 continue;
             }
 
+            $shared = (bool) ($binding['shared'] ?? false);
+
             $rows[] = [
                 'abstract' => $abstract,
                 'abstractKind' => $this->kindForTypeName($abstract),
                 'concrete' => $resolved['name'],
                 'concreteKind' => $resolved['kind'],
-                'shared' => (bool) ($binding['shared'] ?? false),
+                'shared' => $shared,
+                'type' => BindsToType::fromShared($shared)->value,
             ];
 
             if ($resolved['kind'] === 'Class' && class_exists($resolved['name']) && ! interface_exists($resolved['name'])) {
@@ -180,7 +185,7 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, string>  $classes
-     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string}>, 1: array<int, array{class: string, name: string, reason: string}>}
+     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>, 1: array<int, array{class: string, name: string, reason: string, type: string}>}
      */
     private function extractDependencyRows(array $classes): array
     {
@@ -210,12 +215,14 @@ class ContainerGraphCommand extends Command
                         'class' => $className,
                         'name' => $name,
                         'reason' => $reason ?? 'unresolved',
+                        'type' => DependsOnType::ConstructorInjection->value,
                     ];
                 } else {
                     $dependencyRows[] = [
                         'class' => $className,
                         'dependency' => $name,
                         'dependencyKind' => $kind,
+                        'type' => DependsOnType::ConstructorInjection->value,
                     ];
                 }
             }
@@ -364,8 +371,8 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
      * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */
     private function printCypher(ContainerGraphWriter $writer, array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void

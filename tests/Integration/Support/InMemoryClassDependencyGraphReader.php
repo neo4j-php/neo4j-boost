@@ -4,6 +4,8 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
 /**
@@ -14,20 +16,20 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /** @var array<int, string> */
     private array $classes = [];
 
-    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}> */
+    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     private array $bindingRows = [];
 
-    /** @var array<int, array{class: string, dependency: string, dependencyKind: string}> */
+    /** @var array<int, array{class: string, dependency: string, dependencyKind: string, type: string}> */
     private array $dependencyRows = [];
 
-    /** @var array<int, array{class: string, name: string, reason: string}> */
+    /** @var array<int, array{class: string, name: string, reason: string, type: string}> */
     private array $unresolvedRows = [];
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      */
     public static function fromExportRows(
         array $classRows,
@@ -126,31 +128,45 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
      */
     private function findBindingForClass(string $class): ?array
     {
         foreach ($this->bindingRows as $row) {
             if ($row['abstract'] === $class) {
-                return [
-                    'abstract' => $row['abstract'],
-                    'concrete' => $row['concrete'],
-                    'shared' => $row['shared'],
-                ];
+                return $this->formatBindingRow($row);
             }
         }
 
         foreach ($this->bindingRows as $row) {
             if ($row['concrete'] === $class) {
-                return [
-                    'abstract' => $row['abstract'],
-                    'concrete' => $row['concrete'],
-                    'shared' => $row['shared'],
-                ];
+                return $this->formatBindingRow($row);
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     */
+    private function formatBindingRow(array $row): array
+    {
+        $typeMeta = RelationshipTypeReader::bindsTo($row['type'] ?? null, $row['shared'] ?? null);
+
+        $binding = [
+            'abstract' => $row['abstract'],
+            'concrete' => $row['concrete'],
+            'shared' => $typeMeta['shared'],
+            'type' => $typeMeta['type'],
+        ];
+
+        if (isset($typeMeta['confidence'])) {
+            $binding['confidence'] = $typeMeta['confidence'];
+        }
+
+        return $binding;
     }
 
     /**
@@ -172,6 +188,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'relationship' => 'DEPENDS_ON',
                 'reason' => $row['reason'],
                 'depth' => 1,
+                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
             ];
         }
 
@@ -208,6 +225,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'kind' => $row['dependencyKind'],
                 'relationship' => 'DEPENDS_ON',
                 'depth' => $currentDepth,
+                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
             ];
 
             $this->walkDependencies($row['dependency'], $currentDepth + 1, $maxDepth, $entries);
@@ -233,6 +251,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
                 'depth' => $currentDepth,
+                'type' => DependsOnType::ConstructorInjection->value,
             ];
 
             $this->walkDependents($row['class'], $currentDepth + 1, $maxDepth, $entries);

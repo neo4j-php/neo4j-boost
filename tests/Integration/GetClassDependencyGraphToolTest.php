@@ -165,6 +165,27 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->assertContains(PodcastParser::class, $dependencyNames);
     }
 
+    public function test_tool_returns_relationship_type_on_dependencies_and_bindings(): void
+    {
+        $dependencyPayload = $this->callTool([
+            'class' => Transistor::class,
+            'direction' => 'outbound',
+        ]);
+
+        $podcastParserDependency = collect($dependencyPayload['dependencies'] ?? [])
+            ->firstWhere('name', PodcastParser::class);
+
+        $this->assertIsArray($podcastParserDependency);
+        $this->assertSame('constructor_injection', $podcastParserDependency['type']);
+
+        $bindingPayload = $this->callTool([
+            'class' => RedisEventPusher::class,
+            'include_bindings' => true,
+        ]);
+
+        $this->assertSame('singleton', $bindingPayload['binding']['type'] ?? null);
+    }
+
     /**
      * @param  array<string, mixed>  $arguments
      * @return array<string, mixed>
