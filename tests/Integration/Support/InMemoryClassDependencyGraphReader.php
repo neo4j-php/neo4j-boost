@@ -4,7 +4,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
-use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
@@ -84,12 +84,12 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExists($class)) {
-            return [
+            return $this->finalizeResponse([
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ];
+            ]);
         }
 
         $result = [
@@ -110,6 +110,13 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependencies'] = $paginated['items'];
             $result['dependencies_pagination'] = $paginated['pagination'];
+            $result = $this->appendDependencyBuckets($result, $paginated['items']);
+
+            $visibilitySplit = $this->splitDependenciesByVisibility($entries);
+            $result['graph_completeness'] = GraphCompleteness::build(
+                count($visibilitySplit['declared']),
+                count($visibilitySplit['hidden']),
+            );
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
@@ -119,7 +126,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $result;
+        return $this->finalizeResponse($result);
     }
 
     private function classExists(string $class): bool
@@ -128,7 +135,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -148,25 +155,25 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @param  array{abstract: string, concrete: string, shared: bool, type: string, source?: string}  $row
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function formatBindingRow(array $row): array
     {
-        $typeMeta = RelationshipTypeReader::bindsTo($row['type'] ?? null, $row['shared'] ?? null);
+        $typeMeta = RelationshipTypeReader::bindsTo(
+            $row['type'] ?? null,
+            $row['shared'] ?? null,
+            $row['source'] ?? null,
+        );
 
-        $binding = [
+        return [
             'abstract' => $row['abstract'],
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
+            'source' => $typeMeta['source'],
+            'confidence' => $typeMeta['confidence'],
         ];
-
-        if (isset($typeMeta['confidence'])) {
-            $binding['confidence'] = $typeMeta['confidence'];
-        }
-
-        return $binding;
     }
 
     /**
@@ -188,7 +195,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'relationship' => 'DEPENDS_ON',
                 'reason' => $row['reason'],
                 'depth' => 1,
-                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
+                ...RelationshipTypeReader::dependsOn($row['type'] ?? null, $row['source'] ?? null),
             ];
         }
 
@@ -225,7 +232,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'kind' => $row['dependencyKind'],
                 'relationship' => 'DEPENDS_ON',
                 'depth' => $currentDepth,
-                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
+                ...RelationshipTypeReader::dependsOn($row['type'] ?? null, $row['source'] ?? null),
             ];
 
             $this->walkDependencies($row['dependency'], $currentDepth + 1, $maxDepth, $entries);
@@ -251,7 +258,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
                 'depth' => $currentDepth,
-                'type' => DependsOnType::ConstructorInjection->value,
+                ...RelationshipTypeReader::dependsOn($row['type'] ?? null, $row['source'] ?? null),
             ];
 
             $this->walkDependents($row['class'], $currentDepth + 1, $maxDepth, $entries);
