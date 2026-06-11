@@ -23,6 +23,12 @@ class ContainerGraphCommand extends Command
 
     protected $description = 'Export Laravel container wiring into Neo4j for dependency debugging';
 
+    public function __construct(
+        private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
+    ) {
+        parent::__construct();
+    }
+
     public function handle(ContainerGraphWriter $writer): int
     {
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
@@ -251,7 +257,7 @@ class ContainerGraphCommand extends Command
         }
 
         $rows = [];
-        foreach ((new ServiceLocationEdgeFinder)->scanPaths($paths) as $edge) {
+        foreach ($this->serviceLocationEdgeFinder->scanPaths($paths) as $edge) {
             $rows[] = $edge->toDependencyRow();
         }
 
