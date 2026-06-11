@@ -257,6 +257,8 @@ php artisan container:graph --print-cypher
 
 Dynamic calls such as `app($variable)` are skipped.
 
+**Opt-in only:** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
+
 Configure scan paths (comma-separated absolute paths):
 
 ```env

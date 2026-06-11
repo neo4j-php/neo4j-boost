@@ -15,7 +15,7 @@ use PHPStan\Rules\Rule;
 final class ServiceLocationStaticCallRule implements Rule
 {
     public function __construct(
-        private ServiceLocationNodeResolver $resolver = new ServiceLocationNodeResolver,
+        private ServiceLocationNodeResolver $resolver,
     ) {}
 
     public function getNodeType(): string

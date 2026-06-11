@@ -10,7 +10,7 @@ class ServiceLocationEdgeFinderTest extends TestCase
     public function test_finds_literal_app_resolve_and_app_make_calls(): void
     {
         $fixtureDir = dirname(__DIR__, 2).'/Integration/Fixtures/StaticAnalysis';
-        $edges = (new ServiceLocationEdgeFinder)->scanPaths([$fixtureDir]);
+        $edges = $this->app->make(ServiceLocationEdgeFinder::class)->scanPaths([$fixtureDir]);
 
         $this->assertCount(3, $edges);
 
@@ -52,7 +52,7 @@ class Worker
 }
 PHP;
 
-        $edges = (new ServiceLocationEdgeFinder)->scanSource($source);
+        $edges = $this->app->make(ServiceLocationEdgeFinder::class)->scanSource($source);
 
         $this->assertSame([], $edges);
     }
