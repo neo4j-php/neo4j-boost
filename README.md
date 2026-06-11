@@ -247,6 +247,51 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
+### Static analysis pass (SOFT-43 POC)
+
+`container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by a PHPStan-style scan of configured paths. The POC detects literal **service location** calls:
+
+- `app(Foo::class)`
+- `resolve(Foo::class)`
+- `App::make(Foo::class)`
+
+Dynamic calls such as `app($variable)` are skipped.
+
+Configure scan paths (comma-separated absolute paths):
+
+```env
+NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
+```
+
+Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
+
+**Output shape** written to Neo4j:
+
+```json
+{
+  "type": "service_location",
+  "via": "app",
+  "file": "/path/OrderProcessor.php",
+  "line": 12,
+  "source": "static"
+}
+```
+
+**POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
+
+**Adding the next hidden type (SOFT-44+):** copy the pattern:
+
+1. Extend `ServiceLocationEdgeFinder` / add a sibling finder for the new pattern.
+2. Register a PHPStan collector rule in `extension.neon` and cover it with `RuleTestCase`.
+3. Merge rows in `ContainerGraphCommand::extractStatic*Rows()` and persist extra edge props in `ContainerGraphWriter`.
+4. Add a fixture PHP file plus an integration test that sets `static_scan_paths`.
+
+Run PHPStan rules against fixtures only:
+
+```bash
+./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
+```
+
 ### Graph model
 
 - `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)
