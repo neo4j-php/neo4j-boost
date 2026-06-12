@@ -84,5 +84,14 @@ return [
         'default_connection_dsn' => env('NEO4J_DEFAULT_CONNECTION_DSN', ''),
         'username' => env('NEO4J_USER', env('NEO4J_USERNAME', 'neo4j')),
         'password' => env('NEO4J_PASSWORD', ''),
+        /*
+         * Absolute paths scanned for hidden DEPENDS_ON edges (SOFT-43 POC).
+         * When empty (default), no static scan runs — set NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS
+         * to opt in, e.g. base_path('app') or base_path('app/Services').
+         */
+        'static_scan_paths' => array_values(array_filter(array_map(
+            static fn (string $path): string => trim($path),
+            explode(',', (string) env('NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS', '')),
+        ))),
     ],
 ];

@@ -1,0 +1,11 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - extension.neon
+
+parameters:
+    phpVersion: 80200
+    paths:
+        - tests/Integration/Fixtures/StaticAnalysis
+        - tests/Unit/StaticAnalysis/Fixtures
+    level: 5
+    treatPhpDocTypesAsCertain: false
