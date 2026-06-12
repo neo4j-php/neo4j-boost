@@ -15,8 +15,6 @@ use Psr\Log\LoggerInterface;
  * Global helper → container contract mappings (top hidden-dependency helpers).
  *
  * Sources: rector-laravel ArgumentFuncCallToMethodCall set, Laravel helper docs.
- *
- * @see docs/RESOLUTION_CATALOG.md
  */
 final class GlobalHelperCatalog
 {

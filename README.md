@@ -294,6 +294,20 @@ Run PHPStan rules against fixtures only:
 ./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
 ```
 
+### Resolution catalog (facade & helper → contract)
+
+The package ships a **resolution catalog** mapping Laravel first-party facades and top global helpers (`cache`, `auth`, `view`, `response`, `redirect`, `route`, `event`, `dispatch`, `logger`) to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). Custom app facades resolve via `getFacadeAccessor()` introspection.
+
+```php
+use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
+
+$entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facades\Cache::class);
+$entry = app(ResolutionCatalog::class)->resolveHelper('cache');
+// $entry->abstract, $entry->bindingKey, $entry->bindsToType
+```
+
+Future static-analysis passes for `facade` and `global_helper` hidden dependencies will consume this catalog. Sources: Laravel facade docs, rector-laravel mappings, and `getFacadeAccessor()` for custom app facades.
+
 ### Graph model
 
 - `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)

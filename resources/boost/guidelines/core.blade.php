@@ -51,6 +51,8 @@ Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or se
 
 **Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
 
+**Resolution catalog:** `Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog` maps facades and top helpers to container contracts with `bindsToType` (`singleton` | `normal`).
+
 ```env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j

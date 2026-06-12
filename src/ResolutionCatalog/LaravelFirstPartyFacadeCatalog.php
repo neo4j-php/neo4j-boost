@@ -84,8 +84,6 @@ use Neo4j\LaravelBoost\Support\Graph\BindsToType;
  * First-party Laravel facade → container resolution mappings.
  *
  * Sources: Laravel facade docs, rector-laravel static-to-injection set, framework accessors.
- *
- * @see docs/RESOLUTION_CATALOG.md
  */
 final class LaravelFirstPartyFacadeCatalog
 {
