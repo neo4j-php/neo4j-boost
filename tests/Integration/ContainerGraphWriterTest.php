@@ -34,6 +34,10 @@ class ContainerGraphWriterTest extends TestCase
         $dependenciesTemplate = $writer->cypherTemplates()['dependencies'];
 
         $this->assertStringContainsString('r.type = row.type', $dependenciesTemplate);
+        $this->assertStringContainsString('r.source = row.source', $dependenciesTemplate);
+        $this->assertStringContainsString('r.via = row.via', $dependenciesTemplate);
+        $this->assertStringContainsString('r.file = row.file', $dependenciesTemplate);
+        $this->assertStringContainsString('r.line = row.line', $dependenciesTemplate);
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void
