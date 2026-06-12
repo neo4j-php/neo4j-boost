@@ -37,7 +37,9 @@
     "require-dev": {
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.18",
+        "nikic/php-parser": "^5.4",
         "orchestra/testbench": "^10.11|^11.0",
+        "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^11.0"
     },
     "config": {

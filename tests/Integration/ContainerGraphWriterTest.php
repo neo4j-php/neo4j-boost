@@ -25,6 +25,19 @@ class ContainerGraphWriterTest extends TestCase
 
         $this->assertStringContainsString('row.concreteKind', $bindingsTemplate);
         $this->assertStringContainsString('AbstractType:Abstract', $bindingsTemplate);
+        $this->assertStringContainsString('r.type = row.type', $bindingsTemplate);
+    }
+
+    public function test_dependency_cypher_sets_type_on_depends_on_edges(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $dependenciesTemplate = $writer->cypherTemplates()['dependencies'];
+
+        $this->assertStringContainsString('r.type = row.type', $dependenciesTemplate);
+        $this->assertStringContainsString('r.source = row.source', $dependenciesTemplate);
+        $this->assertStringContainsString('r.via = row.via', $dependenciesTemplate);
+        $this->assertStringContainsString('r.file = row.file', $dependenciesTemplate);
+        $this->assertStringContainsString('r.line = row.line', $dependenciesTemplate);
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void

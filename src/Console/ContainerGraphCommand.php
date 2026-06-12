@@ -5,6 +5,9 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -20,11 +23,23 @@ class ContainerGraphCommand extends Command
 
     protected $description = 'Export Laravel container wiring into Neo4j for dependency debugging';
 
+    public function __construct(
+        private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
+    ) {
+        parent::__construct();
+    }
+
     public function handle(ContainerGraphWriter $writer): int
     {
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
         $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
         [$dependencyRows, $unresolvedRows] = $this->extractDependencyRows($concreteClasses);
+        $staticDependencyRows = $this->extractStaticServiceLocationRows();
+        $dependencyRows = $this->uniqueRows(array_merge($dependencyRows, $staticDependencyRows));
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromDependencyRows($staticDependencyRows),
+        );
         $classRows = array_map(
             static fn (string $className): array => ['class' => $className],
             $concreteClasses
@@ -35,6 +50,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Concrete classes inspected: '.count($concreteClasses));
         $this->line('- Class nodes: '.count($classRows));
         $this->line('- Dependency edges: '.count($dependencyRows));
+        $this->line('- Static service_location edges: '.count($staticDependencyRows));
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
@@ -62,7 +78,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>, 1: array<int, string>}
+     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>, 1: array<int, string>}
      */
     private function extractBindingRows(): array
     {
@@ -77,12 +93,15 @@ class ContainerGraphCommand extends Command
                 continue;
             }
 
+            $shared = (bool) ($binding['shared'] ?? false);
+
             $rows[] = [
                 'abstract' => $abstract,
                 'abstractKind' => $this->kindForTypeName($abstract),
                 'concrete' => $resolved['name'],
                 'concreteKind' => $resolved['kind'],
-                'shared' => (bool) ($binding['shared'] ?? false),
+                'shared' => $shared,
+                'type' => BindsToType::fromShared($shared)->value,
             ];
 
             if ($resolved['kind'] === 'Class' && class_exists($resolved['name']) && ! interface_exists($resolved['name'])) {
@@ -180,7 +199,7 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, string>  $classes
-     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string}>, 1: array<int, array{class: string, name: string, reason: string}>}
+     * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>, 1: array<int, array{class: string, name: string, reason: string, type: string}>}
      */
     private function extractDependencyRows(array $classes): array
     {
@@ -210,18 +229,68 @@ class ContainerGraphCommand extends Command
                         'class' => $className,
                         'name' => $name,
                         'reason' => $reason ?? 'unresolved',
+                        'type' => DependsOnType::ConstructorInjection->value,
                     ];
                 } else {
                     $dependencyRows[] = [
                         'class' => $className,
                         'dependency' => $name,
                         'dependencyKind' => $kind,
+                        'type' => DependsOnType::ConstructorInjection->value,
+                        ...$this->emptyStaticMetadata(),
                     ];
                 }
             }
         }
 
         return [$this->uniqueRows($dependencyRows), $this->uniqueRows($unresolvedRows)];
+    }
+
+    /**
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>
+     */
+    private function extractStaticServiceLocationRows(): array
+    {
+        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
+        if (! is_array($paths) || $paths === []) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->serviceLocationEdgeFinder->scanPaths($paths) as $edge) {
+            $rows[] = $edge->toDependencyRow();
+        }
+
+        return $this->uniqueRows($rows);
+    }
+
+    /**
+     * @param  array<int, array{class: string, dependency: string}>  $rows
+     * @return array<int, string>
+     */
+    private function classNamesFromDependencyRows(array $rows): array
+    {
+        $classes = [];
+
+        foreach ($rows as $row) {
+            $classes[] = $row['class'];
+            $classes[] = $row['dependency'];
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
+     * @return array{source: string, via: string, file: string, line: int}
+     */
+    private function emptyStaticMetadata(): array
+    {
+        return [
+            'source' => '',
+            'via' => '',
+            'file' => '',
+            'line' => 0,
+        ];
     }
 
     /**
@@ -364,8 +433,8 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
      * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
      */
     private function printCypher(ContainerGraphWriter $writer, array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
