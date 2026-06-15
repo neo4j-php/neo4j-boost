@@ -18,6 +18,7 @@ use Neo4j\LaravelBoost\Console\StartNeo4jCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
 use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 
@@ -42,6 +43,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(ContainerGraphConnection::class);
         $this->app->singleton(ClassDependencyGraphReader::class);
         $this->app->singleton(GraphKnowledgeContributor::class);
+        $this->app->singleton(ServiceLocationEdgeFinder::class);
     }
 
     public function boot(): void

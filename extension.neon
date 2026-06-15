@@ -1,0 +1,11 @@
+services:
+    -
+        class: Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationNodeResolver
+    -
+        class: Neo4j\LaravelBoost\StaticAnalysis\PhpStan\ServiceLocationFuncCallRule
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Neo4j\LaravelBoost\StaticAnalysis\PhpStan\ServiceLocationStaticCallRule
+        tags:
+            - phpstan.rules.rule
