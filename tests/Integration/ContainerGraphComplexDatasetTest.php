@@ -46,11 +46,11 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertSame('Class', $interfaceBinding['concreteKind']);
         $this->assertTrue($this->graph->hasBindsToEdge(EventPusherInterface::class, RedisEventPusher::class));
 
-        $aliasBinding = $this->graph->findBinding('billing.currency');
+        $aliasBinding = $this->graph->findBinding('app.currency');
         $this->assertNotNull($aliasBinding);
         $this->assertSame('USD', $aliasBinding['concrete']);
         $this->assertSame('Alias', $aliasBinding['concreteKind']);
-        $this->assertTrue($this->graph->hasBindsToEdge('billing.currency', 'USD'));
+        $this->assertTrue($this->graph->hasBindsToEdge('app.currency', 'USD'));
 
         $bindIfBinding = $this->graph->findBinding('legacy.podcast.parser');
         $this->assertNotNull($bindIfBinding);
