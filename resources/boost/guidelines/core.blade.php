@@ -24,7 +24,7 @@ This creates or updates `.cursor/mcp.json` with the server URL from config (merg
 
 ### Run the MCP server
 
-- **With Laravel Boost:** Use a single MCP server: run `php artisan boost:mcp`. This package adds the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, **get-class-dependency-graph**) to Boost’s server automatically. Tools call the HTTP MCP URL from `config/neo4j-boost.http` except **get-class-dependency-graph**, which reads the container graph directly from Neo4j using `config/neo4j-boost.container_graph`.
+- **With Laravel Boost:** Use a single MCP server: run `php artisan boost:mcp`. This package adds the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, **get-class-dependency-graph**, **contribute-graph-knowledge**) to Boost’s server automatically. Tools call the HTTP MCP URL from `config/neo4j-boost.http` except **get-class-dependency-graph** and **contribute-graph-knowledge**, which read/write the container graph directly from Neo4j using `config/neo4j-boost.container_graph`.
 - **Without Boost:** Add the Neo4j MCP server to Cursor as an HTTP server. Run `php artisan neo4j-boost:cursor-config` so `.cursor/mcp.json` includes the `neo4j-boost` server with the configured URL.
 
 Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` where the Neo4j MCP server runs (and in Laravel if you use the Neo4j driver).
@@ -48,6 +48,8 @@ php artisan container:graph --print-cypher
 Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Binding keys and discovered project classes use `:Abstract` plus `:Interface` or `:Class`; explore with `MATCH p=(a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n) RETURN p LIMIT 200` or undirected `-[r:BINDS_TO|DEPENDS_ON]-` in Neo4j Browser.
 
 **get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
+
+**contribute-graph-knowledge** (MCP tool): add dependency or binding edges when static analysis cannot infer them. Medium/low confidence returns `confirmation_required` without writing — ask the user, then retry with `confirmed: true` to persist with `source: user`. High confidence persists immediately with `source: agent`. Default contributed `DEPENDS_ON` type is `service_location`.
 
 **Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
 

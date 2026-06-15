@@ -3,7 +3,9 @@
 namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
+use Neo4j\LaravelBoost\GraphKnowledgeContributor;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
@@ -24,6 +26,9 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /** @var array<int, array{class: string, name: string, reason: string, type: string}> */
     private array $unresolvedRows = [];
+
+    /** @var array<int, array<string, mixed>> */
+    private array $contributedRows = [];
 
     /**
      * @param  array<int, array{class: string}>  $classRows
@@ -61,6 +66,27 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         $reader->classes = array_values(array_unique($reader->classes));
 
         return $reader;
+    }
+
+    /**
+     * @param  array<string, mixed>  $contribution
+     */
+    public function addContribution(array $contribution): void
+    {
+        $this->contributedRows[] = $contribution;
+
+        $from = (string) ($contribution['from'] ?? '');
+        $to = (string) ($contribution['to'] ?? '');
+
+        if ($from !== '') {
+            $this->classes[] = $from;
+        }
+
+        if ($to !== '') {
+            $this->classes[] = $to;
+        }
+
+        $this->classes = array_values(array_unique($this->classes));
     }
 
     public function __construct(ContainerGraphConnection $connection)
@@ -144,6 +170,34 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             }
         }
 
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_BINDS_TO) {
+                continue;
+            }
+
+            $from = (string) ($contribution['from'] ?? '');
+            $to = (string) ($contribution['to'] ?? '');
+
+            if ($from !== $class && $to !== $class) {
+                continue;
+            }
+
+            $shared = (bool) ($contribution['shared'] ?? false);
+            $binding = [
+                'abstract' => $from,
+                'concrete' => $to,
+                'shared' => $shared,
+                'type' => (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+            ];
+
+            $source = $contribution['source'] ?? null;
+            if (is_string($source) && $source !== '') {
+                $binding['source'] = $source;
+            }
+
+            return $binding;
+        }
+
         return null;
     }
 
@@ -220,7 +274,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 continue;
             }
 
-            $entries[] = [
+            $entry = [
                 'name' => $row['dependency'],
                 'kind' => $row['dependencyKind'],
                 'relationship' => 'DEPENDS_ON',
@@ -228,8 +282,84 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
             ];
 
+            $source = $this->findContributionSource(
+                GraphKnowledgeContributor::RELATIONSHIP_DEPENDS_ON,
+                $class,
+                $row['dependency'],
+            );
+
+            if ($source !== null) {
+                $entry['source'] = $source;
+            }
+
+            $entries[] = $entry;
+
             $this->walkDependencies($row['dependency'], $currentDepth + 1, $maxDepth, $entries);
         }
+
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_DEPENDS_ON) {
+                continue;
+            }
+
+            if (($contribution['from'] ?? '') !== $class) {
+                continue;
+            }
+
+            $to = (string) ($contribution['to'] ?? '');
+            if ($to === '') {
+                continue;
+            }
+
+            $entry = [
+                'name' => $to,
+                'kind' => $this->kindForTypeName($to),
+                'relationship' => 'DEPENDS_ON',
+                'depth' => $currentDepth,
+                'type' => (string) ($contribution['type'] ?? DependsOnType::ServiceLocation->value),
+            ];
+
+            $source = $contribution['source'] ?? null;
+            if (is_string($source) && $source !== '') {
+                $entry['source'] = $source;
+            }
+
+            $entries[] = $entry;
+
+            $this->walkDependencies($to, $currentDepth + 1, $maxDepth, $entries);
+        }
+    }
+
+    private function findContributionSource(string $relationship, string $from, string $to): ?string
+    {
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== $relationship) {
+                continue;
+            }
+
+            if (($contribution['from'] ?? '') !== $from || ($contribution['to'] ?? '') !== $to) {
+                continue;
+            }
+
+            $source = $contribution['source'] ?? null;
+
+            return is_string($source) && $source !== '' ? $source : null;
+        }
+
+        return null;
+    }
+
+    private function kindForTypeName(string $name): string
+    {
+        if (interface_exists($name)) {
+            return 'Interface';
+        }
+
+        if (class_exists($name)) {
+            return 'Class';
+        }
+
+        return 'Alias';
     }
 
     /**

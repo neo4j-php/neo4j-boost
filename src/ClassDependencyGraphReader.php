@@ -83,14 +83,14 @@ class ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string, source?: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared, r.source AS source
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -103,7 +103,7 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared, r.source AS source
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -112,7 +112,7 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string, source?: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
@@ -130,6 +130,11 @@ CYPHER,
 
             if (isset($typeMeta['confidence'])) {
                 $binding['confidence'] = $typeMeta['confidence'];
+            }
+
+            $source = $record->get('source');
+            if (is_string($source) && $source !== '') {
+                $binding['source'] = $source;
             }
 
             return $binding;
@@ -264,7 +269,8 @@ MATCH path = (c:Abstract {name: $class})%s(d:Abstract)
 WITH d, min(length(path)) AS depth, [rel IN relationships(path) | rel.type][-1] AS type
 ORDER BY depth ASC, d.name ASC
 SKIP $skip LIMIT $limit
-RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type
+OPTIONAL MATCH (c:Abstract {name: $class})-[direct:DEPENDS_ON]->(d)
+RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type, direct.source AS source
 CYPHER,
             sprintf($relationship, $depth),
         );
@@ -320,13 +326,20 @@ CYPHER,
                 ? array_values(iterator_to_array($labels))
                 : (array) $labels;
 
-            $entries[] = [
+            $entry = [
                 'name' => (string) $record->get('name'),
                 'kind' => $this->resolveNodeKind($labelList, $record->get('kind')),
                 'relationship' => $relationship,
                 'depth' => (int) $record->get('depth'),
                 ...RelationshipTypeReader::dependsOn($record->get('type')),
             ];
+
+            $source = $record->get('source');
+            if (is_string($source) && $source !== '') {
+                $entry['source'] = $source;
+            }
+
+            $entries[] = $entry;
         }
 
         return $entries;
