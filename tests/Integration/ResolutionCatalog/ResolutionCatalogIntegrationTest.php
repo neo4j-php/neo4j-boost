@@ -6,8 +6,8 @@ use Illuminate\Routing\Redirector;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\Factory;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
-use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\BillingReportsFacade;
-use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\BillingReportsService;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomAccessorService;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomClassAccessorFacade;
 use Neo4j\LaravelBoost\Tests\TestCase;
 
 class ResolutionCatalogIntegrationTest extends TestCase
@@ -36,10 +36,10 @@ class ResolutionCatalogIntegrationTest extends TestCase
     {
         $catalog = $this->app->make(ResolutionCatalog::class);
 
-        $entry = $catalog->resolveFacade(BillingReportsFacade::class);
+        $entry = $catalog->resolveFacade(CustomClassAccessorFacade::class);
 
         $this->assertNotNull($entry);
-        $this->assertSame(BillingReportsService::class, $entry->abstract);
+        $this->assertSame(CustomAccessorService::class, $entry->abstract);
     }
 
     public function test_resolve_helper_returns_catalog_entry(): void

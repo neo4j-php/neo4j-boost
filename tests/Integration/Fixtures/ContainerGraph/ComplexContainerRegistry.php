@@ -64,7 +64,7 @@ final class ComplexContainerRegistry
 
         $app->alias(RedisEventPusher::class, 'event.pusher');
 
-        $app->bind('billing.currency', 'USD');
+        $app->bind('app.currency', 'USD');
 
         $app->bind('reports.analyzer', fn (Application $application): ReportAggregator => $application->make(ReportAggregator::class));
 

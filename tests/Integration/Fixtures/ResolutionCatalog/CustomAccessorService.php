@@ -2,7 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog;
 
-final class BillingReportsService
+final class CustomAccessorService
 {
     public function generate(): string
     {
