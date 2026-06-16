@@ -2,8 +2,8 @@
 
 namespace Neo4j\LaravelBoost;
 
-use Laudis\Neo4j\Types\CypherList;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 
 class ClassDependencyGraphReader
@@ -70,7 +70,11 @@ class ClassDependencyGraphReader
     private function classExistsInGraph(string $class): bool
     {
         $result = $this->connection->run(
-            'MATCH (n:Abstract {name: $class}) RETURN count(n) AS total',
+            <<<'CYPHER'
+MATCH (n)
+WHERE (n:Instance OR n:Abstract) AND n.name = $class
+RETURN count(n) AS total
+CYPHER,
             ['class' => $class],
         );
 
@@ -143,17 +147,13 @@ CYPHER,
      */
     private function fetchDependencies(string $class, int $depth, int $page, int $perPage): array
     {
-        $unresolved = $this->fetchUnresolvedDependencies($class);
-        $resolvedTotal = $this->countDependencyPaths($class, $depth, outbound: true);
-        $total = $resolvedTotal + count($unresolved);
+        $allEntries = $this->traverseDependencyChains($class, $depth, outbound: true);
+        $total = count($allEntries);
 
-        return $this->paginateMergedEntries(
-            $unresolved,
-            fn (int $skip, int $limit): array => $this->fetchDependencyPaths($class, $depth, outbound: true, skip: $skip, limit: $limit),
-            $page,
-            $perPage,
-            $total,
-        );
+        return [
+            'items' => $this->uniqueDependencyEntries(array_slice($allEntries, ($page - 1) * $perPage, $perPage)),
+            'pagination' => $this->buildPaginationMeta($page, $perPage, $total),
+        ];
     }
 
     /**
@@ -161,45 +161,11 @@ CYPHER,
      */
     private function fetchDependents(string $class, int $depth, int $page, int $perPage): array
     {
-        $total = $this->countDependencyPaths($class, $depth, outbound: false);
-
-        return $this->paginateMergedEntries(
-            [],
-            fn (int $skip, int $limit): array => $this->fetchDependencyPaths($class, $depth, outbound: false, skip: $skip, limit: $limit),
-            $page,
-            $perPage,
-            $total,
-        );
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $prefixEntries
-     * @param  callable(int, int): array<int, array<string, mixed>>  $fetchPage
-     * @return array{items: array<int, array<string, mixed>>, pagination: array{page: int, per_page: int, total: int, last_page: int, has_more: bool}}
-     */
-    private function paginateMergedEntries(
-        array $prefixEntries,
-        callable $fetchPage,
-        int $page,
-        int $perPage,
-        int $total,
-    ): array {
-        $prefixCount = count($prefixEntries);
-        $offset = ($page - 1) * $perPage;
-        $items = [];
-
-        if ($offset < $prefixCount) {
-            $items = array_slice($prefixEntries, $offset, $perPage);
-        }
-
-        $remaining = $perPage - count($items);
-        if ($remaining > 0) {
-            $resolvedSkip = max(0, $offset - $prefixCount);
-            $items = array_merge($items, $fetchPage($resolvedSkip, $remaining));
-        }
+        $allEntries = $this->traverseDependencyChains($class, $depth, outbound: false);
+        $total = count($allEntries);
 
         return [
-            'items' => $this->uniqueDependencyEntries($items),
+            'items' => $this->uniqueDependencyEntries(array_slice($allEntries, ($page - 1) * $perPage, $perPage)),
             'pagination' => $this->buildPaginationMeta($page, $perPage, $total),
         ];
     }
@@ -220,87 +186,101 @@ CYPHER,
         ];
     }
 
-    private function countDependencyPaths(string $class, int $depth, bool $outbound): int
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function traverseDependencyChains(string $class, int $depth, bool $outbound): array
     {
-        $relationship = $outbound
-            ? '-[:DEPENDS_ON*1..%d]->'
-            : '<-[:DEPENDS_ON*1..%d]-';
+        $entries = [];
+        $visited = [];
+        $frontier = [$class];
 
-        $cypher = sprintf(
-            <<<'CYPHER'
-MATCH (c:Abstract {name: $class})%s(d:Abstract)
-RETURN count(DISTINCT d) AS total
-CYPHER,
-            sprintf($relationship, $depth),
-        );
+        for ($currentDepth = 1; $currentDepth <= $depth; $currentDepth++) {
+            $nextFrontier = [];
 
-        $result = $this->connection->run($cypher, ['class' => $class]);
-        $record = $result->first();
+            foreach ($frontier as $nodeName) {
+                $chains = $outbound
+                    ? $this->fetchDirectOutboundChains($nodeName)
+                    : $this->fetchDirectInboundChains($nodeName);
 
-        if ($record === null) {
-            return 0;
+                foreach ($chains as $chain) {
+                    $targetName = (string) $chain['name'];
+                    $key = $targetName.'@'.$currentDepth;
+
+                    if (isset($visited[$key])) {
+                        continue;
+                    }
+
+                    $visited[$key] = true;
+                    $entries[] = array_merge($chain, ['depth' => $currentDepth]);
+
+                    if ($outbound && $this->instanceExists($targetName)) {
+                        $nextFrontier[] = $targetName;
+                    } elseif (! $outbound && $this->instanceExists($targetName)) {
+                        $nextFrontier[] = $targetName;
+                    }
+                }
+            }
+
+            $frontier = array_values(array_unique($nextFrontier));
         }
 
-        return (int) $record->get('total');
+        usort($entries, static function (array $a, array $b): int {
+            $depthCompare = ($a['depth'] ?? 0) <=> ($b['depth'] ?? 0);
+            if ($depthCompare !== 0) {
+                return $depthCompare;
+            }
+
+            return strcmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));
+        });
+
+        return $entries;
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetchDependencyPaths(
-        string $class,
-        int $depth,
-        bool $outbound,
-        int $skip,
-        int $limit,
-    ): array {
-        $relationship = $outbound
-            ? '-[:DEPENDS_ON*1..%d]->'
-            : '<-[:DEPENDS_ON*1..%d]-';
-
-        $cypher = sprintf(
-            <<<'CYPHER'
-MATCH path = (c:Abstract {name: $class})%s(d:Abstract)
-WITH d, min(length(path)) AS depth, [rel IN relationships(path) | rel.type][-1] AS type
-ORDER BY depth ASC, d.name ASC
-SKIP $skip LIMIT $limit
-RETURN d.name AS name, labels(d) AS labels, d.kind AS kind, depth, type
-CYPHER,
-            sprintf($relationship, $depth),
-        );
-
-        $result = $this->connection->run($cypher, [
-            'class' => $class,
-            'skip' => $skip,
-            'limit' => $limit,
-        ]);
-
-        return $this->mapDependencyRecords($result, 'DEPENDS_ON');
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function fetchUnresolvedDependencies(string $class): array
+    private function fetchDirectOutboundChains(string $instance): array
     {
         $result = $this->connection->run(
             <<<'CYPHER'
-MATCH (c:Abstract {name: $class})-[r:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN u.name AS name, u.reason AS reason, r.type AS type
-ORDER BY u.name ASC
+MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
+RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
+       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line
+ORDER BY id.name ASC
 CYPHER,
-            ['class' => $class],
+            ['instance' => $instance],
+        );
+
+        return $this->mapChainRecords($result);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchDirectInboundChains(string $identifier): array
+    {
+        $result = $this->connection->run(
+            <<<'CYPHER'
+MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier {name: $identifier})
+RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
+       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line
+ORDER BY i.name ASC
+CYPHER,
+            ['identifier' => $identifier],
         );
 
         $entries = [];
         foreach ($result as $record) {
+            $access = DependencyAccessType::assertAllowed((string) $record->get('access'));
+
             $entries[] = [
                 'name' => (string) $record->get('name'),
-                'kind' => 'UnresolvedDependency',
+                'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
-                'reason' => (string) $record->get('reason'),
-                'depth' => 1,
-                ...RelationshipTypeReader::dependsOn($record->get('type')),
+                'access' => $access->value,
+                'lifetime' => (string) $record->get('lifetime'),
+                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
         }
 
@@ -310,46 +290,58 @@ CYPHER,
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function mapDependencyRecords(iterable $result, string $relationship): array
+    private function mapChainRecords(iterable $result): array
     {
         $entries = [];
 
         foreach ($result as $record) {
-            $labels = $record->get('labels');
-            $labelList = $labels instanceof CypherList
-                ? array_values(iterator_to_array($labels))
-                : (array) $labels;
+            $kind = (string) $record->get('kind');
+            $access = DependencyAccessType::assertAllowed((string) $record->get('access'));
 
-            $entries[] = [
+            $entry = [
                 'name' => (string) $record->get('name'),
-                'kind' => $this->resolveNodeKind($labelList, $record->get('kind')),
-                'relationship' => $relationship,
-                'depth' => (int) $record->get('depth'),
-                ...RelationshipTypeReader::dependsOn($record->get('type')),
+                'kind' => $kind === 'Unresolved' ? 'UnresolvedDependency' : $kind,
+                'relationship' => 'DEPENDS_ON',
+                'access' => $access->value,
+                'lifetime' => (string) $record->get('lifetime'),
+                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
+
+            if ($kind === 'Unresolved') {
+                $entry['reason'] = (string) $record->get('reason');
+            }
+
+            $via = (string) $record->get('via');
+            if ($via !== '') {
+                $entry['via'] = $via;
+            }
+
+            $file = (string) $record->get('file');
+            if ($file !== '') {
+                $entry['file'] = $file;
+            }
+
+            $line = (int) $record->get('line');
+            if ($line > 0) {
+                $entry['line'] = $line;
+            }
+
+            $entries[] = $entry;
         }
 
         return $entries;
     }
 
-    /**
-     * @param  array<int, string>  $labels
-     */
-    private function resolveNodeKind(array $labels, mixed $kind): string
+    private function instanceExists(string $name): bool
     {
-        if (in_array('UnresolvedDependency', $labels, true)) {
-            return 'UnresolvedDependency';
-        }
+        $result = $this->connection->run(
+            'MATCH (i:Instance {name: $name}) RETURN count(i) AS total',
+            ['name' => $name],
+        );
 
-        if (in_array('Interface', $labels, true)) {
-            return 'Interface';
-        }
+        $record = $result->first();
 
-        if (in_array('AbstractType', $labels, true) && is_string($kind) && $kind !== '') {
-            return $kind;
-        }
-
-        return 'Class';
+        return $record !== null && (int) $record->get('total') > 0;
     }
 
     /**
