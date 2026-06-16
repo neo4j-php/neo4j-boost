@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Console;
 
 use Closure;
 use Illuminate\Console\Command;
+use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
@@ -27,6 +28,7 @@ class ContainerGraphCommand extends Command
     public function __construct(
         private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
         private FacadeEdgeFinder $facadeEdgeFinder,
+        private DependencyChainBuilder $dependencyChainBuilder,
     ) {
         parent::__construct();
     }
@@ -34,6 +36,7 @@ class ContainerGraphCommand extends Command
     public function handle(ContainerGraphWriter $writer): int
     {
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
+        $bindings = app()->getBindings();
         $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
         [$dependencyRows, $unresolvedRows] = $this->extractDependencyRows($concreteClasses);
         $staticServiceLocationRows = $this->extractStaticServiceLocationRows();
@@ -44,22 +47,27 @@ class ContainerGraphCommand extends Command
             $concreteClasses,
             $this->classNamesFromDependencyRows($staticDependencyRows),
         );
-        $classRows = array_map(
+        $instanceRows = array_map(
             static fn (string $className): array => ['class' => $className],
             $concreteClasses
+        );
+        $dependencyChainRows = $this->buildDependencyChainRows(
+            $dependencyRows,
+            $unresolvedRows,
+            $bindings,
         );
 
         $this->line('Container graph summary:');
         $this->line('- Bindings: '.count($bindingRows));
         $this->line('- Concrete classes inspected: '.count($concreteClasses));
-        $this->line('- Class nodes: '.count($classRows));
-        $this->line('- Dependency edges: '.count($dependencyRows));
+        $this->line('- Instance nodes: '.count($instanceRows));
+        $this->line('- Dependency chains: '.count($dependencyChainRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
         $this->line('- Static facade edges: '.count($staticFacadeRows));
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $classRows, $bindingRows, $dependencyRows, $unresolvedRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows);
         }
 
         if ($this->option('dry-run')) {
@@ -70,7 +78,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows);
         } catch (Throwable $e) {
             $this->error('Failed to write container graph: '.$e->getMessage());
 
@@ -80,6 +88,30 @@ class ContainerGraphCommand extends Command
         $this->info('Container graph written to Neo4j successfully.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source?: string, via?: string, file?: string, line?: int}>  $dependencyRows
+     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
+     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>
+     */
+    private function buildDependencyChainRows(
+        array $dependencyRows,
+        array $unresolvedRows,
+        array $bindings,
+    ): array {
+        $chains = [];
+
+        foreach ($dependencyRows as $row) {
+            $chains[] = $this->dependencyChainBuilder->fromLegacyDependencyRow($row, $bindings);
+        }
+
+        foreach ($unresolvedRows as $row) {
+            $chains[] = $this->dependencyChainBuilder->fromUnresolvedRow($row, $bindings);
+        }
+
+        return $this->uniqueRows($chains);
     }
 
     /**
@@ -455,12 +487,11 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
-    private function printCypher(ContainerGraphWriter $writer, array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
+    private function printCypher(ContainerGraphWriter $writer, array $instanceRows, array $bindingRows, array $dependencyChainRows): void
     {
         $this->line('');
         $this->line('Cypher templates:');
@@ -471,10 +502,9 @@ class ContainerGraphCommand extends Command
         }
 
         $this->line('Sample params:');
-        $this->line('- classes: '.json_encode(array_slice($classRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- instances: '.json_encode(array_slice($instanceRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- bindings: '.json_encode(array_slice($bindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->line('- dependencies: '.json_encode(array_slice($dependencyRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->line('- unresolved: '.json_encode(array_slice($unresolvedRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- dependency_chains: '.json_encode(array_slice($dependencyChainRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }
