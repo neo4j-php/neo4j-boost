@@ -324,12 +324,22 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 
 ### Graph model
 
+**Bindings** (unchanged):
+
 - `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)
 - `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
-- `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
-- **`Abstract`** – use as the entry label to start from registered binding keys and walk the graph (`MATCH (a:Abstract) …`).
-- `(:Class:Abstract)-[:DEPENDS_ON {type}]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)` — `type` values: `constructor_injection`, `method_injection`, `facade`, `global_helper`, `service_location`, `instantiation`
-- `(:UnresolvedDependency:Abstract {name, reason})`
+- **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
+
+**Dependencies** (SOFT-58 three-node model):
+
+- `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
+- `(:Instance)-[:DEPENDS_ON {file, line, via}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
+- `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
+- `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
+- Facade/global-helper catalog entries will populate `Dependency → Identifier` chains once the resolution catalog lands (catalog-only rows have no `Instance` edge)
+
+There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
 
 ### Example Cypher queries
 
@@ -339,25 +349,31 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies`, `dependents`, `binding` (each includes relationship `type`), pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries. Legacy graphs without `type` return inferred values with `confidence: inferred`; re-run `container:graph` after upgrading.
+Returns structured JSON with `dependencies`, `dependents`, `binding` (dependencies include legacy `type` mapped from `access`), pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
 
-**Explore from container binding keys outward (graph view in Neo4j Browser):**
+**Explore bindings from container keys outward:**
 
 ```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n)
+MATCH p = (a:Abstract)-[:BINDS_TO*1..10]->(n)
 RETURN p
 LIMIT 200;
 ```
 
-**Bidirectional neighborhood (idiomatic; no duplicate reverse edges):**
+**Explore instance dependency chains:**
 
 ```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..6]-(n)
+MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
 RETURN p
 LIMIT 200;
 ```
 
-Cycle-only patterns such as `(x:Abstract)-[*..]->(x)` mostly surface self-binds or trivial paths; prefer outward or undirected expansion above.
+**Bidirectional neighborhood around an instance:**
+
+```cypher
+MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+RETURN p
+LIMIT 200;
+```
 
 ```cypher
 MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
@@ -366,14 +382,15 @@ LIMIT 25;
 ```
 
 ```cypher
-MATCH p = (:Class:Abstract {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
-RETURN p
-LIMIT 10;
+MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+RETURN i.name, id.name, id.kind
+LIMIT 25;
 ```
 
 ```cypher
-MATCH (c:Class:Abstract)-[:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN c.name, u.name, u.reason
+MATCH (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+WHERE id.kind = 'Unresolved'
+RETURN i.name, id.name, id.reason
 LIMIT 25;
 ```
 

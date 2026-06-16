@@ -45,11 +45,15 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Binding keys and discovered project classes use `:Abstract` plus `:Interface` or `:Class`; explore with `MATCH p=(a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n) RETURN p LIMIT 200` or undirected `-[r:BINDS_TO|DEPENDS_ON]-` in Neo4j Browser.
+Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Bindings use `:Abstract` nodes; application dependencies use the three-node chain `(:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)`. Explore with:
+
+```cypher
+MATCH p=(i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier) RETURN p LIMIT 200;
+```
 
 **get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
-**Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
+**Dependency model (SOFT-58):** `Instance-[:DEPENDS_ON {file,line,via}]->Dependency-[:RESOLVES_TO {lifetime}]->Identifier`. `Dependency.access`: `di`, `facade`, `global_helper`, `service_location`. `RESOLVES_TO.lifetime`: `singleton` or `bind`. MCP responses still include legacy `type` on dependencies (`constructor_injection`, `facade`, etc.) mapped from `access`. Bindings: `BINDS_TO` with `normal` or `singleton` on `:Abstract` nodes — re-run `container:graph` after upgrades.
 
 **Resolution catalog:** `Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog` maps facades to container contracts with `bindsToType` (`singleton` | `normal`). Static facade scanning resolves `Cache::put`-style calls through this catalog.
 
