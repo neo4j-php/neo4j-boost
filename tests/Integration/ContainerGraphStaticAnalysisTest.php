@@ -36,7 +36,6 @@ class ContainerGraphStaticAnalysisTest extends TestCase
         $edge = $this->graph->findDependencyRow(OrderProcessor::class, PaymentGateway::class);
         $this->assertNotNull($edge);
         $this->assertSame('service_location', $edge['type']);
-        $this->assertSame('static', $edge['source']);
         $this->assertContains($edge['via'], ['app', 'resolve', 'App::make']);
         $this->assertStringContainsString('OrderProcessor.php', $edge['file']);
         $this->assertGreaterThan(0, $edge['line']);

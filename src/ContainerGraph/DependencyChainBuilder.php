@@ -2,7 +2,6 @@
 
 namespace Neo4j\LaravelBoost\ContainerGraph;
 
-use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalogEntry;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
@@ -82,21 +81,9 @@ final class DependencyChainBuilder
     }
 
     /**
-     * Catalog-only facade resolution path (no Instance).
+     * Catalog-only facade resolution path (no Instance). Used when the resolution
+     * catalog branch is merged; accepts FacadeCatalogExporter row shape.
      *
-     * @return array{
-     *     instance: string,
-     *     dependency_key: string,
-     *     access: string,
-     *     identifier: string,
-     *     identifier_kind: string,
-     *     lifetime: string,
-     *     via: string,
-     *     file: string,
-     *     line: int
-     * }
-     */
-    /**
      * @param  array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}  $row
      * @return array{
      *     instance: string,
@@ -107,8 +94,7 @@ final class DependencyChainBuilder
      *     lifetime: string,
      *     via: string,
      *     file: string,
-     *     line: int,
-     *     reason?: string
+     *     line: int
      * }
      */
     public function fromFacadeExportRow(array $row): array
@@ -124,25 +110,6 @@ final class DependencyChainBuilder
                 BindsToType::assertAllowed($row['binds_to_type']),
             ),
             via: $row['facade_class'],
-            file: '',
-            line: 0,
-        );
-    }
-
-    public function fromFacadeCatalogEntry(ResolutionCatalogEntry $entry): array
-    {
-        $facadeClass = $entry->facadeClass ?? $entry->identifier;
-        $identifier = $entry->bindingKey !== null && $entry->bindingKey !== ''
-            ? $entry->bindingKey
-            : $entry->abstract;
-
-        return $this->chain(
-            instance: '',
-            access: DependencyAccessType::Facade,
-            identifier: $identifier,
-            identifierKind: $this->kindForIdentifier($entry->abstract),
-            lifetime: ResolvesToLifetime::fromBindsToType($entry->bindsToType),
-            via: $facadeClass,
             file: '',
             line: 0,
         );

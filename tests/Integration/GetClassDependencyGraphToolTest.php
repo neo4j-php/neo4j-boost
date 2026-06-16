@@ -36,8 +36,7 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->graphReader = InMemoryClassDependencyGraphReader::fromExportRows(
             $writer->classRows,
             $writer->bindingRows,
-            $writer->dependencyRows,
-            $writer->unresolvedRows,
+            $writer->dependencyChainRows,
         );
 
         $this->app->instance(ClassDependencyGraphReader::class, $this->graphReader);

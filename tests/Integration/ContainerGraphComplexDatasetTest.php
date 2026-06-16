@@ -91,7 +91,7 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertTrue($this->graph->hasClassNode(Transistor::class));
         $this->assertTrue($this->graph->hasClassNode(Firewall::class));
         $this->assertGreaterThanOrEqual(10, count($this->graph->bindingRows));
-        $this->assertGreaterThanOrEqual(3, count($this->graph->dependencyRows));
+        $this->assertGreaterThanOrEqual(3, count($this->graph->dependencyChainRows));
     }
 
     public function test_container_graph_dry_run_does_not_write_graph(): void
