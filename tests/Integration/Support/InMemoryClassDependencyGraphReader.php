@@ -55,40 +55,6 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         return $reader;
     }
 
-    /**
-     * @deprecated Use fromExportRows() with dependency chain rows
-     *
-     * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyRows
-     * @param  array<int, mixed>  $unresolvedRows
-     */
-    public static function fromLegacyExportRows(
-        array $classRows,
-        array $bindingRows,
-        array $dependencyRows,
-        array $unresolvedRows = [],
-    ): self {
-        $chains = $dependencyRows;
-
-        foreach ($unresolvedRows as $row) {
-            $chains[] = [
-                'instance' => $row['class'],
-                'dependency_key' => 'di|'.$row['name'],
-                'access' => 'di',
-                'identifier' => $row['name'],
-                'identifier_kind' => 'Unresolved',
-                'lifetime' => 'bind',
-                'via' => 'unresolved',
-                'file' => '',
-                'line' => 0,
-                'reason' => $row['reason'] ?? 'unresolved',
-            ];
-        }
-
-        return self::fromExportRows($classRows, $bindingRows, $chains);
-    }
-
     public function __construct(ContainerGraphConnection $connection)
     {
         parent::__construct($connection);
@@ -154,7 +120,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -175,24 +141,18 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /**
      * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function formatBindingRow(array $row): array
     {
-        $typeMeta = RelationshipTypeReader::bindsTo($row['type'] ?? null, $row['shared'] ?? null);
+        $typeMeta = RelationshipTypeReader::bindsTo($row['type']);
 
-        $binding = [
+        return [
             'abstract' => $row['abstract'],
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
         ];
-
-        if (isset($typeMeta['confidence'])) {
-            $binding['confidence'] = $typeMeta['confidence'];
-        }
-
-        return $binding;
     }
 
     /**
@@ -256,7 +216,6 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => $row['lifetime'],
-                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
 
             if ($kind === 'UnresolvedDependency') {
@@ -301,7 +260,6 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => $row['lifetime'],
-                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
         }
 

@@ -33,9 +33,9 @@ class ContainerGraphStaticAnalysisTest extends TestCase
             ->expectsOutputToContain('Container graph written to Neo4j successfully.')
             ->assertExitCode(0);
 
-        $edge = $this->graph->findDependencyRow(OrderProcessor::class, PaymentGateway::class);
+        $edge = $this->graph->findDependencyChainRow(OrderProcessor::class, PaymentGateway::class);
         $this->assertNotNull($edge);
-        $this->assertSame('service_location', $edge['type']);
+        $this->assertSame('service_location', $edge['access']);
         $this->assertContains($edge['via'], ['app', 'resolve', 'App::make']);
         $this->assertStringContainsString('OrderProcessor.php', $edge['file']);
         $this->assertGreaterThan(0, $edge['line']);
@@ -49,6 +49,6 @@ class ContainerGraphStaticAnalysisTest extends TestCase
             ->expectsOutputToContain('Static service_location edges: 0')
             ->assertExitCode(0);
 
-        $this->assertNull($this->graph->findDependencyRow(OrderProcessor::class, PaymentGateway::class));
+        $this->assertNull($this->graph->findDependencyChainRow(OrderProcessor::class, PaymentGateway::class));
     }
 }

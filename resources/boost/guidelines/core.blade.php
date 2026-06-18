@@ -53,7 +53,7 @@ MATCH p=(i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier) 
 
 **get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
-**Dependency model (SOFT-58):** `Instance-[:DEPENDS_ON {file,line,via}]->Dependency-[:RESOLVES_TO {lifetime}]->Identifier`. `Dependency.access`: `di`, `facade`, `global_helper`, `service_location`. `RESOLVES_TO.lifetime`: `singleton` or `bind`. MCP responses still include legacy `type` on dependencies (`constructor_injection`, `facade`, etc.) mapped from `access`. Bindings: `BINDS_TO` with `normal` or `singleton` on `:Abstract` nodes — re-run `container:graph` after upgrades.
+**Dependency model (SOFT-58):** `Instance-[:DEPENDS_ON {file,line,via}]->Dependency-[:RESOLVES_TO {lifetime}]->Identifier`. `Dependency.access`: `di`, `facade`, `global_helper`, `service_location`. `RESOLVES_TO.lifetime`: `singleton` or `bind`. MCP dependency entries expose `access` and `lifetime`. Bindings: `BINDS_TO` with `normal` or `singleton` on `:Abstract` nodes — re-run `container:graph` after upgrades.
 
 **Resolution catalog:** `Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog` maps facades to container contracts with `bindsToType` (`singleton` | `normal`). Static facade scanning resolves `Cache::put`-style calls through this catalog.
 

@@ -17,9 +17,9 @@ class DependencyChainBuilderTest extends TestCase
         $this->builder = new DependencyChainBuilder(new BindingLifetimeResolver);
     }
 
-    public function test_legacy_dependency_row_maps_to_three_node_chain(): void
+    public function test_extracted_dependency_row_maps_to_three_node_chain(): void
     {
-        $chain = $this->builder->fromLegacyDependencyRow([
+        $chain = $this->builder->fromExtractedDependencyRow([
             'class' => 'App\\Services\\Foo',
             'dependency' => 'App\\Contracts\\Bar',
             'dependencyKind' => 'Interface',
@@ -39,7 +39,7 @@ class DependencyChainBuilderTest extends TestCase
 
     public function test_service_location_row_preserves_file_line_and_via(): void
     {
-        $chain = $this->builder->fromLegacyDependencyRow([
+        $chain = $this->builder->fromExtractedDependencyRow([
             'class' => 'App\\Services\\Foo',
             'dependency' => 'App\\Services\\Bar',
             'dependencyKind' => 'Class',

@@ -29,14 +29,4 @@ enum DependencyAccessType: string
             default => throw new InvalidArgumentException("Cannot map DEPENDS_ON type to access: {$dependsOnType}"),
         };
     }
-
-    public function toDependsOnType(): DependsOnType
-    {
-        return match ($this) {
-            self::Di => DependsOnType::ConstructorInjection,
-            self::Facade => DependsOnType::Facade,
-            self::GlobalHelper => DependsOnType::GlobalHelper,
-            self::ServiceLocation => DependsOnType::ServiceLocation,
-        };
-    }
 }

@@ -87,14 +87,14 @@ CYPHER,
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -107,7 +107,7 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.shared AS shared
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -116,27 +116,21 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
         $result = $this->connection->run($cypher, $parameters);
 
         foreach ($result as $record) {
-            $typeMeta = RelationshipTypeReader::bindsTo($record->get('type'), $record->get('shared'));
+            $typeMeta = RelationshipTypeReader::bindsTo($record->get('type'));
 
-            $binding = [
+            return [
                 'abstract' => (string) $record->get('abstract'),
                 'concrete' => (string) $record->get('concrete'),
                 'shared' => $typeMeta['shared'],
                 'type' => $typeMeta['type'],
             ];
-
-            if (isset($typeMeta['confidence'])) {
-                $binding['confidence'] = $typeMeta['confidence'];
-            }
-
-            return $binding;
         }
 
         return null;
@@ -280,7 +274,6 @@ CYPHER,
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => (string) $record->get('lifetime'),
-                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
         }
 
@@ -304,7 +297,6 @@ CYPHER,
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => (string) $record->get('lifetime'),
-                ...RelationshipTypeReader::dependsOn($access->toDependsOnType()->value),
             ];
 
             if ($kind === 'Unresolved') {

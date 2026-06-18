@@ -30,7 +30,7 @@ final class DependencyChainBuilder
      *     line: int
      * }
      */
-    public function fromLegacyDependencyRow(array $row, array $bindings): array
+    public function fromExtractedDependencyRow(array $row, array $bindings): array
     {
         $access = DependencyAccessType::fromDependsOnType((string) $row['type']);
         $identifier = (string) $row['dependency'];

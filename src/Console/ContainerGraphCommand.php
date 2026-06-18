@@ -104,7 +104,7 @@ class ContainerGraphCommand extends Command
         $chains = [];
 
         foreach ($dependencyRows as $row) {
-            $chains[] = $this->dependencyChainBuilder->fromLegacyDependencyRow($row, $bindings);
+            $chains[] = $this->dependencyChainBuilder->fromExtractedDependencyRow($row, $bindings);
         }
 
         foreach ($unresolvedRows as $row) {

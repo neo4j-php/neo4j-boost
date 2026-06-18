@@ -34,7 +34,7 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->artisan('container:graph')->assertExitCode(0);
 
         $this->graphReader = InMemoryClassDependencyGraphReader::fromExportRows(
-            $writer->classRows,
+            $writer->instanceRows,
             $writer->bindingRows,
             $writer->dependencyChainRows,
         );
@@ -164,7 +164,7 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->assertContains(PodcastParser::class, $dependencyNames);
     }
 
-    public function test_tool_returns_relationship_type_on_dependencies_and_bindings(): void
+    public function test_tool_returns_access_and_lifetime_on_dependencies_and_bindings(): void
     {
         $dependencyPayload = $this->callTool([
             'class' => Transistor::class,
@@ -175,7 +175,8 @@ class GetClassDependencyGraphToolTest extends TestCase
             ->firstWhere('name', PodcastParser::class);
 
         $this->assertIsArray($podcastParserDependency);
-        $this->assertSame('constructor_injection', $podcastParserDependency['type']);
+        $this->assertSame('di', $podcastParserDependency['access']);
+        $this->assertSame('bind', $podcastParserDependency['lifetime']);
 
         $bindingPayload = $this->callTool([
             'class' => RedisEventPusher::class,
