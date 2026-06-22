@@ -322,6 +322,31 @@ $entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facade
 
 Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
 
+### Method injection (SOFT-46)
+
+`container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
+
+- **Controllers** — public action methods (excluding magic methods)
+- **Jobs, commands, listeners** — `handle()`
+- **Middleware** — `handle()` (typed dependencies after `$request` / `$next`; `Closure` is skipped)
+
+Form requests and other typed parameters become `DEPENDS_ON` edges with `type: method_injection`, plus `method` and `parameter` on the relationship. Constructor-only reflection misses these; method injection closes that gap.
+
+**Output shape (on `DEPENDS_ON`):**
+
+```json
+{
+  "type": "method_injection",
+  "method": "store",
+  "parameter": "request",
+  "access": "di",
+  "file": "/path/PostController.php",
+  "line": 18
+}
+```
+
+The command summary includes `Method injection edges: N`.
+
 ### Graph model
 
 **Bindings** (unchanged):
@@ -333,7 +358,8 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 **Dependencies** (SOFT-58 three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `service_location`, etc.
 - `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
