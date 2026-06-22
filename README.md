@@ -337,7 +337,7 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 - `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
-- Facade/global-helper catalog entries will populate `Dependency → Identifier` chains once the resolution catalog lands (catalog-only rows have no `Instance` edge)
+- Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)
 
 There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
 
