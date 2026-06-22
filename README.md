@@ -247,17 +247,9 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-### Static analysis pass (SOFT-43 POC)
+### Static analysis pass (SOFT-43 / SOFT-44)
 
-`container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by a PHPStan-style scan of configured paths. The POC detects literal **service location** calls:
-
-- `app(Foo::class)`
-- `resolve(Foo::class)`
-- `App::make(Foo::class)`
-
-Dynamic calls such as `app($variable)` are skipped.
-
-**Opt-in only:** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
+`container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by scanning configured paths. Opt-in only: when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
 
 Configure scan paths (comma-separated absolute paths):
 
@@ -267,7 +259,17 @@ NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 
 Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
 
-**Output shape** written to Neo4j:
+#### Service location (SOFT-43)
+
+Detects literal **service location** calls:
+
+- `app(Foo::class)`
+- `resolve(Foo::class)`
+- `App::make(Foo::class)`
+
+Dynamic calls such as `app($variable)` are skipped.
+
+**Output shape:**
 
 ```json
 {
@@ -279,20 +281,46 @@ Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
 }
 ```
 
+#### Facade static calls (SOFT-44)
+
+Detects static calls on Laravel first-party facades and custom app facades (`Cache::put`, `CustomFacade::handle`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
+
+**Output shape:**
+
+```json
+{
+  "type": "facade",
+  "via": "Illuminate\\Support\\Facades\\Cache::put",
+  "file": "/path/InvoiceNotifier.php",
+  "line": 12,
+  "source": "static"
+}
+```
+
+The command summary includes separate counts: `Static service_location edges` and `Static facade edges`.
+
 **POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
 
-**Adding the next hidden type (SOFT-44+):** copy the pattern:
-
-1. Extend `ServiceLocationEdgeFinder` / add a sibling finder for the new pattern.
-2. Register a PHPStan collector rule in `extension.neon` and cover it with `RuleTestCase`.
-3. Merge rows in `ContainerGraphCommand::extractStatic*Rows()` and persist extra edge props in `ContainerGraphWriter`.
-4. Add a fixture PHP file plus an integration test that sets `static_scan_paths`.
-
-Run PHPStan rules against fixtures only:
+Run PHPStan service-location rules against fixtures only:
 
 ```bash
 ./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
 ```
+
+Facade collector coverage lives in `tests/Unit/StaticAnalysis/FacadeCollectorRuleTest.php` (PHPStan `RuleTestCase` with the resolution catalog).
+
+### Resolution catalog (facade → contract)
+
+The package ships a **resolution catalog** mapping Laravel first-party facades and custom app facades to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). First-party facades resolve via `getFacadeAccessor()` introspection and live container bindings; custom app facades use the same accessor flow.
+
+```php
+use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
+
+$entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facades\Cache::class);
+// $entry->abstract, $entry->bindingKey, $entry->bindsToType
+```
+
+Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
 
 ### Graph model
 

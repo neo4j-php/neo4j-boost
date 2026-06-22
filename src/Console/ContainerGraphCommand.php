@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
@@ -25,6 +26,7 @@ class ContainerGraphCommand extends Command
 
     public function __construct(
         private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
+        private FacadeEdgeFinder $facadeEdgeFinder,
     ) {
         parent::__construct();
     }
@@ -34,7 +36,9 @@ class ContainerGraphCommand extends Command
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
         $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
         [$dependencyRows, $unresolvedRows] = $this->extractDependencyRows($concreteClasses);
-        $staticDependencyRows = $this->extractStaticServiceLocationRows();
+        $staticServiceLocationRows = $this->extractStaticServiceLocationRows();
+        $staticFacadeRows = $this->extractStaticFacadeRows();
+        $staticDependencyRows = $this->uniqueRows(array_merge($staticServiceLocationRows, $staticFacadeRows));
         $dependencyRows = $this->uniqueRows(array_merge($dependencyRows, $staticDependencyRows));
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
@@ -50,7 +54,8 @@ class ContainerGraphCommand extends Command
         $this->line('- Concrete classes inspected: '.count($concreteClasses));
         $this->line('- Class nodes: '.count($classRows));
         $this->line('- Dependency edges: '.count($dependencyRows));
-        $this->line('- Static service_location edges: '.count($staticDependencyRows));
+        $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
+        $this->line('- Static facade edges: '.count($staticFacadeRows));
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
@@ -258,6 +263,24 @@ class ContainerGraphCommand extends Command
 
         $rows = [];
         foreach ($this->serviceLocationEdgeFinder->scanPaths($paths) as $edge) {
+            $rows[] = $edge->toDependencyRow();
+        }
+
+        return $this->uniqueRows($rows);
+    }
+
+    /**
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>
+     */
+    private function extractStaticFacadeRows(): array
+    {
+        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
+        if (! is_array($paths) || $paths === []) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->facadeEdgeFinder->scanPaths($paths) as $edge) {
             $rows[] = $edge->toDependencyRow();
         }
 

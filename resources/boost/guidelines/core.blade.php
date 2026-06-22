@@ -51,10 +51,15 @@ Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or se
 
 **Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
 
+**Resolution catalog:** `Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog` maps facades to container contracts with `bindsToType` (`singleton` | `normal`). Static facade scanning resolves `Cache::put`-style calls through this catalog.
+
+**Static scan (hidden dependencies):** set `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` to comma-separated absolute paths (e.g. `base_path('app/Services')`). The scan adds `DEPENDS_ON` edges with `source: static` for **service_location** (`app()`, `resolve()`, `App::make()` with literal class args) and **facade** (`Cache::put`, custom `Facade::method`, resolved via the resolution catalog). Dynamic calls are skipped. Summary lines: `Static service_location edges` and `Static facade edges`.
+
 ```env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
+NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 ```
 
 ### Cursor: "Loading tools" stuck or HTTP 404

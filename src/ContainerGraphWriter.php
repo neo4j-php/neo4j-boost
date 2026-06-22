@@ -159,8 +159,15 @@ CYPHER;
             throw new \InvalidArgumentException('Dependency row is missing integer line');
         }
 
-        if ($row['source'] === DependencyEdgeSource::Static->value && $row['type'] !== DependsOnType::ServiceLocation->value) {
-            throw new \InvalidArgumentException('Static analysis edges must use service_location type');
+        if ($row['source'] === DependencyEdgeSource::Static->value) {
+            $allowed = [
+                DependsOnType::ServiceLocation->value,
+                DependsOnType::Facade->value,
+            ];
+
+            if (! in_array($row['type'], $allowed, true)) {
+                throw new \InvalidArgumentException('Static analysis edges must use service_location or facade type');
+            }
         }
     }
 
