@@ -2,7 +2,6 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
-use Illuminate\Support\Facades\Cache;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomAccessorService;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomClassAccessorFacade;
@@ -39,23 +38,23 @@ class ContainerGraphFacadeStaticAnalysisTest extends TestCase
 
         $cacheEdge = $this->findFacadeEdge('Illuminate\\Support\\Facades\\Cache::put');
         $this->assertNotNull($cacheEdge);
-        $this->assertSame('facade', $cacheEdge['type']);
+        $this->assertSame('facade', $cacheEdge['access']);
         $this->assertStringContainsString('InvoiceNotifier.php', $cacheEdge['file']);
         $this->assertGreaterThan(0, $cacheEdge['line']);
 
         $customEdge = $this->findFacadeEdge(CustomClassAccessorFacade::class.'::handle');
         $this->assertNotNull($customEdge);
-        $this->assertSame('facade', $customEdge['type']);
-        $this->assertSame(CustomAccessorService::class, $customEdge['dependency']);
+        $this->assertSame('facade', $customEdge['access']);
+        $this->assertSame(CustomAccessorService::class, $customEdge['identifier']);
     }
 
     /**
-     * @return null|array{class: string, dependency: string, dependencyKind: string, type: string, via?: string, file?: string, line?: int, source?: string}
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}
      */
     private function findFacadeEdge(string $via): ?array
     {
-        foreach ($this->graph->dependencyRows as $row) {
-            if (($row['type'] ?? null) === 'facade' && ($row['via'] ?? null) === $via) {
+        foreach ($this->graph->dependencyChainRows as $row) {
+            if (($row['access'] ?? null) === 'facade' && ($row['via'] ?? null) === $via) {
                 return $row;
             }
         }
@@ -71,6 +70,9 @@ class ContainerGraphFacadeStaticAnalysisTest extends TestCase
             ->expectsOutputToContain('Static facade edges: 0')
             ->assertExitCode(0);
 
-        $this->assertNull($this->graph->findDependencyRow(InvoiceNotifier::class, Cache::class));
+        $this->assertNull($this->graph->findDependencyChainRow(
+            InvoiceNotifier::class,
+            'Illuminate\\Cache\\CacheManager',
+        ));
     }
 }
