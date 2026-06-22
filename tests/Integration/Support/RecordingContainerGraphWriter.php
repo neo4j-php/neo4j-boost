@@ -16,16 +16,13 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     }
 
     /** @var array<int, array{class: string}> */
-    public array $classRows = [];
+    public array $instanceRows = [];
 
     /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     public array $bindingRows = [];
 
-    /** @var array<int, array{class: string, dependency: string, dependencyKind: string, type: string}> */
-    public array $dependencyRows = [];
-
-    /** @var array<int, array{class: string, name: string, reason: string, type: string}> */
-    public array $unresolvedRows = [];
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}> */
+    public array $dependencyChainRows = [];
 
     public function connect(): void
     {
@@ -33,17 +30,15 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     }
 
     /**
-     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
-    public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
+    public function write(array $instanceRows, array $bindingRows, array $dependencyChainRows): void
     {
-        $this->classRows = $classRows;
+        $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
-        $this->dependencyRows = $dependencyRows;
-        $this->unresolvedRows = $unresolvedRows;
+        $this->dependencyChainRows = $dependencyChainRows;
     }
 
     /**
@@ -69,16 +64,16 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
 
     public function hasDependsOnEdge(string $class, string $dependency): bool
     {
-        return $this->findDependencyRow($class, $dependency) !== null;
+        return $this->findDependencyChainRow($class, $dependency) !== null;
     }
 
     /**
-     * @return null|array{class: string, dependency: string, dependencyKind: string, type: string}
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}
      */
-    public function findDependencyRow(string $class, string $dependency): ?array
+    public function findDependencyChainRow(string $instance, string $identifier): ?array
     {
-        foreach ($this->dependencyRows as $row) {
-            if ($row['class'] === $class && $row['dependency'] === $dependency) {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] === $instance && $row['identifier'] === $identifier) {
                 return $row;
             }
         }
@@ -86,9 +81,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         return null;
     }
 
-    public function hasClassNode(string $class): bool
+    public function hasInstanceNode(string $class): bool
     {
-        foreach ($this->classRows as $row) {
+        foreach ($this->instanceRows as $row) {
             if ($row['class'] === $class) {
                 return true;
             }

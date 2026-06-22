@@ -79,19 +79,19 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertTrue($this->graph->hasDependsOnEdge(Firewall::class, Logger::class));
         $this->assertTrue($this->graph->hasDependsOnEdge(Firewall::class, Filter::class));
 
-        $transistorDependency = $this->graph->findDependencyRow(Transistor::class, PodcastParser::class);
+        $transistorDependency = $this->graph->findDependencyChainRow(Transistor::class, PodcastParser::class);
         $this->assertNotNull($transistorDependency);
-        $this->assertSame('constructor_injection', $transistorDependency['type']);
+        $this->assertSame('di', $transistorDependency['access']);
     }
 
     public function test_complex_dataset_writes_class_nodes_and_summary_counts(): void
     {
         $this->runContainerGraph();
 
-        $this->assertTrue($this->graph->hasClassNode(Transistor::class));
-        $this->assertTrue($this->graph->hasClassNode(Firewall::class));
+        $this->assertTrue($this->graph->hasInstanceNode(Transistor::class));
+        $this->assertTrue($this->graph->hasInstanceNode(Firewall::class));
         $this->assertGreaterThanOrEqual(10, count($this->graph->bindingRows));
-        $this->assertGreaterThanOrEqual(3, count($this->graph->dependencyRows));
+        $this->assertGreaterThanOrEqual(3, count($this->graph->dependencyChainRows));
     }
 
     public function test_container_graph_dry_run_does_not_write_graph(): void
@@ -103,8 +103,8 @@ class ContainerGraphComplexDatasetTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertSame([], $this->graph->bindingRows);
-        $this->assertSame([], $this->graph->dependencyRows);
-        $this->assertSame([], $this->graph->classRows);
+        $this->assertSame([], $this->graph->dependencyChainRows);
+        $this->assertSame([], $this->graph->instanceRows);
     }
 
     private function runContainerGraph(): void
