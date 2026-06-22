@@ -81,6 +81,22 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         return null;
     }
 
+    /**
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}
+     */
+    public function findFacadeCatalogChain(string $facadeClass): ?array
+    {
+        foreach ($this->dependencyChainRows as $row) {
+            if (($row['instance'] ?? '') === ''
+                && ($row['access'] ?? '') === 'facade'
+                && ($row['via'] ?? '') === $facadeClass) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
     public function hasInstanceNode(string $class): bool
     {
         foreach ($this->instanceRows as $row) {
