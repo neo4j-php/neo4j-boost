@@ -4,7 +4,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
-use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
@@ -19,43 +19,35 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     private array $bindingRows = [];
 
-    /** @var array<int, array{class: string, dependency: string, dependencyKind: string, type: string}> */
-    private array $dependencyRows = [];
-
-    /** @var array<int, array{class: string, name: string, reason: string, type: string}> */
-    private array $unresolvedRows = [];
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}> */
+    private array $dependencyChainRows = [];
 
     /**
-     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
     public static function fromExportRows(
-        array $classRows,
+        array $instanceRows,
         array $bindingRows,
-        array $dependencyRows,
-        array $unresolvedRows,
+        array $dependencyChainRows,
     ): self {
         $reader = new self(new UnusedContainerGraphConnection);
-        $reader->classes = array_map(static fn (array $row): string => $row['class'], $classRows);
+        $reader->classes = array_map(static fn (array $row): string => $row['class'], $instanceRows);
         $reader->bindingRows = $bindingRows;
-        $reader->dependencyRows = $dependencyRows;
-        $reader->unresolvedRows = $unresolvedRows;
+        $reader->dependencyChainRows = array_values(array_filter(
+            $dependencyChainRows,
+            static fn (array $row): bool => ($row['instance'] ?? '') !== '',
+        ));
 
         foreach ($bindingRows as $row) {
             $reader->classes[] = $row['abstract'];
             $reader->classes[] = $row['concrete'];
         }
 
-        foreach ($dependencyRows as $row) {
-            $reader->classes[] = $row['class'];
-            $reader->classes[] = $row['dependency'];
-        }
-
-        foreach ($unresolvedRows as $row) {
-            $reader->classes[] = $row['class'];
-            $reader->classes[] = $row['name'];
+        foreach ($reader->dependencyChainRows as $row) {
+            $reader->classes[] = $row['instance'];
+            $reader->classes[] = $row['identifier'];
         }
 
         $reader->classes = array_values(array_unique($reader->classes));
@@ -106,14 +98,14 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         }
 
         if ($direction === 'outbound' || $direction === 'both') {
-            $entries = $this->traverseDependencies($class, $depth);
+            $entries = $this->traverseDependencyChains($class, $depth, outbound: true);
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependencies'] = $paginated['items'];
             $result['dependencies_pagination'] = $paginated['pagination'];
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
-            $entries = $this->traverseDependents($class, $depth);
+            $entries = $this->traverseDependencyChains($class, $depth, outbound: false);
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependents'] = $paginated['items'];
             $result['dependents_pagination'] = $paginated['pagination'];
@@ -128,7 +120,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -149,47 +141,55 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /**
      * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string, confidence?: string}
+     * @return array{abstract: string, concrete: string, shared: bool, type: string}
      */
     private function formatBindingRow(array $row): array
     {
-        $typeMeta = RelationshipTypeReader::bindsTo($row['type'] ?? null, $row['shared'] ?? null);
+        $typeMeta = RelationshipTypeReader::bindsTo($row['type']);
 
-        $binding = [
+        return [
             'abstract' => $row['abstract'],
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
         ];
-
-        if (isset($typeMeta['confidence'])) {
-            $binding['confidence'] = $typeMeta['confidence'];
-        }
-
-        return $binding;
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function traverseDependencies(string $class, int $depth): array
+    private function traverseDependencyChains(string $class, int $depth, bool $outbound): array
     {
         $entries = [];
-        $this->walkDependencies($class, 1, $depth, $entries);
+        $visited = [];
+        $frontier = [$class];
 
-        foreach ($this->unresolvedRows as $row) {
-            if ($row['class'] !== $class) {
-                continue;
+        for ($currentDepth = 1; $currentDepth <= $depth; $currentDepth++) {
+            $nextFrontier = [];
+
+            foreach ($frontier as $nodeName) {
+                $chains = $outbound
+                    ? $this->directOutboundChains($nodeName)
+                    : $this->directInboundChains($nodeName);
+
+                foreach ($chains as $chain) {
+                    $targetName = (string) $chain['name'];
+                    $key = $targetName.'@'.$currentDepth;
+
+                    if (isset($visited[$key])) {
+                        continue;
+                    }
+
+                    $visited[$key] = true;
+                    $entries[] = array_merge($chain, ['depth' => $currentDepth]);
+
+                    if ($this->instanceExists($targetName)) {
+                        $nextFrontier[] = $targetName;
+                    }
+                }
             }
 
-            $entries[] = [
-                'name' => $row['name'],
-                'kind' => 'UnresolvedDependency',
-                'relationship' => 'DEPENDS_ON',
-                'reason' => $row['reason'],
-                'depth' => 1,
-                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
-            ];
+            $frontier = array_values(array_unique($nextFrontier));
         }
 
         return $this->sortEntries($this->uniqueEntries($entries));
@@ -198,64 +198,83 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function traverseDependents(string $class, int $depth): array
+    private function directOutboundChains(string $instance): array
     {
         $entries = [];
-        $this->walkDependents($class, 1, $depth, $entries);
 
-        return $this->sortEntries($this->uniqueEntries($entries));
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $entries
-     */
-    private function walkDependencies(string $class, int $currentDepth, int $maxDepth, array &$entries): void
-    {
-        if ($currentDepth > $maxDepth) {
-            return;
-        }
-
-        foreach ($this->dependencyRows as $row) {
-            if ($row['class'] !== $class) {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] !== $instance) {
                 continue;
             }
 
-            $entries[] = [
-                'name' => $row['dependency'],
-                'kind' => $row['dependencyKind'],
+            $access = DependencyAccessType::assertAllowed($row['access']);
+            $kind = $row['identifier_kind'] === 'Unresolved' ? 'UnresolvedDependency' : $row['identifier_kind'];
+
+            $entry = [
+                'name' => $row['identifier'],
+                'kind' => $kind,
                 'relationship' => 'DEPENDS_ON',
-                'depth' => $currentDepth,
-                ...RelationshipTypeReader::dependsOn($row['type'] ?? null),
+                'access' => $access->value,
+                'lifetime' => $row['lifetime'],
             ];
 
-            $this->walkDependencies($row['dependency'], $currentDepth + 1, $maxDepth, $entries);
+            if ($kind === 'UnresolvedDependency') {
+                $entry['reason'] = $row['reason'] ?? 'unresolved';
+            }
+
+            if ($row['via'] !== '') {
+                $entry['via'] = $row['via'];
+            }
+
+            if ($row['file'] !== '') {
+                $entry['file'] = $row['file'];
+            }
+
+            if ($row['line'] > 0) {
+                $entry['line'] = $row['line'];
+            }
+
+            $entries[] = $entry;
         }
+
+        return $entries;
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $entries
+     * @return array<int, array<string, mixed>>
      */
-    private function walkDependents(string $class, int $currentDepth, int $maxDepth, array &$entries): void
+    private function directInboundChains(string $identifier): array
     {
-        if ($currentDepth > $maxDepth) {
-            return;
-        }
+        $entries = [];
 
-        foreach ($this->dependencyRows as $row) {
-            if ($row['dependency'] !== $class) {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['identifier'] !== $identifier) {
                 continue;
             }
 
+            $access = DependencyAccessType::assertAllowed($row['access']);
+
             $entries[] = [
-                'name' => $row['class'],
+                'name' => $row['instance'],
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
-                'depth' => $currentDepth,
-                'type' => DependsOnType::ConstructorInjection->value,
+                'access' => $access->value,
+                'lifetime' => $row['lifetime'],
             ];
-
-            $this->walkDependents($row['class'], $currentDepth + 1, $maxDepth, $entries);
         }
+
+        return $entries;
+    }
+
+    private function instanceExists(string $name): bool
+    {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] === $name) {
+                return true;
+            }
+        }
+
+        return in_array($name, $this->classes, true);
     }
 
     /**

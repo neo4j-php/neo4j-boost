@@ -7,20 +7,19 @@ use Neo4j\LaravelBoost\Tests\TestCase;
 
 class RelationshipTypeReaderTest extends TestCase
 {
-    public function test_infers_constructor_injection_when_depends_on_type_missing(): void
+    public function test_resolves_singleton_binding_type(): void
     {
-        $resolved = RelationshipTypeReader::dependsOn(null);
+        $resolved = RelationshipTypeReader::bindsTo('singleton');
 
-        $this->assertSame('constructor_injection', $resolved['type']);
-        $this->assertSame('inferred', $resolved['confidence']);
+        $this->assertSame('singleton', $resolved['type']);
+        $this->assertTrue($resolved['shared']);
     }
 
-    public function test_infers_normal_binding_from_legacy_shared_false(): void
+    public function test_resolves_normal_binding_type(): void
     {
-        $resolved = RelationshipTypeReader::bindsTo(null, false);
+        $resolved = RelationshipTypeReader::bindsTo('normal');
 
         $this->assertSame('normal', $resolved['type']);
         $this->assertFalse($resolved['shared']);
-        $this->assertSame('inferred', $resolved['confidence']);
     }
 }

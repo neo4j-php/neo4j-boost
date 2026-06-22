@@ -15,6 +15,8 @@ use Neo4j\LaravelBoost\Console\InstallMcpCommand;
 use Neo4j\LaravelBoost\Console\SetupCommand;
 use Neo4j\LaravelBoost\Console\StartNeo4jCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
+use Neo4j\LaravelBoost\ContainerGraph\BindingLifetimeResolver;
+use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingAbstractResolver;
@@ -50,6 +52,8 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(ClassDependencyGraphReader::class);
         $this->app->singleton(ServiceLocationEdgeFinder::class);
         $this->app->singleton(FacadeEdgeFinder::class);
+        $this->app->singleton(BindingLifetimeResolver::class);
+        $this->app->singleton(DependencyChainBuilder::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
         $this->app->singleton(FacadeAccessorParser::class);
         $this->app->singleton(ContainerBindingAbstractResolver::class);
