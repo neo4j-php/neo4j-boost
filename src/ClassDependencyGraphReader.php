@@ -240,7 +240,8 @@ CYPHER,
             <<<'CYPHER'
 MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
-       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line
+       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -316,6 +317,21 @@ CYPHER,
             $line = (int) $record->get('line');
             if ($line > 0) {
                 $entry['line'] = $line;
+            }
+
+            $injectionType = (string) $record->get('injection_type');
+            if ($injectionType !== '') {
+                $entry['type'] = $injectionType;
+            }
+
+            $method = (string) $record->get('method');
+            if ($method !== '') {
+                $entry['method'] = $method;
+            }
+
+            $parameter = (string) $record->get('parameter');
+            if ($parameter !== '') {
+                $entry['parameter'] = $parameter;
             }
 
             $entries[] = $entry;
