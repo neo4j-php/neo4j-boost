@@ -234,6 +234,18 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['line'] = $row['line'];
             }
 
+            if (($row['injection_type'] ?? '') !== '') {
+                $entry['type'] = $row['injection_type'];
+            }
+
+            if (($row['method'] ?? '') !== '') {
+                $entry['method'] = $row['method'];
+            }
+
+            if (($row['parameter'] ?? '') !== '') {
+                $entry['parameter'] = $row['parameter'];
+            }
+
             $entries[] = $entry;
         }
 
