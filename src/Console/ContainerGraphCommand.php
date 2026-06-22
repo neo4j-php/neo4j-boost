@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
@@ -30,6 +31,7 @@ class ContainerGraphCommand extends Command
         private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
         private FacadeEdgeFinder $facadeEdgeFinder,
         private DependencyChainBuilder $dependencyChainBuilder,
+        private FacadeCatalogExporter $facadeCatalogExporter,
     ) {
         parent::__construct();
     }
@@ -52,14 +54,17 @@ class ContainerGraphCommand extends Command
             static fn (string $className): array => ['class' => $className],
             $concreteClasses
         );
+        $facadeCatalogRows = $this->facadeCatalogExporter->rowsForAppClasses($concreteClasses);
         $dependencyChainRows = $this->buildDependencyChainRows(
             $dependencyRows,
             $unresolvedRows,
             $bindings,
+            $facadeCatalogRows,
         );
 
         $this->line('Container graph summary:');
         $this->line('- Bindings: '.count($bindingRows));
+        $this->line('- Facade catalog entries: '.count($facadeCatalogRows));
         $this->line('- Concrete classes inspected: '.count($concreteClasses));
         $this->line('- Instance nodes: '.count($instanceRows));
         $this->line('- Dependency chains: '.count($dependencyChainRows));
@@ -96,12 +101,14 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source?: string, via?: string, file?: string, line?: int}>  $dependencyRows
      * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
+     * @param  array<int, array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}>  $facadeCatalogRows
      * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>
      */
     private function buildDependencyChainRows(
         array $dependencyRows,
         array $unresolvedRows,
         array $bindings,
+        array $facadeCatalogRows = [],
     ): array {
         $chains = [];
 
@@ -111,6 +118,10 @@ class ContainerGraphCommand extends Command
 
         foreach ($unresolvedRows as $row) {
             $chains[] = $this->dependencyChainBuilder->fromUnresolvedRow($row, $bindings);
+        }
+
+        foreach ($facadeCatalogRows as $row) {
+            $chains[] = $this->dependencyChainBuilder->fromFacadeExportRow($row);
         }
 
         return $this->uniqueRows($chains);

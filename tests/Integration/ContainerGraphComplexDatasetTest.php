@@ -2,6 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use Illuminate\Support\Facades\Cache;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\ComplexContainerRegistry;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Contracts\EventPusherInterface;
@@ -92,6 +93,17 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertTrue($this->graph->hasInstanceNode(Firewall::class));
         $this->assertGreaterThanOrEqual(10, count($this->graph->bindingRows));
         $this->assertGreaterThanOrEqual(3, count($this->graph->dependencyChainRows));
+    }
+
+    public function test_complex_dataset_exports_facade_catalog_chains(): void
+    {
+        $this->runContainerGraph();
+
+        $cacheChain = $this->graph->findFacadeCatalogChain(Cache::class);
+        $this->assertNotNull($cacheChain);
+        $this->assertSame('cache', $cacheChain['identifier']);
+        $this->assertSame('singleton', $cacheChain['lifetime']);
+        $this->assertSame('facade|cache', $cacheChain['dependency_key']);
     }
 
     public function test_container_graph_dry_run_does_not_write_graph(): void

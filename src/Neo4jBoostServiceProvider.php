@@ -23,6 +23,7 @@ use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingAbstractResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingLifetime;
 use Neo4j\LaravelBoost\ResolutionCatalog\CustomFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeAccessorParser;
+use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\ResolutionCatalog\LaravelFirstPartyFacadeCatalog;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
@@ -55,6 +56,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(BindingLifetimeResolver::class);
         $this->app->singleton(DependencyChainBuilder::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
+        $this->app->singleton(FacadeCatalogExporter::class);
         $this->app->singleton(FacadeAccessorParser::class);
         $this->app->singleton(ContainerBindingAbstractResolver::class);
         $this->app->singleton(ContainerBindingLifetime::class);
