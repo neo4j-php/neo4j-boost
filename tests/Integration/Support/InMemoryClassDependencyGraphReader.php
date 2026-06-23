@@ -246,6 +246,10 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['parameter'] = $row['parameter'];
             }
 
+            if (($row['helper'] ?? '') !== '') {
+                $entry['helper'] = $row['helper'];
+            }
+
             $entries[] = $entry;
         }
 
@@ -296,6 +300,10 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
             if (($row['parameter'] ?? '') !== '') {
                 $entry['parameter'] = $row['parameter'];
+            }
+
+            if (($row['helper'] ?? '') !== '') {
+                $entry['helper'] = $row['helper'];
             }
 
             $entries[] = $entry;
