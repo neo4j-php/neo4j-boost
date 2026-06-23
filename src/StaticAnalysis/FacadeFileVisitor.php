@@ -128,7 +128,7 @@ final class FacadeFileVisitor extends NodeVisitorAbstract
 
     private function isServiceLocationAppMake(string $facadeClass, string $method): bool
     {
-        return $method === 'make'
+        return in_array($method, ['make', 'makeWith'], true)
             && in_array($facadeClass, ['App', 'Illuminate\\Support\\Facades\\App'], true);
     }
 

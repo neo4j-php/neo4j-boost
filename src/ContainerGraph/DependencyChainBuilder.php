@@ -64,6 +64,10 @@ final class DependencyChainBuilder
             $chain['helper'] = $helper;
         }
 
+        if (isset($row['reason']) && is_string($row['reason'])) {
+            $chain['reason'] = $row['reason'];
+        }
+
         return $chain;
     }
 

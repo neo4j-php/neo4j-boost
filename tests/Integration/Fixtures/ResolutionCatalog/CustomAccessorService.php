@@ -8,4 +8,9 @@ final class CustomAccessorService
     {
         return 'report';
     }
+
+    public function handle(): string
+    {
+        return $this->generate();
+    }
 }

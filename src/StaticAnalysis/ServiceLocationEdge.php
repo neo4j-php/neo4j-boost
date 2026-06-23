@@ -3,7 +3,7 @@
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
 /**
- * A service-locator dependency discovered in PHP source (app / resolve / App::make).
+ * A service-locator dependency discovered in PHP source (app / resolve / App::make / Application::make / $app->make).
  */
 final readonly class ServiceLocationEdge
 {
@@ -13,6 +13,8 @@ final readonly class ServiceLocationEdge
         public string $via,
         public string $file,
         public int $line,
+        public bool $resolved = true,
+        public ?string $reason = null,
     ) {}
 
     /**
@@ -24,20 +26,29 @@ final readonly class ServiceLocationEdge
      *     via: string,
      *     file: string,
      *     line: int,
-     *     source: string
+     *     source: string,
+     *     reason?: string
      * }
      */
     public function toDependencyRow(): array
     {
-        return [
+        $row = [
             'class' => $this->class,
             'dependency' => $this->dependency,
-            'dependencyKind' => interface_exists($this->dependency) ? 'Interface' : 'Class',
+            'dependencyKind' => $this->resolved
+                ? (interface_exists($this->dependency) ? 'Interface' : 'Class')
+                : 'Unresolved',
             'type' => 'service_location',
             'via' => $this->via,
             'file' => $this->file,
             'line' => $this->line,
             'source' => DependencyEdgeSource::Static->value,
         ];
+
+        if (! $this->resolved) {
+            $row['reason'] = $this->reason ?? ServiceLocationCallDetector::UNRESOLVED_REASON;
+        }
+
+        return $row;
     }
 }

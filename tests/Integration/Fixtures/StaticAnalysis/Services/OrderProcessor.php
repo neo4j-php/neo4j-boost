@@ -20,11 +20,4 @@ final class OrderProcessor
     {
         App::make(PaymentGateway::class);
     }
-
-    public function skipDynamicLocator(string $abstract): void
-    {
-        app($abstract);
-        resolve($abstract);
-        App::make($abstract);
-    }
 }

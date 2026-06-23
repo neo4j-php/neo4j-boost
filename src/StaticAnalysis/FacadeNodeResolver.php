@@ -75,7 +75,7 @@ final class FacadeNodeResolver
 
     private function isServiceLocationAppMake(string $facadeClass, string $method): bool
     {
-        return $method === 'make'
+        return in_array($method, ['make', 'makeWith'], true)
             && ($facadeClass === App::class || $facadeClass === 'App');
     }
 }
