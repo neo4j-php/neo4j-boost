@@ -3,7 +3,6 @@
 namespace Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers;
 
 use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controller;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Http\Requests\StorePostRequest;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\PodcastParser;
 

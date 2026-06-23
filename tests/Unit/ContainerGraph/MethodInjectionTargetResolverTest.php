@@ -23,6 +23,15 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['index', 'store'], $methods);
     }
 
+    public function test_laravel_skeleton_controller_without_routing_base_exposes_actions(): void
+    {
+        $methods = $this->resolver->methodsForClass(
+            new ReflectionClass(Fixtures\Http\Controllers\BillingPostController::class),
+        );
+
+        $this->assertSame(['index', 'store'], $methods);
+    }
+
     public function test_command_job_listener_and_middleware_resolve_handle(): void
     {
         $this->assertSame(['handle'], $this->resolver->methodsForClass(new ReflectionClass(Fixtures\MethodInjectionCommand::class)));

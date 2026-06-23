@@ -56,7 +56,36 @@ final class MethodInjectionTargetResolver
 
     private function isController(ReflectionClass $class): bool
     {
-        return $class->isSubclassOf(Controller::class);
+        if ($class->isAbstract() || $class->getShortName() === 'Controller') {
+            return false;
+        }
+
+        if ($class->isSubclassOf(Controller::class)) {
+            return true;
+        }
+
+        // Laravel 11+ skeleton: App\Http\Controllers\Controller does not extend
+        // Illuminate\Routing\Controller. Match concrete classes under Http\Controllers.
+        if (str_contains($class->getName(), '\\Http\\Controllers\\') && $class->getParentClass() !== false) {
+            return true;
+        }
+
+        return $this->extendsSkeletonControllerBase($class);
+    }
+
+    private function extendsSkeletonControllerBase(ReflectionClass $class): bool
+    {
+        $parent = $class->getParentClass();
+        while ($parent !== false) {
+            if ($parent->getShortName() === 'Controller'
+                && str_contains($parent->getName(), '\\Controllers\\')) {
+                return true;
+            }
+
+            $parent = $parent->getParentClass();
+        }
+
+        return false;
     }
 
     private function isMiddleware(ReflectionClass $class): bool
