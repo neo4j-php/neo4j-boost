@@ -297,7 +297,25 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 }
 ```
 
-The command summary includes separate counts: `Static service_location edges` and `Static facade edges`.
+The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, and `Static global_helper edges`.
+
+#### Global helper calls (SOFT-47)
+
+Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. `config()` and `env()` are tracked with **low** confidence when the first argument is a string literal (e.g. `config('app.name')` → identifier `config.app.name`).
+
+**Output shape:**
+
+```json
+{
+  "type": "global_helper",
+  "helper": "cache",
+  "confidence": "high",
+  "via": "cache",
+  "file": "/path/GlobalHelperWorker.php",
+  "line": 9,
+  "source": "static"
+}
+```
 
 **POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
 
