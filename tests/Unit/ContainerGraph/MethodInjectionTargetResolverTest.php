@@ -26,7 +26,7 @@ class MethodInjectionTargetResolverTest extends TestCase
     public function test_laravel_skeleton_controller_without_routing_base_exposes_actions(): void
     {
         $methods = $this->resolver->methodsForClass(
-            new ReflectionClass(Fixtures\Http\Controllers\BillingPostController::class),
+            new ReflectionClass(Fixtures\Http\Controllers\SkeletonPostController::class),
         );
 
         $this->assertSame(['index', 'store'], $methods);

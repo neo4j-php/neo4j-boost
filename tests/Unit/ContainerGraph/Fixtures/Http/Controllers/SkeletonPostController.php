@@ -2,7 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Http\Controllers;
 
-final class BillingPostController extends Controller
+final class SkeletonPostController extends Controller
 {
     public function store(): void {}
 
