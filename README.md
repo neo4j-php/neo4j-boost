@@ -328,7 +328,10 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 
 - **Controllers** — public action methods (excluding magic methods)
 - **Jobs, commands, listeners** — `handle()`
-- **Middleware** — `handle()` (typed dependencies after `$request` / `$next`; `Closure` is skipped)
+- **Middleware** — `handle()` container dependencies only (`Request`, `Response`, `Closure` are skipped)
+- **Listeners** — `handle()` skips the first parameter (event payload from the dispatcher)
+
+Entry points are discovered via namespace/suffix heuristics (`Http\Controllers`, `Jobs`, `Listeners`, `Middleware`, etc.). `file` / `line` on `DEPENDS_ON` point to the **method declaration**, not individual parameters.
 
 Form requests and other typed parameters become `DEPENDS_ON` edges with `type: method_injection`, plus `method` and `parameter` on the relationship. Constructor-only reflection misses these; method injection closes that gap.
 
