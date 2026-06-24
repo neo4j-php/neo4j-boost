@@ -4,11 +4,11 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationCallDetector;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Providers\ProviderStyleRegistrar;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\DynamicLocatorProcessor;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\ExtendedServiceLocator;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\OrderProcessor;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\PaymentGateway;
-use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Providers\ProviderStyleRegistrar;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\TestCase;
 

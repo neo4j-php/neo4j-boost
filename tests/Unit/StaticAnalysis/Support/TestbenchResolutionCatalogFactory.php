@@ -10,6 +10,8 @@ final class TestbenchResolutionCatalogFactory
 {
     private static ?ResolutionCatalog $catalog = null;
 
+    private static ?TestCase $bootstrapCase = null;
+
     public static function create(): ResolutionCatalog
     {
         if (self::$catalog !== null) {
@@ -26,10 +28,30 @@ final class TestbenchResolutionCatalogFactory
 
                 return $this->app->make(ResolutionCatalog::class);
             }
+
+            public function shutdown(): void
+            {
+                $this->tearDown();
+            }
         };
 
+        self::$bootstrapCase = $case;
         self::$catalog = $case->bootstrapCatalog();
 
         return self::$catalog;
+    }
+
+    public static function reset(): void
+    {
+        if (self::$bootstrapCase === null) {
+            return;
+        }
+
+        if (method_exists(self::$bootstrapCase, 'shutdown')) {
+            self::$bootstrapCase->shutdown();
+        }
+
+        self::$bootstrapCase = null;
+        self::$catalog = null;
     }
 }

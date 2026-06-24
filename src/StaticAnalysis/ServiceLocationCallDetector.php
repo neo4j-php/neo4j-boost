@@ -226,7 +226,7 @@ final class ServiceLocationCallDetector
         $type = $scope->getType($receiver);
 
         foreach (self::APPLICATION_CLASS_NAMES as $applicationClass) {
-            if ($type->isInstanceOf(new ObjectType($applicationClass))->yes()) {
+            if ((new ObjectType($applicationClass))->isSuperTypeOf($type)->yes()) {
                 return true;
             }
         }
