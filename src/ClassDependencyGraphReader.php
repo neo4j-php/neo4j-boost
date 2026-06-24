@@ -241,7 +241,7 @@ CYPHER,
 MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
-       d.type AS injection_type, d.method AS method, d.parameter AS parameter
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -260,7 +260,7 @@ CYPHER,
 MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier {name: $identifier})
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
-       d.type AS injection_type, d.method AS method, d.parameter AS parameter
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
 ORDER BY i.name ASC
 CYPHER,
             ['identifier' => $identifier],
@@ -315,6 +315,11 @@ CYPHER,
             $parameter = (string) $record->get('parameter');
             if ($parameter !== '') {
                 $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
             }
 
             $entries[] = $entry;
@@ -374,6 +379,11 @@ CYPHER,
             $parameter = (string) $record->get('parameter');
             if ($parameter !== '') {
                 $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
             }
 
             $entries[] = $entry;
