@@ -37,7 +37,6 @@ final class MethodInjectionExtractor
     public function extract(array $classes): array
     {
         $dependencyRows = [];
-        $unresolvedRows = [];
 
         foreach ($classes as $className) {
             try {
@@ -46,29 +45,26 @@ final class MethodInjectionExtractor
                 continue;
             }
 
+            $isMiddleware = $this->targetResolver->isMiddleware($reflection);
+            $isListener = $this->targetResolver->isListener($reflection);
+
             foreach ($this->targetResolver->methodsForClass($reflection) as $methodName) {
                 $method = $reflection->getMethod($methodName);
                 $file = (string) ($method->getFileName() ?: '');
                 $line = (int) $method->getStartLine();
+                $isHandle = $methodName === 'handle';
 
-                foreach ($method->getParameters() as $parameter) {
+                foreach ($method->getParameters() as $index => $parameter) {
+                    if ($isListener && $isHandle && $index === 0) {
+                        continue;
+                    }
+
                     [$name, $kind] = $this->parameterResolver->resolve($parameter);
                     if ($name === null) {
                         continue;
                     }
 
-                    $parameterName = $parameter->getName();
-
-                    if ($kind === 'UnresolvedDependency') {
-                        $unresolvedRows[] = [
-                            'class' => $className,
-                            'name' => $name,
-                            'reason' => 'unresolved',
-                            'type' => DependsOnType::MethodInjection->value,
-                            'method' => $methodName,
-                            'parameter' => $parameterName,
-                        ];
-
+                    if ($isMiddleware && $isHandle && $this->parameterResolver->isMiddlewareFrameworkType($name)) {
                         continue;
                     }
 
@@ -78,7 +74,7 @@ final class MethodInjectionExtractor
                         'dependencyKind' => $kind,
                         'type' => DependsOnType::MethodInjection->value,
                         'method' => $methodName,
-                        'parameter' => $parameterName,
+                        'parameter' => $parameter->getName(),
                         'source' => '',
                         'via' => '',
                         'file' => $file,
@@ -88,6 +84,6 @@ final class MethodInjectionExtractor
             }
         }
 
-        return [$dependencyRows, $unresolvedRows];
+        return [$dependencyRows, []];
     }
 }

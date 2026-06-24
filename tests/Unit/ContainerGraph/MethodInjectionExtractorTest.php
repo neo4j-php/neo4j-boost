@@ -3,13 +3,16 @@
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph;
 
 use Closure;
+use Illuminate\Http\Request;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionTargetResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PostController;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Http\Requests\StorePostRequest;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Listeners\OrderShippedListener;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\VerifyJsonApi;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\PodcastParser;
@@ -29,6 +32,7 @@ class MethodInjectionExtractorTest extends TestCase
             PostController::class,
             ProcessInvoiceJob::class,
             VerifyJsonApi::class,
+            OrderShippedListener::class,
         ]);
 
         $storeFormRequest = $this->findRow($rows, PostController::class, StorePostRequest::class);
@@ -53,6 +57,13 @@ class MethodInjectionExtractorTest extends TestCase
         $this->assertSame('verifier', $middlewareVerifier['parameter']);
 
         $this->assertNull($this->findRow($rows, VerifyJsonApi::class, Closure::class));
+        $this->assertNull($this->findRow($rows, VerifyJsonApi::class, Request::class));
+        $this->assertNull($this->findRow($rows, OrderShippedListener::class, OrderShipped::class));
+
+        $listenerLogger = $this->findRow($rows, OrderShippedListener::class, Logger::class);
+        $this->assertNotNull($listenerLogger);
+        $this->assertSame('handle', $listenerLogger['method']);
+        $this->assertSame('logger', $listenerLogger['parameter']);
     }
 
     /**

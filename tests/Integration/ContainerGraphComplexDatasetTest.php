@@ -2,12 +2,14 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Commands\SyncReportsCommand;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\ComplexContainerRegistry;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Contracts\EventPusherInterface;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PostController;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Http\Requests\StorePostRequest;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Listeners\OrderShippedListener;
@@ -151,6 +153,12 @@ class ContainerGraphComplexDatasetTest extends TestCase
             'logger',
         );
         $this->assertNotNull($listenerLogger);
+        $this->assertNull($this->graph->findMethodInjectionChain(
+            OrderShippedListener::class,
+            OrderShipped::class,
+            'handle',
+            'event',
+        ));
 
         $middlewareVerifier = $this->graph->findMethodInjectionChain(
             VerifyJsonApi::class,
@@ -159,6 +167,12 @@ class ContainerGraphComplexDatasetTest extends TestCase
             'verifier',
         );
         $this->assertNotNull($middlewareVerifier);
+        $this->assertNull($this->graph->findMethodInjectionChain(
+            VerifyJsonApi::class,
+            Request::class,
+            'handle',
+            'request',
+        ));
     }
 
     public function test_container_graph_dry_run_does_not_write_graph(): void

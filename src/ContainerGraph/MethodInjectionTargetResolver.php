@@ -88,7 +88,7 @@ final class MethodInjectionTargetResolver
         return false;
     }
 
-    private function isMiddleware(ReflectionClass $class): bool
+    public function isMiddleware(ReflectionClass $class): bool
     {
         if (interface_exists('Illuminate\Contracts\Http\Middleware\Middleware')
             && $class->implementsInterface('Illuminate\Contracts\Http\Middleware\Middleware')) {
@@ -116,7 +116,7 @@ final class MethodInjectionTargetResolver
         return str_contains($class->getName(), '\\Jobs\\');
     }
 
-    private function isListener(ReflectionClass $class): bool
+    public function isListener(ReflectionClass $class): bool
     {
         if ($this->isConsoleCommand($class) || $this->isController($class) || $this->isJob($class)) {
             return false;

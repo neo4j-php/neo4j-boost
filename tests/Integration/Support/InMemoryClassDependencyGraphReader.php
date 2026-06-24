@@ -266,13 +266,39 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
             $access = DependencyAccessType::assertAllowed($row['access']);
 
-            $entries[] = [
+            $entry = [
                 'name' => $row['instance'],
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => $row['lifetime'],
             ];
+
+            if (($row['via'] ?? '') !== '') {
+                $entry['via'] = $row['via'];
+            }
+
+            if (($row['file'] ?? '') !== '') {
+                $entry['file'] = $row['file'];
+            }
+
+            if (($row['line'] ?? 0) > 0) {
+                $entry['line'] = $row['line'];
+            }
+
+            if (($row['injection_type'] ?? '') !== '') {
+                $entry['type'] = $row['injection_type'];
+            }
+
+            if (($row['method'] ?? '') !== '') {
+                $entry['method'] = $row['method'];
+            }
+
+            if (($row['parameter'] ?? '') !== '') {
+                $entry['parameter'] = $row['parameter'];
+            }
+
+            $entries[] = $entry;
         }
 
         return $entries;

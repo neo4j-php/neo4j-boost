@@ -12,6 +12,15 @@ use ReflectionUnionType;
  */
 final class ParameterDependencyResolver
 {
+    /** @var list<string> */
+    private const MIDDLEWARE_FRAMEWORK_TYPES = [
+        Closure::class,
+        'Illuminate\Http\Request',
+        'Illuminate\Http\Response',
+        'Symfony\Component\HttpFoundation\Request',
+        'Symfony\Component\HttpFoundation\Response',
+    ];
+
     /**
      * @return array{0: ?string, 1: string, 2: ?string}
      */
@@ -50,6 +59,11 @@ final class ParameterDependencyResolver
     public function shouldSkipType(string $typeName): bool
     {
         return $typeName === Closure::class;
+    }
+
+    public function isMiddlewareFrameworkType(string $typeName): bool
+    {
+        return in_array($typeName, self::MIDDLEWARE_FRAMEWORK_TYPES, true);
     }
 
     private function classNameFromUnionType(ReflectionUnionType $type): ?string
