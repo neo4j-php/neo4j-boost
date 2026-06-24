@@ -110,4 +110,24 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('no_type_hint', $chain['reason']);
         $this->assertSame('unresolved', $chain['via']);
     }
+
+    public function test_global_helper_row_sets_helper_and_dependency_key(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Services\\Worker',
+            'dependency' => 'cache',
+            'dependencyKind' => 'Alias',
+            'type' => DependsOnType::GlobalHelper->value,
+            'helper' => 'cache',
+            'via' => 'cache',
+            'file' => 'app/Services/Worker.php',
+            'line' => 10,
+        ], []);
+
+        $this->assertSame('global_helper', $chain['access']);
+        $this->assertSame('global_helper|cache|cache', $chain['dependency_key']);
+        $this->assertSame(DependsOnType::GlobalHelper->value, $chain['injection_type']);
+        $this->assertSame('cache', $chain['helper']);
+        $this->assertSame('cache', $chain['via']);
+    }
 }

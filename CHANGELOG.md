@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **SOFT-46:** Method injection detection for controllers, jobs, commands, listeners, and middleware. `container:graph` emits `DEPENDS_ON` edges with `type: method_injection`, `method`, and `parameter` (includes Form Request types on controller actions).
+- **SOFT-47:** Static scan for Laravel global helper usage (`cache`, `auth`, `view`, `response`, `redirect`, `route`, `event`, `dispatch`, `logger`, `session`, `config`, `env`). Exports `DEPENDS_ON` edges with `type: global_helper` and `helper`.
 
 ## [0.1.0] - 2026-04-29
 

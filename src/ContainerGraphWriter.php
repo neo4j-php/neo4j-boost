@@ -64,7 +64,8 @@ SET d.file = row.file,
     d.via = row.via,
     d.type = row.injection_type,
     d.method = row.method,
-    d.parameter = row.parameter
+    d.parameter = row.parameter,
+    d.helper = coalesce(row.helper, '')
 CYPHER;
 
     public function __construct(

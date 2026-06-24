@@ -18,7 +18,7 @@ final class DependencyChainBuilder
 
     /**
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
-     * @param  array{class: string, dependency: string, dependencyKind: string, type: string, method?: string, parameter?: string, source?: string, via?: string, file?: string, line?: int}  $row
+     * @param  array{class: string, dependency: string, dependencyKind: string, type: string, method?: string, parameter?: string, source?: string, via?: string, file?: string, line?: int, helper?: string}  $row
      * @return array{
      *     instance: string,
      *     dependency_key: string,
@@ -31,7 +31,8 @@ final class DependencyChainBuilder
      *     parameter: string,
      *     via: string,
      *     file: string,
-     *     line: int
+     *     line: int,
+     *     helper?: string
      * }
      */
     public function fromExtractedDependencyRow(array $row, array $bindings): array
@@ -42,8 +43,9 @@ final class DependencyChainBuilder
         $identifierKind = (string) ($row['dependencyKind'] ?? $this->kindForIdentifier($identifier));
         $method = (string) ($row['method'] ?? '');
         $parameter = (string) ($row['parameter'] ?? '');
+        $helper = (string) ($row['helper'] ?? '');
 
-        return $this->chain(
+        $chain = $this->chain(
             instance: (string) $row['class'],
             access: $access,
             identifier: $identifier,
@@ -55,7 +57,14 @@ final class DependencyChainBuilder
             via: (string) ($row['via'] ?? ''),
             file: (string) ($row['file'] ?? ''),
             line: (int) ($row['line'] ?? 0),
+            helper: $helper,
         );
+
+        if ($helper !== '') {
+            $chain['helper'] = $helper;
+        }
+
+        return $chain;
     }
 
     /**
@@ -161,10 +170,11 @@ final class DependencyChainBuilder
         string $via,
         string $file,
         int $line,
+        string $helper = '',
     ): array {
         return [
             'instance' => $instance,
-            'dependency_key' => $this->dependencyKey($access, $identifier, $injectionType, $method, $parameter),
+            'dependency_key' => $this->dependencyKey($access, $identifier, $injectionType, $method, $parameter, $helper),
             'access' => $access->value,
             'identifier' => $identifier,
             'identifier_kind' => $identifierKind,
@@ -184,9 +194,14 @@ final class DependencyChainBuilder
         string $injectionType,
         string $method,
         string $parameter,
+        string $helper = '',
     ): string {
         if ($injectionType === DependsOnType::MethodInjection->value) {
             return $access->value.'|'.$identifier.'|'.$method.'|'.$parameter;
+        }
+
+        if ($injectionType === DependsOnType::GlobalHelper->value && $helper !== '') {
+            return $access->value.'|'.$identifier.'|'.$helper;
         }
 
         return $access->value.'|'.$identifier;
