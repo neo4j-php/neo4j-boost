@@ -297,7 +297,7 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 }
 ```
 
-The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, and `Static global_helper edges`.
+The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
 
 #### Global helper calls (SOFT-47)
 
@@ -312,6 +312,22 @@ Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `re
   "via": "cache",
   "file": "/path/GlobalHelperWorker.php",
   "line": 9,
+  "source": "static"
+}
+```
+
+#### Direct instantiation (SOFT-48)
+
+Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`), dynamic class expressions (`new $variable()`), and PHP internal classes (`DateTime`, `stdClass`, etc.) are skipped.
+
+**Output shape:**
+
+```json
+{
+  "type": "instantiation",
+  "via": "new App\\Services\\PaymentGateway",
+  "file": "/path/DirectInstantiator.php",
+  "line": 11,
   "source": "static"
 }
 ```
@@ -378,9 +394,9 @@ The command summary includes `Method injection edges: N`.
 **Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
-- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `service_location`, etc.
-- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
+- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
 - Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)

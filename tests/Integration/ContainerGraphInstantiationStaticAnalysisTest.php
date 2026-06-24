@@ -40,7 +40,7 @@ class ContainerGraphInstantiationStaticAnalysisTest extends TestCase
         );
         $this->assertNotNull($serviceEdge);
         $this->assertSame('di', $serviceEdge['access']);
-        $this->assertSame('instantiation', $serviceEdge['depends_on_type'] ?? null);
+        $this->assertSame('instantiation', $serviceEdge['injection_type'] ?? null);
         $this->assertSame('new '.PaymentGateway::class, $serviceEdge['via']);
         $this->assertStringContainsString('DirectInstantiator.php', $serviceEdge['file']);
         $this->assertGreaterThan(0, $serviceEdge['line']);
@@ -50,7 +50,7 @@ class ContainerGraphInstantiationStaticAnalysisTest extends TestCase
             InvoiceLineDto::class,
         );
         $this->assertNotNull($dtoEdge);
-        $this->assertSame('instantiation', $dtoEdge['depends_on_type'] ?? null);
+        $this->assertSame('instantiation', $dtoEdge['injection_type'] ?? null);
     }
 
     public function test_static_scan_paths_can_be_disabled(): void
