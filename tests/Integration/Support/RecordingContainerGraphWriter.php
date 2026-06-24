@@ -21,7 +21,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     public array $bindingRows = [];
 
-    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}> */
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, reason?: string}> */
     public array $dependencyChainRows = [];
 
     public function connect(): void
@@ -32,7 +32,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /**
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
     public function write(array $instanceRows, array $bindingRows, array $dependencyChainRows): void
     {
@@ -90,6 +90,28 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             if (($row['instance'] ?? '') === ''
                 && ($row['access'] ?? '') === 'facade'
                 && ($row['via'] ?? '') === $facadeClass) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, reason?: string}
+     */
+    public function findMethodInjectionChain(
+        string $instance,
+        string $identifier,
+        string $method,
+        string $parameter,
+    ): ?array {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] === $instance
+                && $row['identifier'] === $identifier
+                && ($row['method'] ?? '') === $method
+                && ($row['parameter'] ?? '') === $parameter
+            ) {
                 return $row;
             }
         }
