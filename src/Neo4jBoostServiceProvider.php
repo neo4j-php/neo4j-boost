@@ -34,6 +34,8 @@ use Neo4j\LaravelBoost\ResolutionCatalog\LaravelFirstPartyFacadeCatalog;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\GlobalHelperEdgeFinder;
+use Neo4j\LaravelBoost\StaticAnalysis\InstantiationBuiltinFilter;
+use Neo4j\LaravelBoost\StaticAnalysis\InstantiationEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
@@ -62,6 +64,8 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(FacadeEdgeFinder::class);
         $this->app->singleton(GlobalHelperCatalog::class);
         $this->app->singleton(GlobalHelperEdgeFinder::class);
+        $this->app->singleton(InstantiationBuiltinFilter::class);
+        $this->app->singleton(InstantiationEdgeFinder::class);
         $this->app->singleton(BindingLifetimeResolver::class);
         $this->app->singleton(ContextualGiveResolver::class);
         $this->app->singleton(ContextualBindingExtractor::class);
