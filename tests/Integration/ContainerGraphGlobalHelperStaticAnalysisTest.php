@@ -35,15 +35,13 @@ class ContainerGraphGlobalHelperStaticAnalysisTest extends TestCase
         $cacheEdge = $this->findGlobalHelperEdge('cache');
         $this->assertNotNull($cacheEdge);
         $this->assertSame('global_helper', $cacheEdge['access']);
-        $this->assertSame('global_helper', $cacheEdge['depends_on_type'] ?? null);
+        $this->assertSame('global_helper', $cacheEdge['injection_type'] ?? null);
         $this->assertSame('cache', $cacheEdge['helper'] ?? null);
-        $this->assertSame('high', $cacheEdge['confidence'] ?? null);
         $this->assertSame(GlobalHelperWorker::class, $cacheEdge['instance']);
         $this->assertStringContainsString('GlobalHelperWorker.php', $cacheEdge['file']);
 
         $configEdge = $this->findGlobalHelperEdge('config');
         $this->assertNotNull($configEdge);
-        $this->assertSame('low', $configEdge['confidence'] ?? null);
         $this->assertSame('config.app.name', $configEdge['identifier']);
     }
 
@@ -59,7 +57,7 @@ class ContainerGraphGlobalHelperStaticAnalysisTest extends TestCase
     }
 
     /**
-     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, depends_on_type?: string, helper?: string, confidence?: string}
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type?: string, via: string, file: string, line: int, helper?: string}
      */
     private function findGlobalHelperEdge(string $helper): ?array
     {

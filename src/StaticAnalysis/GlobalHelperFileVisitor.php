@@ -89,7 +89,6 @@ final class GlobalHelperFileVisitor extends NodeVisitorAbstract
             class: $this->currentClass,
             dependency: $resolution['abstract'],
             helper: $resolution['helper'],
-            confidence: $resolution['confidence'],
             file: $this->file,
             line: $node->getStartLine(),
         );

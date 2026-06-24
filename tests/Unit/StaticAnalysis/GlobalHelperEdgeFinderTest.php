@@ -2,7 +2,6 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit\StaticAnalysis;
 
-use Neo4j\LaravelBoost\ResolutionCatalog\GlobalHelperConfidence;
 use Neo4j\LaravelBoost\StaticAnalysis\GlobalHelperEdgeFinder;
 use Neo4j\LaravelBoost\Tests\TestCase;
 
@@ -17,7 +16,7 @@ class GlobalHelperEdgeFinderTest extends TestCase
         $this->finder = $this->app->make(GlobalHelperEdgeFinder::class);
     }
 
-    public function test_scan_source_finds_high_confidence_helpers(): void
+    public function test_scan_source_finds_container_bound_helpers(): void
     {
         $edges = $this->finder->scanSource(<<<'PHP'
 <?php
@@ -41,10 +40,9 @@ PHP);
         $this->assertContains('auth', $helpers);
         $this->assertContains('session', $helpers);
         $this->assertCount(3, $edges);
-        $this->assertTrue($edges[0]->confidence === GlobalHelperConfidence::High);
     }
 
-    public function test_scan_source_finds_low_confidence_config_and_env_with_literal_keys(): void
+    public function test_scan_source_finds_config_and_env_with_literal_keys(): void
     {
         $edges = $this->finder->scanSource(<<<'PHP'
 <?php
@@ -66,11 +64,9 @@ PHP);
         $env = collect($edges)->firstWhere('helper', 'env');
 
         $this->assertNotNull($config);
-        $this->assertSame(GlobalHelperConfidence::Low, $config->confidence);
         $this->assertSame('config.database.default', $config->dependency);
 
         $this->assertNotNull($env);
-        $this->assertSame(GlobalHelperConfidence::Low, $env->confidence);
         $this->assertSame('env.APP_ENV', $env->dependency);
     }
 

@@ -301,7 +301,7 @@ The command summary includes separate counts: `Static service_location edges`, `
 
 #### Global helper calls (SOFT-47)
 
-Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. `config()` and `env()` are tracked with **low** confidence when the first argument is a string literal (e.g. `config('app.name')` → identifier `config.app.name`).
+Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
 
 **Output shape:**
 
@@ -309,7 +309,6 @@ Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `re
 {
   "type": "global_helper",
   "helper": "cache",
-  "confidence": "high",
   "via": "cache",
   "file": "/path/GlobalHelperWorker.php",
   "line": 9,

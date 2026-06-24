@@ -8,7 +8,7 @@ namespace Neo4j\LaravelBoost\ResolutionCatalog;
 final class GlobalHelperCatalog
 {
     /** @var array<string, string> */
-    private const HIGH_CONFIDENCE_BINDING_KEYS = [
+    private const BINDING_KEYS = [
         'cache' => 'cache',
         'auth' => 'auth',
         'view' => 'view',
@@ -22,7 +22,7 @@ final class GlobalHelperCatalog
     ];
 
     /** @var list<string> */
-    private const LOW_CONFIDENCE_HELPERS = [
+    private const LITERAL_KEY_HELPERS = [
         'config',
         'env',
     ];
@@ -31,39 +31,22 @@ final class GlobalHelperCatalog
         private ContainerBindingAbstractResolver $abstractResolver,
     ) {}
 
-    /**
-     * @return list<string>
-     */
-    public function highConfidenceHelpers(): array
-    {
-        return array_keys(self::HIGH_CONFIDENCE_BINDING_KEYS);
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function lowConfidenceHelpers(): array
-    {
-        return self::LOW_CONFIDENCE_HELPERS;
-    }
-
     public function isTrackedHelper(string $helper): bool
     {
-        return isset(self::HIGH_CONFIDENCE_BINDING_KEYS[$helper])
-            || in_array($helper, self::LOW_CONFIDENCE_HELPERS, true);
+        return isset(self::BINDING_KEYS[$helper])
+            || in_array($helper, self::LITERAL_KEY_HELPERS, true);
     }
 
-    public function isLowConfidence(string $helper): bool
+    public function usesLiteralKey(string $helper): bool
     {
-        return in_array($helper, self::LOW_CONFIDENCE_HELPERS, true);
+        return in_array($helper, self::LITERAL_KEY_HELPERS, true);
     }
 
     /**
      * @return array{
      *     helper: string,
      *     binding_key: string,
-     *     abstract: string,
-     *     confidence: GlobalHelperConfidence
+     *     abstract: string
      * }
      */
     public function resolve(string $helper, ?string $literalKey = null): ?array
@@ -72,7 +55,7 @@ final class GlobalHelperCatalog
             return null;
         }
 
-        if ($this->isLowConfidence($helper)) {
+        if ($this->usesLiteralKey($helper)) {
             $bindingKey = $literalKey !== null && $literalKey !== ''
                 ? $helper.'.'.$literalKey
                 : $helper;
@@ -81,17 +64,15 @@ final class GlobalHelperCatalog
                 'helper' => $helper,
                 'binding_key' => $bindingKey,
                 'abstract' => $bindingKey,
-                'confidence' => GlobalHelperConfidence::Low,
             ];
         }
 
-        $bindingKey = self::HIGH_CONFIDENCE_BINDING_KEYS[$helper];
+        $bindingKey = self::BINDING_KEYS[$helper];
 
         return [
             'helper' => $helper,
             'binding_key' => $bindingKey,
             'abstract' => $this->abstractResolver->resolveForBindingKey($bindingKey),
-            'confidence' => GlobalHelperConfidence::High,
         ];
     }
 }

@@ -336,7 +336,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int, helper: string, confidence: string}>
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int, helper: string}>
      */
     private function extractStaticGlobalHelperRows(): array
     {

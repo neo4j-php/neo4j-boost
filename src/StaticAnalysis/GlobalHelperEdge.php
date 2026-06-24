@@ -2,7 +2,6 @@
 
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
-use Neo4j\LaravelBoost\ResolutionCatalog\GlobalHelperConfidence;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 
 /**
@@ -10,11 +9,13 @@ use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
  */
 final readonly class GlobalHelperEdge
 {
+    /** @var list<string> */
+    private const LITERAL_KEY_HELPERS = ['config', 'env'];
+
     public function __construct(
         public string $class,
         public string $dependency,
         public string $helper,
-        public GlobalHelperConfidence $confidence,
         public string $file,
         public int $line,
     ) {}
@@ -26,7 +27,6 @@ final readonly class GlobalHelperEdge
      *     dependencyKind: string,
      *     type: string,
      *     helper: string,
-     *     confidence: string,
      *     via: string,
      *     file: string,
      *     line: int,
@@ -41,7 +41,6 @@ final readonly class GlobalHelperEdge
             'dependencyKind' => $this->dependencyKind(),
             'type' => DependsOnType::GlobalHelper->value,
             'helper' => $this->helper,
-            'confidence' => $this->confidence->value,
             'via' => $this->helper,
             'file' => $this->file,
             'line' => $this->line,
@@ -51,7 +50,7 @@ final readonly class GlobalHelperEdge
 
     private function dependencyKind(): string
     {
-        if ($this->confidence === GlobalHelperConfidence::Low) {
+        if (in_array($this->helper, self::LITERAL_KEY_HELPERS, true)) {
             return 'Alias';
         }
 
