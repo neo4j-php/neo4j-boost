@@ -177,6 +177,9 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->assertIsArray($podcastParserDependency);
         $this->assertSame('di', $podcastParserDependency['access']);
         $this->assertSame('bind', $podcastParserDependency['lifetime']);
+        $this->assertSame('reflection', $podcastParserDependency['source']);
+        $this->assertSame('high', $podcastParserDependency['confidence']);
+        $this->assertSame('reflection', $podcastParserDependency['provenance']);
 
         $bindingPayload = $this->callTool([
             'class' => RedisEventPusher::class,
@@ -184,6 +187,20 @@ class GetClassDependencyGraphToolTest extends TestCase
         ]);
 
         $this->assertSame('singleton', $bindingPayload['binding']['type'] ?? null);
+        $this->assertSame('catalog', $bindingPayload['binding']['source'] ?? null);
+        $this->assertSame('high', $bindingPayload['binding']['confidence'] ?? null);
+        $this->assertSame('container_binding', $bindingPayload['binding']['provenance'] ?? null);
+    }
+
+    public function test_tool_includes_graph_completeness_for_known_class(): void
+    {
+        $payload = $this->callTool([
+            'class' => Transistor::class,
+            'direction' => 'outbound',
+        ]);
+
+        $this->assertSame('partial', $payload['graph_completeness']['status'] ?? null);
+        $this->assertNotEmpty($payload['graph_completeness']['limitations'] ?? []);
     }
 
     /**
