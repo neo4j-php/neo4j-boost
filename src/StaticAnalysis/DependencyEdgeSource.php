@@ -3,9 +3,11 @@
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
 /**
- * Provenance for edges discovered by PHPStan static analysis (SOFT-43 POC).
+ * High-level discovery source for dependency graph edges (SOFT-51).
  */
 enum DependencyEdgeSource: string
 {
+    case Reflection = 'reflection';
     case Static = 'static';
+    case Catalog = 'catalog';
 }
