@@ -2,9 +2,12 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Neo4j\LaravelBoost\StaticAnalysis\DependencyEdgeSource;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeConfidence;
+use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeProvenance;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 
 class ContainerGraphWriter
@@ -35,7 +38,11 @@ WITH row
 MATCH (a:Abstract {name: row.abstract})
 MATCH (c:Abstract {name: row.concrete})
 MERGE (a)-[r:BINDS_TO]->(c)
-SET r.type = row.type
+SET r.type = row.type,
+    r.source = row.source,
+    r.confidence = row.confidence,
+    r.provenance = row.provenance,
+    r.remarks = coalesce(row.remarks, '')
 CYPHER;
 
     private const CYPHER_INSTANCES = <<<'CYPHER'
@@ -65,7 +72,11 @@ SET d.file = row.file,
     d.type = row.injection_type,
     d.method = row.method,
     d.parameter = row.parameter,
-    d.helper = coalesce(row.helper, '')
+    d.helper = coalesce(row.helper, ''),
+    d.source = row.source,
+    d.confidence = row.confidence,
+    d.provenance = row.provenance,
+    d.remarks = coalesce(row.remarks, '')
 CYPHER;
 
     private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
@@ -91,8 +102,8 @@ CYPHER;
 
     /**
      * @param  array<int, array{class: string}>  $instanceRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
     public function write(
@@ -143,17 +154,20 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
      */
     private function validateBindingRows(array $bindingRows): void
     {
         foreach ($bindingRows as $row) {
             BindsToType::assertAllowed((string) ($row['type'] ?? ''));
+            DependencyEdgeSource::from((string) ($row['source'] ?? ''));
+            DependencyEdgeConfidence::assertAllowed((string) ($row['confidence'] ?? ''));
+            DependencyEdgeProvenance::assertAllowed((string) ($row['provenance'] ?? ''));
         }
     }
 
     /**
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
      */
     private function validateDependencyChainRows(array $dependencyChainRows): void
     {
@@ -161,7 +175,11 @@ CYPHER;
             DependencyAccessType::assertAllowed((string) ($row['access'] ?? ''));
             ResolvesToLifetime::assertAllowed((string) ($row['lifetime'] ?? ''));
 
-            foreach (['dependency_key', 'identifier', 'identifier_kind', 'via', 'file', 'injection_type', 'method', 'parameter'] as $key) {
+            DependencyEdgeSource::from((string) ($row['source'] ?? ''));
+            DependencyEdgeConfidence::assertAllowed((string) ($row['confidence'] ?? ''));
+            DependencyEdgeProvenance::assertAllowed((string) ($row['provenance'] ?? ''));
+
+            foreach (['dependency_key', 'identifier', 'identifier_kind', 'via', 'file', 'injection_type', 'method', 'parameter', 'source', 'confidence', 'provenance', 'remarks'] as $key) {
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Dependency chain row is missing string {$key}");
                 }
