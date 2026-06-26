@@ -33,7 +33,7 @@ final class CustomFacadeAccessorResolver
             identifier: $facadeClass,
             abstract: $abstract,
             bindsToType: $this->bindingLifetime->forAccessor($containerAbstract),
-            source: ResolutionCatalogSource::CustomFacade,
+            source: ResolutionCatalogSource::AutoDiscoveredFacade,
             bindingKey: $bindingKey,
             facadeClass: $facadeClass,
         );

@@ -32,6 +32,7 @@ use Neo4j\LaravelBoost\ResolutionCatalog\FacadeAccessorParser;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\ResolutionCatalog\GlobalHelperCatalog;
 use Neo4j\LaravelBoost\ResolutionCatalog\LaravelFirstPartyFacadeCatalog;
+use Neo4j\LaravelBoost\ResolutionCatalog\RealTimeFacadeResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\GlobalHelperEdgeFinder;
@@ -81,6 +82,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(ContainerBindingAbstractResolver::class);
         $this->app->singleton(ContainerBindingLifetime::class);
         $this->app->singleton(CustomFacadeAccessorResolver::class);
+        $this->app->singleton(RealTimeFacadeResolver::class);
         $this->app->singleton(ResolutionCatalog::class);
     }
 

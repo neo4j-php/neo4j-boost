@@ -21,7 +21,7 @@ class CustomFacadeAccessorResolverTest extends TestCase
 
         $this->assertNotNull($entry);
         $this->assertSame(CustomAccessorService::class, $entry->abstract);
-        $this->assertSame(ResolutionCatalogSource::CustomFacade, $entry->source);
+        $this->assertSame(ResolutionCatalogSource::AutoDiscoveredFacade, $entry->source);
         $this->assertSame(BindsToType::Singleton, $entry->bindsToType);
     }
 

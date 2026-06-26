@@ -38,6 +38,6 @@ class FacadeCatalogExporterTest extends TestCase
 
         $this->assertNotNull($custom);
         $this->assertSame(CustomAccessorService::class, $custom['abstract']);
-        $this->assertSame(ResolutionCatalogSource::CustomFacade->value, $custom['source']);
+        $this->assertSame(ResolutionCatalogSource::AutoDiscoveredFacade->value, $custom['source']);
     }
 }
