@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomAccessorService;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomClassAccessorFacade;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\RealTime\PaymentGateway;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\InvoiceNotifier;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\TestCase;
@@ -32,7 +33,7 @@ class ContainerGraphFacadeStaticAnalysisTest extends TestCase
     public function test_container_graph_exports_facade_edges_from_static_scan(): void
     {
         $this->artisan('container:graph')
-            ->expectsOutputToContain('Static facade edges: 2')
+            ->expectsOutputToContain('Static facade edges: 3')
             ->expectsOutputToContain('Container graph written to Neo4j successfully.')
             ->assertExitCode(0);
 
@@ -41,15 +42,33 @@ class ContainerGraphFacadeStaticAnalysisTest extends TestCase
         $this->assertSame('facade', $cacheEdge['access']);
         $this->assertStringContainsString('InvoiceNotifier.php', $cacheEdge['file']);
         $this->assertGreaterThan(0, $cacheEdge['line']);
+        $this->assertSame('laravel_facade', $cacheEdge['catalog_source']);
 
         $customEdge = $this->findFacadeEdge(CustomClassAccessorFacade::class.'::handle');
         $this->assertNotNull($customEdge);
         $this->assertSame('facade', $customEdge['access']);
         $this->assertSame(CustomAccessorService::class, $customEdge['identifier']);
+        $this->assertSame('auto_discovered_facade', $customEdge['catalog_source']);
+    }
+
+    public function test_container_graph_exports_real_time_facade_edges(): void
+    {
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Static facade edges: 3')
+            ->assertExitCode(0);
+
+        $realTimeEdge = $this->findFacadeEdge(
+            'Facades\\'.PaymentGateway::class.'::charge',
+        );
+
+        $this->assertNotNull($realTimeEdge);
+        $this->assertSame('facade', $realTimeEdge['access']);
+        $this->assertSame(PaymentGateway::class, $realTimeEdge['identifier']);
+        $this->assertSame('auto_discovered_facade', $realTimeEdge['catalog_source']);
     }
 
     /**
-     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}
+     * @return null|array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, catalog_source: string}
      */
     private function findFacadeEdge(string $via): ?array
     {
