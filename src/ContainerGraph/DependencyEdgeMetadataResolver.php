@@ -50,10 +50,16 @@ final class DependencyEdgeMetadataResolver
                 'remarks' => 'Facade call resolved through the resolution catalog.',
             ],
             DependsOnType::GlobalHelper->value => $this->forGlobalHelperRow($helper),
+            DependsOnType::Instantiation->value => [
+                'source' => DependencyEdgeSource::Static->value,
+                'confidence' => DependencyEdgeConfidence::High->value,
+                'provenance' => DependencyEdgeProvenance::StaticScan->value,
+                'remarks' => 'Direct instantiation (new) found in source; bypasses the container.',
+            ],
             default => [
-                'source' => (string) ($row['source'] ?? DependencyEdgeSource::Reflection->value),
-                'confidence' => DependencyEdgeConfidence::Medium->value,
-                'provenance' => DependencyEdgeProvenance::Reflection->value,
+                'source' => (string) ($row['source'] ?? DependencyEdgeSource::Static->value),
+                'confidence' => DependencyEdgeConfidence::Low->value,
+                'provenance' => DependencyEdgeProvenance::StaticScan->value,
                 'remarks' => '',
             ],
         };

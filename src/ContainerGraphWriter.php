@@ -160,7 +160,7 @@ CYPHER;
     {
         foreach ($bindingRows as $row) {
             BindsToType::assertAllowed((string) ($row['type'] ?? ''));
-            DependencyEdgeSource::from((string) ($row['source'] ?? ''));
+            DependencyEdgeSource::assertAllowed((string) ($row['source'] ?? ''));
             DependencyEdgeConfidence::assertAllowed((string) ($row['confidence'] ?? ''));
             DependencyEdgeProvenance::assertAllowed((string) ($row['provenance'] ?? ''));
         }
@@ -175,7 +175,7 @@ CYPHER;
             DependencyAccessType::assertAllowed((string) ($row['access'] ?? ''));
             ResolvesToLifetime::assertAllowed((string) ($row['lifetime'] ?? ''));
 
-            DependencyEdgeSource::from((string) ($row['source'] ?? ''));
+            DependencyEdgeSource::assertAllowed((string) ($row['source'] ?? ''));
             DependencyEdgeConfidence::assertAllowed((string) ($row['confidence'] ?? ''));
             DependencyEdgeProvenance::assertAllowed((string) ($row['provenance'] ?? ''));
 

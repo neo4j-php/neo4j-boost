@@ -73,6 +73,17 @@ class DependencyEdgeMetadataResolverTest extends TestCase
         $this->assertSame(DependencyEdgeConfidence::High->value, $metadata['confidence']);
     }
 
+    public function test_instantiation_is_high_confidence_static_scan(): void
+    {
+        $metadata = $this->resolver->forExtractedRow([
+            'type' => DependsOnType::Instantiation->value,
+        ]);
+
+        $this->assertSame('static', $metadata['source']);
+        $this->assertSame(DependencyEdgeConfidence::High->value, $metadata['confidence']);
+        $this->assertSame(DependencyEdgeProvenance::StaticScan->value, $metadata['provenance']);
+    }
+
     public function test_unresolved_row_is_low_confidence(): void
     {
         $metadata = $this->resolver->forUnresolvedRow([
