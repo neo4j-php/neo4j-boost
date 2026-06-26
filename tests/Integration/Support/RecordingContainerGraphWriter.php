@@ -24,6 +24,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}> */
     public array $dependencyChainRows = [];
 
+    /** @var array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}> */
+    public array $contextualBindingRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -33,12 +36,18 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
-    public function write(array $instanceRows, array $bindingRows, array $dependencyChainRows): void
-    {
+    public function write(
+        array $instanceRows,
+        array $bindingRows,
+        array $dependencyChainRows,
+        array $contextualBindingRows = [],
+    ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
         $this->dependencyChainRows = $dependencyChainRows;
+        $this->contextualBindingRows = $contextualBindingRows;
     }
 
     /**
@@ -106,5 +115,24 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         }
 
         return false;
+    }
+
+    /**
+     * @return null|array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}
+     */
+    public function findContextualBindingRow(string $when, string $needs, string $give): ?array
+    {
+        foreach ($this->contextualBindingRows as $row) {
+            if ($row['when'] === $when && $row['needs'] === $needs && $row['give'] === $give) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    public function hasContextualBindsEdge(string $when, string $needs, string $give): bool
+    {
+        return $this->findContextualBindingRow($when, $needs, $give) !== null;
     }
 }

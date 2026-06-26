@@ -2,14 +2,19 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\ComplexContainerRegistry;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Contracts\EventPusherInterface;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PhotoController;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\VideoController;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Filter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Firewall;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\NullFilter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\PodcastParser;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\ProfanityFilter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\RedisEventPusher;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Transistor;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
@@ -106,6 +111,51 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertSame('facade|cache', $cacheChain['dependency_key']);
     }
 
+    public function test_complex_dataset_exports_contextual_bindings_for_storage_disks(): void
+    {
+        $this->runContainerGraph();
+
+        $this->assertTrue($this->graph->hasContextualBindsEdge(
+            PhotoController::class,
+            Filesystem::class,
+            'storage.disk:local',
+        ));
+        $this->assertTrue($this->graph->hasContextualBindsEdge(
+            VideoController::class,
+            Filesystem::class,
+            'storage.disk:public',
+        ));
+
+        $photoBinding = $this->graph->findContextualBindingRow(
+            PhotoController::class,
+            Filesystem::class,
+            'storage.disk:local',
+        );
+        $this->assertNotNull($photoBinding);
+        $this->assertSame('Interface', $photoBinding['needs_kind']);
+        $this->assertSame('Alias', $photoBinding['give_kind']);
+        $this->assertSame('', $photoBinding['reason']);
+
+        $this->assertTrue($this->graph->hasInstanceNode(PhotoController::class));
+        $this->assertTrue($this->graph->hasInstanceNode(VideoController::class));
+    }
+
+    public function test_complex_dataset_exports_contextual_array_give_bindings(): void
+    {
+        $this->runContainerGraph();
+
+        $this->assertTrue($this->graph->hasContextualBindsEdge(
+            Firewall::class,
+            Filter::class,
+            NullFilter::class,
+        ));
+        $this->assertTrue($this->graph->hasContextualBindsEdge(
+            Firewall::class,
+            Filter::class,
+            ProfanityFilter::class,
+        ));
+    }
+
     public function test_container_graph_dry_run_does_not_write_graph(): void
     {
         $this->artisan('container:graph', ['--dry-run' => true])
@@ -117,6 +167,7 @@ class ContainerGraphComplexDatasetTest extends TestCase
         $this->assertSame([], $this->graph->bindingRows);
         $this->assertSame([], $this->graph->dependencyChainRows);
         $this->assertSame([], $this->graph->instanceRows);
+        $this->assertSame([], $this->graph->contextualBindingRows);
     }
 
     private function runContainerGraph(): void

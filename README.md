@@ -341,6 +341,15 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 
 There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
 
+**Contextual bindings** (SOFT-49):
+
+- `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
+- `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
+- Array `give()` values (variadic injection) produce one edge per concrete class
+- **Limitations:** fully dynamic `give()` closures that cannot be introspected export as `closure@{needs}` with `give_kind: Closure` and `reason: dynamic_give_closure`. Best-effort parsing covers class-name `give()`, array `give()`, closure return types, and literal `Storage::disk('name')` in closure source. `giveTagged()`, `giveConfig()`, and runtime-dependent closures are not resolved to concrete targets.
+
+The command summary includes `Contextual bindings: N`.
+
 ### Example Cypher queries
 
 For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questions, prefer the **get-class-dependency-graph** MCP tool (after running `container:graph`):
@@ -364,6 +373,14 @@ LIMIT 200;
 ```cypher
 MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
 RETURN p
+LIMIT 200;
+```
+
+**Explore contextual when/needs/give overrides:**
+
+```cypher
+MATCH p = (i:Instance)-[r:CONTEXTUAL_BINDS]->(g:Identifier)
+RETURN i.name AS when, r.needs AS needs, g.name AS give, r.reason AS reason
 LIMIT 200;
 ```
 
