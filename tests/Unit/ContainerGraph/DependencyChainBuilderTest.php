@@ -35,6 +35,29 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('App\\Contracts\\Bar', $chain['identifier']);
         $this->assertSame('Interface', $chain['identifier_kind']);
         $this->assertSame('bind', $chain['lifetime']);
+        $this->assertSame(DependsOnType::ConstructorInjection->value, $chain['injection_type']);
+    }
+
+    public function test_method_injection_row_uses_unique_dependency_key_and_metadata(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Http\\Controllers\\PostController',
+            'dependency' => 'App\\Http\\Requests\\StorePostRequest',
+            'dependencyKind' => 'Class',
+            'type' => DependsOnType::MethodInjection->value,
+            'method' => 'store',
+            'parameter' => 'request',
+            'via' => '',
+            'file' => 'app/Http/Controllers/PostController.php',
+            'line' => 18,
+        ], []);
+
+        $this->assertSame('di|App\\Http\\Requests\\StorePostRequest|store|request', $chain['dependency_key']);
+        $this->assertSame(DependsOnType::MethodInjection->value, $chain['injection_type']);
+        $this->assertSame('store', $chain['method']);
+        $this->assertSame('request', $chain['parameter']);
+        $this->assertSame('app/Http/Controllers/PostController.php', $chain['file']);
+        $this->assertSame(18, $chain['line']);
     }
 
     public function test_service_location_row_preserves_file_line_and_via(): void
@@ -86,5 +109,25 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('Unresolved', $chain['identifier_kind']);
         $this->assertSame('no_type_hint', $chain['reason']);
         $this->assertSame('unresolved', $chain['via']);
+    }
+
+    public function test_global_helper_row_sets_helper_and_dependency_key(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Services\\Worker',
+            'dependency' => 'cache',
+            'dependencyKind' => 'Alias',
+            'type' => DependsOnType::GlobalHelper->value,
+            'helper' => 'cache',
+            'via' => 'cache',
+            'file' => 'app/Services/Worker.php',
+            'line' => 10,
+        ], []);
+
+        $this->assertSame('global_helper', $chain['access']);
+        $this->assertSame('global_helper|cache|cache', $chain['dependency_key']);
+        $this->assertSame(DependsOnType::GlobalHelper->value, $chain['injection_type']);
+        $this->assertSame('cache', $chain['helper']);
+        $this->assertSame('cache', $chain['via']);
     }
 }

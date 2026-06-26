@@ -59,7 +59,13 @@ UNWIND $rows AS row
 MERGE (i:Instance {name: row.instance})
 MERGE (dep:Dependency {key: row.dependency_key})
 MERGE (i)-[d:DEPENDS_ON]->(dep)
-SET d.file = row.file, d.line = row.line, d.via = row.via
+SET d.file = row.file,
+    d.line = row.line,
+    d.via = row.via,
+    d.type = row.injection_type,
+    d.method = row.method,
+    d.parameter = row.parameter,
+    d.helper = coalesce(row.helper, '')
 CYPHER;
 
     private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
@@ -86,7 +92,7 @@ CYPHER;
     /**
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
     public function write(
@@ -147,7 +153,7 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
     private function validateDependencyChainRows(array $dependencyChainRows): void
     {
@@ -155,7 +161,7 @@ CYPHER;
             DependencyAccessType::assertAllowed((string) ($row['access'] ?? ''));
             ResolvesToLifetime::assertAllowed((string) ($row['lifetime'] ?? ''));
 
-            foreach (['dependency_key', 'identifier', 'identifier_kind', 'via', 'file'] as $key) {
+            foreach (['dependency_key', 'identifier', 'identifier_kind', 'via', 'file', 'injection_type', 'method', 'parameter'] as $key) {
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Dependency chain row is missing string {$key}");
                 }

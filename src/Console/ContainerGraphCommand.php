@@ -6,9 +6,12 @@ use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
+use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
+use Neo4j\LaravelBoost\StaticAnalysis\GlobalHelperEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
@@ -17,8 +20,6 @@ use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionNamedType;
-use ReflectionParameter;
-use ReflectionUnionType;
 use Throwable;
 
 class ContainerGraphCommand extends Command
@@ -30,9 +31,12 @@ class ContainerGraphCommand extends Command
     public function __construct(
         private ServiceLocationEdgeFinder $serviceLocationEdgeFinder,
         private FacadeEdgeFinder $facadeEdgeFinder,
+        private GlobalHelperEdgeFinder $globalHelperEdgeFinder,
         private DependencyChainBuilder $dependencyChainBuilder,
         private FacadeCatalogExporter $facadeCatalogExporter,
         private ContextualBindingExtractor $contextualBindingExtractor,
+        private MethodInjectionExtractor $methodInjectionExtractor,
+        private ParameterDependencyResolver $parameterDependencyResolver,
     ) {
         parent::__construct();
     }
@@ -42,10 +46,18 @@ class ContainerGraphCommand extends Command
         [$bindingRows, $concreteClasses] = $this->extractBindingRows();
         $bindings = app()->getBindings();
         $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
-        [$dependencyRows, $unresolvedRows] = $this->extractDependencyRows($concreteClasses);
+        [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
+        [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
+        $dependencyRows = $this->uniqueRows(array_merge($constructorDependencyRows, $methodInjectionRows));
+        $unresolvedRows = $this->uniqueRows(array_merge($constructorUnresolvedRows, $methodInjectionUnresolvedRows));
         $staticServiceLocationRows = $this->extractStaticServiceLocationRows();
         $staticFacadeRows = $this->extractStaticFacadeRows();
-        $staticDependencyRows = $this->uniqueRows(array_merge($staticServiceLocationRows, $staticFacadeRows));
+        $staticGlobalHelperRows = $this->extractStaticGlobalHelperRows();
+        $staticDependencyRows = $this->uniqueRows(array_merge(
+            $staticServiceLocationRows,
+            $staticFacadeRows,
+            $staticGlobalHelperRows,
+        ));
         $dependencyRows = $this->uniqueRows(array_merge($dependencyRows, $staticDependencyRows));
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
@@ -73,8 +85,10 @@ class ContainerGraphCommand extends Command
         $this->line('- Instance nodes: '.count($instanceRows));
         $this->line('- Dependency chains: '.count($dependencyChainRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
+        $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
         $this->line('- Static facade edges: '.count($staticFacadeRows));
+        $this->line('- Static global_helper edges: '.count($staticGlobalHelperRows));
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
@@ -106,7 +120,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
      * @param  array<int, array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}>  $facadeCatalogRows
-     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>
+     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>
      */
     private function buildDependencyChainRows(
         array $dependencyRows,
@@ -255,7 +269,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, string>  $classes
      * @return array{0: array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>, 1: array<int, array{class: string, name: string, reason: string, type: string}>}
      */
-    private function extractDependencyRows(array $classes): array
+    private function extractConstructorDependencyRows(array $classes): array
     {
         $dependencyRows = [];
         $unresolvedRows = [];
@@ -273,27 +287,18 @@ class ContainerGraphCommand extends Command
             }
 
             foreach ($constructor->getParameters() as $parameter) {
-                [$name, $kind, $reason] = $this->dependencyFromParameter($parameter);
+                [$name, $kind] = $this->parameterDependencyResolver->resolve($parameter);
                 if ($name === null) {
                     continue;
                 }
 
-                if ($kind === 'UnresolvedDependency') {
-                    $unresolvedRows[] = [
-                        'class' => $className,
-                        'name' => $name,
-                        'reason' => $reason ?? 'unresolved',
-                        'type' => DependsOnType::ConstructorInjection->value,
-                    ];
-                } else {
-                    $dependencyRows[] = [
-                        'class' => $className,
-                        'dependency' => $name,
-                        'dependencyKind' => $kind,
-                        'type' => DependsOnType::ConstructorInjection->value,
-                        ...$this->emptyStaticMetadata(),
-                    ];
-                }
+                $dependencyRows[] = [
+                    'class' => $className,
+                    'dependency' => $name,
+                    'dependencyKind' => $kind,
+                    'type' => DependsOnType::ConstructorInjection->value,
+                    ...$this->emptyStaticMetadata(),
+                ];
             }
         }
 
@@ -330,6 +335,24 @@ class ContainerGraphCommand extends Command
 
         $rows = [];
         foreach ($this->facadeEdgeFinder->scanPaths($paths) as $edge) {
+            $rows[] = $edge->toDependencyRow();
+        }
+
+        return $this->uniqueRows($rows);
+    }
+
+    /**
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int, helper: string}>
+     */
+    private function extractStaticGlobalHelperRows(): array
+    {
+        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
+        if (! is_array($paths) || $paths === []) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->globalHelperEdgeFinder->scanPaths($paths) as $edge) {
             $rows[] = $edge->toDependencyRow();
         }
 
@@ -416,57 +439,6 @@ class ContainerGraphCommand extends Command
         return null;
     }
 
-    /**
-     * @return array{0: ?string, 1: string, 2: ?string}
-     */
-    private function dependencyFromParameter(ReflectionParameter $parameter): array
-    {
-        $type = $parameter->getType();
-        if ($type === null) {
-            return [null, 'Ignored', null];
-        }
-
-        if ($type instanceof ReflectionUnionType) {
-            $resolved = $this->classNameFromUnionType($type);
-            if ($resolved !== null) {
-                return [$resolved, $this->kindForTypeName($resolved), null];
-            }
-
-            return [null, 'Ignored', null];
-        }
-
-        if (! $type instanceof ReflectionNamedType) {
-            return [null, 'Ignored', null];
-        }
-
-        if ($type->isBuiltin()) {
-            return [null, 'Ignored', null];
-        }
-
-        $name = $type->getName();
-
-        return [$name, $this->kindForTypeName($name), null];
-    }
-
-    private function classNameFromUnionType(ReflectionUnionType $type): ?string
-    {
-        $candidate = null;
-
-        foreach ($type->getTypes() as $namedType) {
-            if (! $namedType instanceof ReflectionNamedType || $namedType->isBuiltin()) {
-                continue;
-            }
-
-            if ($candidate !== null) {
-                return null;
-            }
-
-            $candidate = $namedType->getName();
-        }
-
-        return $candidate;
-    }
-
     private function kindForTypeName(string $name): string
     {
         if (interface_exists($name)) {
@@ -506,7 +478,7 @@ class ContainerGraphCommand extends Command
     /**
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
     private function printCypher(

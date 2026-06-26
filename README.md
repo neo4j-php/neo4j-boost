@@ -297,7 +297,24 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 }
 ```
 
-The command summary includes separate counts: `Static service_location edges` and `Static facade edges`.
+The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, and `Static global_helper edges`.
+
+#### Global helper calls (SOFT-47)
+
+Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
+
+**Output shape:**
+
+```json
+{
+  "type": "global_helper",
+  "helper": "cache",
+  "via": "cache",
+  "file": "/path/GlobalHelperWorker.php",
+  "line": 9,
+  "source": "static"
+}
+```
 
 **POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
 
@@ -322,6 +339,34 @@ $entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facade
 
 Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
 
+### Method injection (SOFT-46)
+
+`container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
+
+- **Controllers** — public action methods (excluding magic methods)
+- **Jobs, commands, listeners** — `handle()`
+- **Middleware** — `handle()` container dependencies only (`Request`, `Response`, `Closure` are skipped)
+- **Listeners** — `handle()` skips the first parameter (event payload from the dispatcher)
+
+Entry points are discovered via namespace/suffix heuristics (`Http\Controllers`, `Jobs`, `Listeners`, `Middleware`, etc.). `file` / `line` on `DEPENDS_ON` point to the **method declaration**, not individual parameters.
+
+Form requests and other typed parameters become `DEPENDS_ON` edges with `type: method_injection`, plus `method` and `parameter` on the relationship. Constructor-only reflection misses these; method injection closes that gap.
+
+**Output shape (on `DEPENDS_ON`):**
+
+```json
+{
+  "type": "method_injection",
+  "method": "store",
+  "parameter": "request",
+  "access": "di",
+  "file": "/path/PostController.php",
+  "line": 18
+}
+```
+
+The command summary includes `Method injection edges: N`.
+
 ### Graph model
 
 **Bindings** (unchanged):
@@ -333,7 +378,8 @@ Static facade scanning consumes this catalog when resolving `Cache::put`-style c
 **Dependencies** (SOFT-58 three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `service_location`, etc.
 - `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)

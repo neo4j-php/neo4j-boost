@@ -36,6 +36,9 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('d.via = row.via', $dependsOnTemplate);
         $this->assertStringContainsString('d.file = row.file', $dependsOnTemplate);
         $this->assertStringContainsString('d.line = row.line', $dependsOnTemplate);
+        $this->assertStringContainsString('d.type = row.injection_type', $dependsOnTemplate);
+        $this->assertStringContainsString('d.method = row.method', $dependsOnTemplate);
+        $this->assertStringContainsString('d.parameter = row.parameter', $dependsOnTemplate);
         $this->assertStringContainsString(':Instance', $dependsOnTemplate);
         $this->assertStringContainsString(':Dependency', $dependsOnTemplate);
     }

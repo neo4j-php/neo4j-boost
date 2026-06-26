@@ -240,7 +240,8 @@ CYPHER,
             <<<'CYPHER'
 MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
-       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line
+       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -258,23 +259,70 @@ CYPHER,
             <<<'CYPHER'
 MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier {name: $identifier})
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
-       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line
+       r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
 ORDER BY i.name ASC
 CYPHER,
             ['identifier' => $identifier],
         );
 
+        return $this->mapInboundChainRecords($result);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function mapInboundChainRecords(iterable $result): array
+    {
         $entries = [];
+
         foreach ($result as $record) {
             $access = DependencyAccessType::assertAllowed((string) $record->get('access'));
 
-            $entries[] = [
+            $entry = [
                 'name' => (string) $record->get('name'),
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
                 'lifetime' => (string) $record->get('lifetime'),
             ];
+
+            $via = (string) $record->get('via');
+            if ($via !== '') {
+                $entry['via'] = $via;
+            }
+
+            $file = (string) $record->get('file');
+            if ($file !== '') {
+                $entry['file'] = $file;
+            }
+
+            $line = (int) $record->get('line');
+            if ($line > 0) {
+                $entry['line'] = $line;
+            }
+
+            $injectionType = (string) $record->get('injection_type');
+            if ($injectionType !== '') {
+                $entry['type'] = $injectionType;
+            }
+
+            $method = (string) $record->get('method');
+            if ($method !== '') {
+                $entry['method'] = $method;
+            }
+
+            $parameter = (string) $record->get('parameter');
+            if ($parameter !== '') {
+                $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
+            }
+
+            $entries[] = $entry;
         }
 
         return $entries;
@@ -316,6 +364,26 @@ CYPHER,
             $line = (int) $record->get('line');
             if ($line > 0) {
                 $entry['line'] = $line;
+            }
+
+            $injectionType = (string) $record->get('injection_type');
+            if ($injectionType !== '') {
+                $entry['type'] = $injectionType;
+            }
+
+            $method = (string) $record->get('method');
+            if ($method !== '') {
+                $entry['method'] = $method;
+            }
+
+            $parameter = (string) $record->get('parameter');
+            if ($parameter !== '') {
+                $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
             }
 
             $entries[] = $entry;
