@@ -108,6 +108,39 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('catalog', $chain['source']);
         $this->assertSame('high', $chain['confidence']);
         $this->assertSame('resolution_catalog', $chain['provenance']);
+        $this->assertSame('laravel_facade', $chain['catalog_source']);
+    }
+
+    public function test_extracted_facade_row_preserves_catalog_source(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Services\\Foo',
+            'dependency' => 'App\\Services\\PaymentGateway',
+            'dependencyKind' => 'Class',
+            'type' => DependsOnType::Facade->value,
+            'via' => 'Facades\\App\\Services\\PaymentGateway::charge',
+            'file' => 'app/Services/Foo.php',
+            'line' => 21,
+            'catalog_source' => 'auto_discovered_facade',
+        ], []);
+
+        $this->assertSame('facade', $chain['access']);
+        $this->assertSame('auto_discovered_facade', $chain['catalog_source']);
+    }
+
+    public function test_non_facade_row_defaults_catalog_source_to_empty(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Services\\Foo',
+            'dependency' => 'App\\Contracts\\Bar',
+            'dependencyKind' => 'Interface',
+            'type' => DependsOnType::ConstructorInjection->value,
+            'via' => '',
+            'file' => '',
+            'line' => 0,
+        ], []);
+
+        $this->assertSame('', $chain['catalog_source']);
     }
 
     public function test_unresolved_row_sets_identifier_kind_and_reason(): void

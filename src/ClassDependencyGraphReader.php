@@ -241,7 +241,8 @@ MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVE
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
-       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks,
+       d.catalog_source AS catalog_source
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -261,7 +262,8 @@ MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identif
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
-       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks,
+       d.catalog_source AS catalog_source
 ORDER BY i.name ASC
 CYPHER,
             ['identifier' => $identifier],
@@ -324,6 +326,12 @@ CYPHER,
             }
 
             $entry = array_merge($entry, $this->edgeMetadataFromRecord($record));
+
+            $catalogSource = (string) $record->get('catalog_source');
+            if ($catalogSource !== '') {
+                $entry['catalog_source'] = $catalogSource;
+            }
+
             $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
@@ -389,6 +397,12 @@ CYPHER,
             }
 
             $entry = array_merge($entry, $this->edgeMetadataFromRecord($record));
+
+            $catalogSource = (string) $record->get('catalog_source');
+            if ($catalogSource !== '') {
+                $entry['catalog_source'] = $catalogSource;
+            }
+
             $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
