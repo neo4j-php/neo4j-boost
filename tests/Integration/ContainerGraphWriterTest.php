@@ -15,7 +15,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['bindings', 'instance_depends_on', 'instances', 'resolves_to'], $keys);
+        $this->assertSame(['bindings', 'contextual_binds', 'instance_depends_on', 'instances', 'resolves_to'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -52,6 +52,18 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('dep.access = row.access', $resolvesToTemplate);
         $this->assertStringContainsString(':Identifier', $resolvesToTemplate);
         $this->assertStringContainsString('RESOLVES_TO', $resolvesToTemplate);
+    }
+
+    public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $contextualTemplate = $writer->cypherTemplates()['contextual_binds'];
+
+        $this->assertStringContainsString('CONTEXTUAL_BINDS', $contextualTemplate);
+        $this->assertStringContainsString('r.needs = row.needs', $contextualTemplate);
+        $this->assertStringContainsString('r.needs_kind = row.needs_kind', $contextualTemplate);
+        $this->assertStringContainsString(':Instance', $contextualTemplate);
+        $this->assertStringContainsString(':Identifier', $contextualTemplate);
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void

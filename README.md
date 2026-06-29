@@ -375,7 +375,7 @@ The command summary includes `Method injection edges: N`.
 - `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
 - **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
 
-**Dependencies** (SOFT-58 three-node model):
+**Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
 - `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
@@ -386,6 +386,15 @@ The command summary includes `Method injection edges: N`.
 - Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)
 
 There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
+
+**Contextual bindings**:
+
+- `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
+- `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
+- Array `give()` values (variadic injection) produce one edge per concrete class
+- **Limitations:** fully dynamic `give()` closures that cannot be introspected export as `closure@{needs}` with `give_kind: Closure` and `reason: dynamic_give_closure`. Best-effort parsing covers class-name `give()`, array `give()`, closure return types, and literal `Storage::disk('name')` in closure source. `giveTagged()`, `giveConfig()`, and runtime-dependent closures are not resolved to concrete targets.
+
+The command summary includes `Contextual bindings: N`.
 
 ### Example Cypher queries
 
@@ -410,6 +419,14 @@ LIMIT 200;
 ```cypher
 MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
 RETURN p
+LIMIT 200;
+```
+
+**Explore contextual when/needs/give overrides:**
+
+```cypher
+MATCH p = (i:Instance)-[r:CONTEXTUAL_BINDS]->(g:Identifier)
+RETURN i.name AS when, r.needs AS needs, g.name AS give, r.reason AS reason
 LIMIT 200;
 ```
 
