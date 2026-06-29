@@ -130,4 +130,23 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('cache', $chain['helper']);
         $this->assertSame('cache', $chain['via']);
     }
+
+    public function test_instantiation_row_sets_injection_type_and_via(): void
+    {
+        $chain = $this->builder->fromExtractedDependencyRow([
+            'class' => 'App\\Services\\CheckoutService',
+            'dependency' => 'App\\Services\\PaymentGateway',
+            'dependencyKind' => 'Class',
+            'type' => DependsOnType::Instantiation->value,
+            'via' => 'new App\\Services\\PaymentGateway',
+            'file' => 'app/Services/CheckoutService.php',
+            'line' => 12,
+        ], []);
+
+        $this->assertSame('di', $chain['access']);
+        $this->assertSame('di|App\\Services\\PaymentGateway', $chain['dependency_key']);
+        $this->assertSame(DependsOnType::Instantiation->value, $chain['injection_type']);
+        $this->assertSame('new App\\Services\\PaymentGateway', $chain['via']);
+        $this->assertSame(12, $chain['line']);
+    }
 }
