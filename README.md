@@ -247,7 +247,7 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-### Static analysis pass (SOFT-43 / SOFT-44)
+### Static analysis pass
 
 `container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by scanning configured paths. Opt-in only: when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
 
@@ -259,7 +259,7 @@ NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 
 Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
 
-#### Service location (SOFT-43)
+#### Service location
 
 Detects literal **service location** calls:
 
@@ -281,7 +281,7 @@ Dynamic calls such as `app($variable)` are skipped.
 }
 ```
 
-#### Facade static calls (SOFT-44)
+#### Facade static calls
 
 Detects static calls on Laravel first-party facades and custom app facades (`Cache::put`, `CustomFacade::handle`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
 
@@ -299,7 +299,7 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 
 The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
 
-#### Global helper calls (SOFT-47)
+#### Global helper calls
 
 Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
 
@@ -355,7 +355,7 @@ $entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facade
 
 Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
 
-### Method injection (SOFT-46)
+### Method injection
 
 `container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
 
