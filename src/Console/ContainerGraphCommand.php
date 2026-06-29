@@ -315,8 +315,8 @@ class ContainerGraphCommand extends Command
      */
     private function extractStaticServiceLocationRows(): array
     {
-        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
-        if (! is_array($paths) || $paths === []) {
+        $paths = $this->staticScanPaths();
+        if ($paths === []) {
             return [];
         }
 
@@ -333,8 +333,8 @@ class ContainerGraphCommand extends Command
      */
     private function extractStaticFacadeRows(): array
     {
-        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
-        if (! is_array($paths) || $paths === []) {
+        $paths = $this->staticScanPaths();
+        if ($paths === []) {
             return [];
         }
 
@@ -351,8 +351,8 @@ class ContainerGraphCommand extends Command
      */
     private function extractStaticGlobalHelperRows(): array
     {
-        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
-        if (! is_array($paths) || $paths === []) {
+        $paths = $this->staticScanPaths();
+        if ($paths === []) {
             return [];
         }
 
@@ -369,8 +369,8 @@ class ContainerGraphCommand extends Command
      */
     private function extractStaticInstantiationRows(): array
     {
-        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
-        if (! is_array($paths) || $paths === []) {
+        $paths = $this->staticScanPaths();
+        if ($paths === []) {
             return [];
         }
 
@@ -383,6 +383,27 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @return array<int, string>
+     */
+    private function staticScanPaths(): array
+    {
+        $paths = array_merge(
+            config('neo4j-boost.container_graph.static_scan_paths', []),
+            config('neo4j-boost.container_graph.static_scan_provider_paths', []),
+        );
+
+        $normalized = [];
+        foreach ($paths as $path) {
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
+            $normalized[$path] = $path;
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
      * @param  array<int, array{class: string, dependency: string}>  $rows
      * @return array<int, string>
      */
@@ -392,7 +413,9 @@ class ContainerGraphCommand extends Command
 
         foreach ($rows as $row) {
             $classes[] = $row['class'];
-            $classes[] = $row['dependency'];
+            if (($row['dependencyKind'] ?? '') !== 'Unresolved') {
+                $classes[] = $row['dependency'];
+            }
         }
 
         return array_values(array_unique($classes));

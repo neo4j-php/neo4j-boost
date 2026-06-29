@@ -2,20 +2,20 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit\StaticAnalysis;
 
-use Neo4j\LaravelBoost\StaticAnalysis\PhpStan\ServiceLocationFuncCallRule;
+use Neo4j\LaravelBoost\StaticAnalysis\PhpStan\ServiceLocationStaticCallRule;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationNodeResolver;
 use Neo4j\LaravelBoost\StaticAnalysis\StaticAnalysisCollector;
 use PHPStan\Rules\Rule;
 use PHPStan\Testing\RuleTestCase;
 
 /**
- * @extends RuleTestCase<ServiceLocationFuncCallRule>
+ * @extends RuleTestCase<ServiceLocationStaticCallRule>
  */
-class ServiceLocationCollectorRuleTest extends RuleTestCase
+class ServiceLocationStaticCallCollectorRuleTest extends RuleTestCase
 {
     protected function getRule(): Rule
     {
-        return new ServiceLocationFuncCallRule(new ServiceLocationNodeResolver);
+        return new ServiceLocationStaticCallRule(new ServiceLocationNodeResolver);
     }
 
     protected function tearDown(): void
@@ -25,7 +25,7 @@ class ServiceLocationCollectorRuleTest extends RuleTestCase
         parent::tearDown();
     }
 
-    public function test_collector_records_literal_app_call(): void
+    public function test_collector_records_literal_app_make_call(): void
     {
         StaticAnalysisCollector::reset();
 
@@ -35,11 +35,10 @@ class ServiceLocationCollectorRuleTest extends RuleTestCase
         );
 
         $edges = StaticAnalysisCollector::serviceLocationEdges();
-        $this->assertNotEmpty($edges);
-        $this->assertContains('app', array_map(static fn ($edge): string => $edge->via, $edges));
+        $this->assertContains('App::make', array_map(static fn ($edge): string => $edge->via, $edges));
     }
 
-    public function test_collector_records_dynamic_app_call_as_unresolved(): void
+    public function test_collector_records_dynamic_app_make_as_unresolved(): void
     {
         StaticAnalysisCollector::reset();
 
@@ -49,16 +48,9 @@ class ServiceLocationCollectorRuleTest extends RuleTestCase
         );
 
         $edges = StaticAnalysisCollector::serviceLocationEdges();
-        $this->assertCount(2, $edges);
-
-        foreach ($edges as $edge) {
-            $this->assertFalse($edge->resolved);
-            $this->assertSame('__dynamic__', $edge->dependency);
-        }
-
-        $vias = array_map(static fn ($edge): string => $edge->via, $edges);
-        sort($vias);
-        $this->assertSame(['app', 'resolve'], $vias);
+        $this->assertCount(1, $edges);
+        $this->assertSame('App::make', $edges[0]->via);
+        $this->assertFalse($edges[0]->resolved);
     }
 
     public static function getAdditionalConfigFiles(): array

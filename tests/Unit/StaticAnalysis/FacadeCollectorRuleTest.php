@@ -24,6 +24,7 @@ class FacadeCollectorRuleTest extends RuleTestCase
     protected function tearDown(): void
     {
         StaticAnalysisCollector::reset();
+        TestbenchResolutionCatalogFactory::reset();
 
         parent::tearDown();
     }

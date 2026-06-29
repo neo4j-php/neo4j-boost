@@ -128,8 +128,8 @@ final class FacadeFileVisitor extends NodeVisitorAbstract
 
     private function isServiceLocationAppMake(string $facadeClass, string $method): bool
     {
-        return $method === 'make'
-            && in_array($facadeClass, ['App', 'Illuminate\\Support\\Facades\\App'], true);
+        return in_array($method, ['make', 'makeWith'], true)
+            && AppFacadeClassChecker::is($facadeClass);
     }
 
     private function qualifyName(string $shortName): string
