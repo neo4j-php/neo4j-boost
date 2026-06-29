@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Console;
 
 use Closure;
 use Illuminate\Console\Command;
+use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
@@ -33,6 +34,7 @@ class ContainerGraphCommand extends Command
         private GlobalHelperEdgeFinder $globalHelperEdgeFinder,
         private DependencyChainBuilder $dependencyChainBuilder,
         private FacadeCatalogExporter $facadeCatalogExporter,
+        private ContextualBindingExtractor $contextualBindingExtractor,
         private MethodInjectionExtractor $methodInjectionExtractor,
         private ParameterDependencyResolver $parameterDependencyResolver,
     ) {
@@ -61,6 +63,9 @@ class ContainerGraphCommand extends Command
             $concreteClasses,
             $this->classNamesFromDependencyRows($staticDependencyRows),
         );
+        $contextualExport = $this->contextualBindingExtractor->extract(app());
+        $contextualBindingRows = $contextualExport['rows'];
+        $concreteClasses = $this->mergeClassLists($concreteClasses, $contextualExport['when_classes']);
         $instanceRows = array_map(
             static fn (string $className): array => ['class' => $className],
             $concreteClasses
@@ -79,6 +84,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Concrete classes inspected: '.count($concreteClasses));
         $this->line('- Instance nodes: '.count($instanceRows));
         $this->line('- Dependency chains: '.count($dependencyChainRows));
+        $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
         $this->line('- Static facade edges: '.count($staticFacadeRows));
@@ -86,7 +92,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows);
         }
 
         if ($this->option('dry-run')) {
@@ -97,7 +103,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows);
         } catch (Throwable $e) {
             $this->error('Failed to write container graph: '.$e->getMessage());
 
@@ -473,9 +479,15 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
-    private function printCypher(ContainerGraphWriter $writer, array $instanceRows, array $bindingRows, array $dependencyChainRows): void
-    {
+    private function printCypher(
+        ContainerGraphWriter $writer,
+        array $instanceRows,
+        array $bindingRows,
+        array $dependencyChainRows,
+        array $contextualBindingRows = [],
+    ): void {
         $this->line('');
         $this->line('Cypher templates:');
         foreach ($writer->cypherTemplates() as $label => $cypher) {
@@ -488,6 +500,7 @@ class ContainerGraphCommand extends Command
         $this->line('- instances: '.json_encode(array_slice($instanceRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- bindings: '.json_encode(array_slice($bindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- dependency_chains: '.json_encode(array_slice($dependencyChainRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- contextual_bindings: '.json_encode(array_slice($contextualBindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }
