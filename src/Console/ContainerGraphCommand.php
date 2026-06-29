@@ -365,7 +365,24 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-<<<<<<< HEAD
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>
+     */
+    private function extractStaticInstantiationRows(): array
+    {
+        $paths = $this->staticScanPaths();
+        if ($paths === []) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->instantiationEdgeFinder->scanPaths($paths) as $edge) {
+            $rows[] = $edge->toDependencyRow();
+        }
+
+        return $this->uniqueRows($rows);
+    }
+
+    /**
      * @return array<int, string>
      */
     private function staticScanPaths(): array
@@ -384,23 +401,6 @@ class ContainerGraphCommand extends Command
         }
 
         return array_values($normalized);
-=======
-     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>
-     */
-    private function extractStaticInstantiationRows(): array
-    {
-        $paths = config('neo4j-boost.container_graph.static_scan_paths', []);
-        if (! is_array($paths) || $paths === []) {
-            return [];
-        }
-
-        $rows = [];
-        foreach ($this->instantiationEdgeFinder->scanPaths($paths) as $edge) {
-            $rows[] = $edge->toDependencyRow();
-        }
-
-        return $this->uniqueRows($rows);
->>>>>>> upstream/feat-soft-41-epic
     }
 
     /**
