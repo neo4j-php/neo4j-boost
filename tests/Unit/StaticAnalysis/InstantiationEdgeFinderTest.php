@@ -63,7 +63,7 @@ PHP);
         $this->assertSame('App\\Data\\InvoiceLineDto', $edges[0]->dependency);
     }
 
-    public function test_scan_source_skips_builtin_anonymous_and_dynamic_classes(): void
+    public function test_scan_source_records_builtin_but_skips_anonymous_and_dynamic_classes(): void
     {
         $edges = $this->finder->scanSource(<<<'PHP'
 <?php
@@ -83,7 +83,9 @@ final class Worker
 }
 PHP);
 
-        $this->assertCount(0, $edges);
+        $this->assertCount(1, $edges);
+        $this->assertSame('App\\Services\\Worker', $edges[0]->class);
+        $this->assertSame('DateTime', $edges[0]->dependency);
     }
 
     public function test_scan_paths_finds_fixture_service_and_dto_cases(): void
@@ -96,6 +98,7 @@ PHP);
 
         $this->assertContains(PaymentGateway::class, $dependencies);
         $this->assertContains(InvoiceLineDto::class, $dependencies);
-        $this->assertCount(2, $edges);
+        $this->assertContains(\DateTime::class, $dependencies);
+        $this->assertCount(3, $edges);
     }
 }

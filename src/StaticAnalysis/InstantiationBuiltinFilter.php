@@ -2,27 +2,20 @@
 
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
-use ReflectionClass;
-
 /**
- * Skips PHP internal / builtin classes that should not be treated as container bypasses.
+ * Guards which resolved `new ClassName()` targets become instantiation edges.
+ *
+ * Only empty/unresolvable class names are skipped here; anonymous (`new class {}`)
+ * and dynamic (`new $var()`) instantiations are filtered upstream while parsing.
+ * Internal/builtin classes are intentionally recorded — an application can bind
+ * them into the container, so the detector reflects what the container can
+ * actually resolve rather than assuming they are never managed. Opt-in skipping
+ * of specific classes is handled separately as a configurable policy.
  */
 final class InstantiationBuiltinFilter
 {
     public function shouldSkip(string $className): bool
     {
-        if ($className === '') {
-            return true;
-        }
-
-        if (! class_exists($className)) {
-            return false;
-        }
-
-        try {
-            return (new ReflectionClass($className))->isInternal();
-        } catch (\Throwable) {
-            return false;
-        }
+        return $className === '';
     }
 }

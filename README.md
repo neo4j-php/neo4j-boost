@@ -316,9 +316,9 @@ Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `re
 }
 ```
 
-#### Direct instantiation (SOFT-48)
+#### Direct instantiation
 
-Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`), dynamic class expressions (`new $variable()`), and PHP internal classes (`DateTime`, `stdClass`, etc.) are skipped.
+Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`) and dynamic class expressions (`new $variable()`) are skipped. PHP internal/builtin classes (`DateTime`, `stdClass`, etc.) are recorded too, since an application can bind them into the container; opt-in filtering of specific classes is planned as a separate, configurable policy.
 
 **Output shape:**
 

@@ -16,7 +16,7 @@ final class DirectInstantiator
         return new InvoiceLineDto('Hosting', 9900);
     }
 
-    public function skipBuiltin(): DateTime
+    public function createTimestamp(): DateTime
     {
         return new DateTime;
     }

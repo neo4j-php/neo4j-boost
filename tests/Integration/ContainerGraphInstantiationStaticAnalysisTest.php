@@ -2,6 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use DateTime;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\DirectInstantiator;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\StaticAnalysis\Services\InvoiceLineDto;
@@ -30,7 +31,7 @@ class ContainerGraphInstantiationStaticAnalysisTest extends TestCase
     public function test_container_graph_exports_instantiation_edges_from_static_scan(): void
     {
         $this->artisan('container:graph')
-            ->expectsOutputToContain('Static instantiation edges: 2')
+            ->expectsOutputToContain('Static instantiation edges: 3')
             ->expectsOutputToContain('Container graph written to Neo4j successfully.')
             ->assertExitCode(0);
 
@@ -51,6 +52,13 @@ class ContainerGraphInstantiationStaticAnalysisTest extends TestCase
         );
         $this->assertNotNull($dtoEdge);
         $this->assertSame('instantiation', $dtoEdge['injection_type'] ?? null);
+
+        $builtinEdge = $this->graph->findDependencyChainRow(
+            DirectInstantiator::class,
+            DateTime::class,
+        );
+        $this->assertNotNull($builtinEdge);
+        $this->assertSame('instantiation', $builtinEdge['injection_type'] ?? null);
     }
 
     public function test_static_scan_paths_can_be_disabled(): void
