@@ -68,6 +68,18 @@ SET d.file = row.file,
     d.helper = coalesce(row.helper, '')
 CYPHER;
 
+    private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (i:Instance {name: row.when})
+MERGE (g:Identifier {name: row.give})
+SET g.kind = row.give_kind,
+    g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
+MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
+SET r.needs = row.needs,
+    r.needs_kind = row.needs_kind,
+    r.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE r.reason END
+CYPHER;
+
     public function __construct(
         private ContainerGraphConnection $connection,
     ) {}
@@ -81,11 +93,17 @@ CYPHER;
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
-    public function write(array $instanceRows, array $bindingRows, array $dependencyChainRows): void
-    {
+    public function write(
+        array $instanceRows,
+        array $bindingRows,
+        array $dependencyChainRows,
+        array $contextualBindingRows = [],
+    ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
+        $this->validateContextualBindingRows($contextualBindingRows);
 
         if ($instanceRows !== []) {
             $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);
@@ -105,6 +123,9 @@ CYPHER;
                 $this->connection->run(self::CYPHER_INSTANCE_DEPENDS_ON, ['rows' => $instanceChains]);
             }
         }
+        if ($contextualBindingRows !== []) {
+            $this->connection->run(self::CYPHER_CONTEXTUAL_BINDS, ['rows' => $contextualBindingRows]);
+        }
     }
 
     /**
@@ -117,6 +138,7 @@ CYPHER;
             'bindings' => self::CYPHER_BINDINGS,
             'resolves_to' => self::CYPHER_RESOLVES_TO,
             'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
+            'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
         ];
     }
 
@@ -151,6 +173,20 @@ CYPHER;
 
             if (! array_key_exists('instance', $row) || ! is_string($row['instance'])) {
                 throw new \InvalidArgumentException('Dependency chain row is missing string instance');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
+     */
+    private function validateContextualBindingRows(array $contextualBindingRows): void
+    {
+        foreach ($contextualBindingRows as $row) {
+            foreach (['when', 'when_kind', 'needs', 'needs_kind', 'give', 'give_kind', 'reason'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Contextual binding row is missing string {$key}");
+                }
             }
         }
     }

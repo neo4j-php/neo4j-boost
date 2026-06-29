@@ -297,7 +297,7 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 }
 ```
 
-The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, and `Static global_helper edges`.
+The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
 
 #### Global helper calls (SOFT-47)
 
@@ -312,6 +312,22 @@ Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `re
   "via": "cache",
   "file": "/path/GlobalHelperWorker.php",
   "line": 9,
+  "source": "static"
+}
+```
+
+#### Direct instantiation
+
+Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`) and dynamic class expressions (`new $variable()`) are skipped. PHP internal/builtin classes (`DateTime`, `stdClass`, etc.) are recorded too, since an application can bind them into the container; opt-in filtering of specific classes is planned as a separate, configurable policy.
+
+**Output shape:**
+
+```json
+{
+  "type": "instantiation",
+  "via": "new App\\Services\\PaymentGateway",
+  "file": "/path/DirectInstantiator.php",
+  "line": 11,
   "source": "static"
 }
 ```
@@ -375,17 +391,26 @@ The command summary includes `Method injection edges: N`.
 - `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
 - **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
 
-**Dependencies** (SOFT-58 three-node model):
+**Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
-- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `service_location`, etc.
-- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
+- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
 - Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)
 
 There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
+
+**Contextual bindings**:
+
+- `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
+- `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
+- Array `give()` values (variadic injection) produce one edge per concrete class
+- **Limitations:** fully dynamic `give()` closures that cannot be introspected export as `closure@{needs}` with `give_kind: Closure` and `reason: dynamic_give_closure`. Best-effort parsing covers class-name `give()`, array `give()`, closure return types, and literal `Storage::disk('name')` in closure source. `giveTagged()`, `giveConfig()`, and runtime-dependent closures are not resolved to concrete targets.
+
+The command summary includes `Contextual bindings: N`.
 
 ### Example Cypher queries
 
@@ -410,6 +435,14 @@ LIMIT 200;
 ```cypher
 MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
 RETURN p
+LIMIT 200;
+```
+
+**Explore contextual when/needs/give overrides:**
+
+```cypher
+MATCH p = (i:Instance)-[r:CONTEXTUAL_BINDS]->(g:Identifier)
+RETURN i.name AS when, r.needs AS needs, g.name AS give, r.reason AS reason
 LIMIT 200;
 ```
 

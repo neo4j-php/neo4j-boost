@@ -38,6 +38,9 @@ final class TestbenchResolutionCatalogFactory
         self::$bootstrapCase = $case;
         self::$catalog = $case->bootstrapCatalog();
 
+        restore_error_handler();
+        restore_exception_handler();
+
         return self::$catalog;
     }
 
