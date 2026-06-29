@@ -4,6 +4,9 @@ namespace Neo4j\LaravelBoost;
 
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\DependencyVisibility;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 
 class ClassDependencyGraphReader
@@ -31,12 +34,12 @@ class ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExistsInGraph($class)) {
-            return [
+            return $this->finalizeResponse([
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ];
+            ]);
         }
 
         $result = [
@@ -53,9 +56,15 @@ class ClassDependencyGraphReader
         }
 
         if ($direction === 'outbound' || $direction === 'both') {
-            $paginated = $this->fetchDependencies($class, $depth, $page, $perPage);
-            $result['dependencies'] = $paginated['items'];
-            $result['dependencies_pagination'] = $paginated['pagination'];
+            $allEntries = $this->traverseDependencyChains($class, $depth, outbound: true);
+            $total = count($allEntries);
+            $items = $this->uniqueDependencyEntries(
+                array_slice($allEntries, ($page - 1) * $perPage, $perPage),
+            );
+            $result['dependencies'] = $items;
+            $result['dependencies_pagination'] = $this->buildPaginationMeta($page, $perPage, $total);
+            $result = $this->appendDependencyBuckets($result, $items);
+            $result['graph_completeness'] = $this->buildGraphCompleteness($allEntries);
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
@@ -64,7 +73,7 @@ class ClassDependencyGraphReader
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $result;
+        return $this->finalizeResponse($result);
     }
 
     private function classExistsInGraph(string $class): bool
@@ -87,7 +96,7 @@ CYPHER,
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function fetchBinding(string $class): ?array
     {
@@ -116,7 +125,7 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
@@ -130,24 +139,12 @@ CYPHER,
                 'concrete' => (string) $record->get('concrete'),
                 'shared' => $typeMeta['shared'],
                 'type' => $typeMeta['type'],
+                'source' => $typeMeta['source'],
+                'confidence' => $typeMeta['confidence'],
             ];
         }
 
         return null;
-    }
-
-    /**
-     * @return array{items: array<int, array<string, mixed>>, pagination: array{page: int, per_page: int, total: int, last_page: int, has_more: bool}}
-     */
-    private function fetchDependencies(string $class, int $depth, int $page, int $perPage): array
-    {
-        $allEntries = $this->traverseDependencyChains($class, $depth, outbound: true);
-        $total = count($allEntries);
-
-        return [
-            'items' => $this->uniqueDependencyEntries(array_slice($allEntries, ($page - 1) * $perPage, $perPage)),
-            'pagination' => $this->buildPaginationMeta($page, $perPage, $total),
-        ];
     }
 
     /**
@@ -322,7 +319,7 @@ CYPHER,
                 $entry['helper'] = $helper;
             }
 
-            $entries[] = $entry;
+            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
         return $entries;
@@ -386,7 +383,7 @@ CYPHER,
                 $entry['helper'] = $helper;
             }
 
-            $entries[] = $entry;
+            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
         return $entries;
@@ -424,5 +421,98 @@ CYPHER,
         }
 
         return $unique;
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     * @return array<string, mixed>
+     */
+    protected function withDependencyMetadata(array $entry, string $injectionType, DependencyAccessType $access): array
+    {
+        $effectiveType = $injectionType !== ''
+            ? $injectionType
+            : $this->dependsOnTypeFromAccess($access);
+
+        $metadata = RelationshipTypeReader::dependsOn($effectiveType);
+
+        $entry['source'] = $metadata['source'];
+        $entry['confidence'] = $metadata['confidence'];
+        $entry['visibility'] = $metadata['visibility'];
+
+        return $entry;
+    }
+
+    protected function dependsOnTypeFromAccess(DependencyAccessType $access): string
+    {
+        return match ($access) {
+            DependencyAccessType::Facade => DependsOnType::Facade->value,
+            DependencyAccessType::GlobalHelper => DependsOnType::GlobalHelper->value,
+            DependencyAccessType::ServiceLocation => DependsOnType::ServiceLocation->value,
+            DependencyAccessType::Di => DependsOnType::ConstructorInjection->value,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @param  array<int, array<string, mixed>>  $dependencies
+     * @return array<string, mixed>
+     */
+    protected function appendDependencyBuckets(array $result, array $dependencies): array
+    {
+        $declared = [];
+        $hidden = [];
+
+        foreach ($dependencies as $dependency) {
+            if (($dependency['visibility'] ?? null) === DependencyVisibility::Hidden->value) {
+                $hidden[] = $dependency;
+            } else {
+                $declared[] = $dependency;
+            }
+        }
+
+        $result['declared_dependencies'] = $declared;
+        $result['hidden_dependencies'] = $hidden;
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     * @return array{declared_count: int, hidden_count: int, total_count: int, coverage: string, detectors_active: list<string>, detectors_pending: list<string>}
+     */
+    protected function buildGraphCompleteness(array $entries): array
+    {
+        $declaredNames = [];
+        $hiddenNames = [];
+
+        foreach ($entries as $entry) {
+            $name = (string) ($entry['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+
+            if (($entry['visibility'] ?? null) === DependencyVisibility::Hidden->value) {
+                $hiddenNames[$name] = true;
+            } else {
+                $declaredNames[$name] = true;
+            }
+        }
+
+        return GraphCompleteness::build(count($declaredNames), count($hiddenNames));
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function finalizeResponse(array $result): array
+    {
+        if (! isset($result['graph_completeness'])) {
+            $result['graph_completeness'] = ($result['found'] ?? false)
+                ? GraphCompleteness::empty()
+                : GraphCompleteness::unknown();
+        }
+
+        return $result;
     }
 }

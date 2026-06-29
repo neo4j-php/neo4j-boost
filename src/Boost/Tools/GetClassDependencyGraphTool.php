@@ -19,7 +19,7 @@ final class GetClassDependencyGraphTool extends Tool
 {
     protected string $name = 'get-class-dependency-graph';
 
-    protected string $description = 'Returns the Laravel container dependency graph for a fully-qualified PHP class: constructor dependencies, binding targets, dependents, and unresolved types. Requires php artisan container:graph to have exported data to Neo4j. Use when exploring architecture, DI wiring, or "what depends on / is injected into X?".'.GraphRelationshipGlossary::MCP_TOOL_DESCRIPTION_SUFFIX;
+    protected string $description = 'Returns the Laravel container dependency graph for a fully-qualified PHP class: declared and hidden dependencies (with type, source, confidence, visibility), binding targets, dependents, unresolved types, and graph_completeness metadata. Requires php artisan container:graph to have exported data to Neo4j. Use when exploring architecture, DI wiring, or "what depends on / is injected into X?".'.GraphRelationshipGlossary::MCP_TOOL_DESCRIPTION_SUFFIX;
 
     public function __construct(
         private ClassDependencyGraphReader $reader,
