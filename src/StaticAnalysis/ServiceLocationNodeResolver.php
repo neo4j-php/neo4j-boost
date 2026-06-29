@@ -6,6 +6,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Name;
 use PHPStan\Analyser\Scope;
 
 final class ServiceLocationNodeResolver
@@ -26,7 +27,10 @@ final class ServiceLocationNodeResolver
 
     public function fromStaticCall(StaticCall $node, Scope $scope): ?ServiceLocationEdge
     {
-        $match = $this->detector->matchStaticCall($node);
+        $resolvedClass = $node->class instanceof Name
+            ? ltrim($scope->resolveName($node->class), '\\')
+            : null;
+        $match = $this->detector->matchStaticCall($node, $resolvedClass);
         if ($match === null) {
             return null;
         }

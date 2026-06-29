@@ -57,7 +57,7 @@ final class ServiceLocationCallDetector
     /**
      * @return array{via: string, args: array<int, Node\Arg>}|null
      */
-    public function matchStaticCall(StaticCall $node): ?array
+    public function matchStaticCall(StaticCall $node, ?string $resolvedCalleeClass = null): ?array
     {
         if (! $node->name instanceof Identifier) {
             return null;
@@ -68,11 +68,16 @@ final class ServiceLocationCallDetector
             return null;
         }
 
-        if ($this->isAppFacadeClass($node->class)) {
+        $className = $resolvedCalleeClass ?? $this->unresolvedClassName($node->class);
+        if ($className === null) {
+            return null;
+        }
+
+        if (AppFacadeClassChecker::is($className)) {
             return ['via' => 'App::'.$method, 'args' => $node->args];
         }
 
-        if ($this->isApplicationClass($node->class)) {
+        if ($this->isApplicationClassName($className)) {
             return ['via' => 'Application::'.$method, 'args' => $node->args];
         }
 
@@ -179,24 +184,26 @@ final class ServiceLocationCallDetector
         return ltrim($scope->resolveName($name), '\\');
     }
 
-    private function isAppFacadeClass(Node $class): bool
+    private function isApplicationClassName(string $className): bool
     {
-        if (! $class instanceof Name) {
-            return false;
+        $className = ltrim($className, '\\');
+
+        foreach (self::APPLICATION_CLASS_NAMES as $applicationClass) {
+            if (is_a($className, $applicationClass, true)) {
+                return true;
+            }
         }
 
-        $name = $class->toString();
-
-        return $name === 'App' || $name === 'Illuminate\\Support\\Facades\\App';
+        return false;
     }
 
-    private function isApplicationClass(Node $class): bool
+    private function unresolvedClassName(Node $class): ?string
     {
         if (! $class instanceof Name) {
-            return false;
+            return null;
         }
 
-        return in_array($class->toString(), self::APPLICATION_CLASS_NAMES, true);
+        return ltrim($class->toString(), '\\');
     }
 
     private function methodReceiverVia(Expr $receiver): ?string

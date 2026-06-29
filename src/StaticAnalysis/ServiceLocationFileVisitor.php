@@ -67,7 +67,8 @@ final class ServiceLocationFileVisitor extends NodeVisitorAbstract
         }
 
         if ($node instanceof StaticCall) {
-            $this->recordEdge($this->detector->matchStaticCall($node), $node->getStartLine());
+            $resolvedClass = $this->resolveStaticCallClass($node->class);
+            $this->recordEdge($this->detector->matchStaticCall($node, $resolvedClass), $node->getStartLine());
         }
 
         if ($node instanceof MethodCall) {
@@ -158,6 +159,24 @@ final class ServiceLocationFileVisitor extends NodeVisitorAbstract
         }
 
         return $this->qualifyName($shortName);
+    }
+
+    private function resolveStaticCallClass(Node $class): ?string
+    {
+        if (! $class instanceof Name) {
+            return null;
+        }
+
+        if ($class->isFullyQualified()) {
+            return ltrim($class->toString(), '\\');
+        }
+
+        $shortName = $class->getLast();
+        if (isset($this->imports[$shortName])) {
+            return $this->imports[$shortName];
+        }
+
+        return $this->qualifyName($class->toString());
     }
 
     private function qualifyName(string $shortName): string
