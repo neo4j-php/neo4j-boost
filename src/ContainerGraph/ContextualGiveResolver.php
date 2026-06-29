@@ -11,7 +11,7 @@ use Throwable;
 /**
  * Best-effort resolution of contextual give() targets for container graph export.
  *
- * @see README.md "Contextual bindings (SOFT-49)" for documented limitations.
+ * @see README.md "Contextual bindings" for documented limitations.
  */
 final class ContextualGiveResolver
 {

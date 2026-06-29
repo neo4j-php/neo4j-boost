@@ -375,7 +375,7 @@ The command summary includes `Method injection edges: N`.
 - `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
 - **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
 
-**Dependencies** (SOFT-58 three-node model):
+**Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
 - `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
@@ -387,7 +387,7 @@ The command summary includes `Method injection edges: N`.
 
 There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
 
-**Contextual bindings** (SOFT-49):
+**Contextual bindings**:
 
 - `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
 - `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
