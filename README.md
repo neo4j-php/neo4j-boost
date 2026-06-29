@@ -424,7 +424,7 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, and optional `remarks`), `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
+Returns structured JSON with `dependencies` (backward compatible, including `access`, `lifetime`, `source`, `confidence`, `provenance`, optional `remarks`, and `visibility`), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations, plus per-class `coverage` and declared/hidden counts), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
 
 **Explore bindings from container keys outward:**
 

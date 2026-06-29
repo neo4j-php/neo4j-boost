@@ -14,25 +14,35 @@ final class GraphCompleteness
     ];
 
     /**
+     * @return list<string>
+     */
+    public static function limitations(): array
+    {
+        return [
+            'Route and action-class resolution (e.g. container->make($controller)) is not modeled.',
+            'Dynamic service location, facade, and helper calls without literal arguments are skipped.',
+            'Static scan edges require NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS to be configured.',
+            'Method injection entry points are detected via namespace and naming heuristics.',
+            'Repeated direct instantiation of the same class may collapse to a single edge.',
+            'config() and env() edges use literal keys only; confidence is medium.',
+        ];
+    }
+
+    /**
      * @return array{status: string, limitations: list<string>}
      */
     public static function partial(): array
     {
         return [
             'status' => 'partial',
-            'limitations' => [
-                'Route and action-class resolution (e.g. container->make($controller)) is not modeled.',
-                'Dynamic service location, facade, and helper calls without literal arguments are skipped.',
-                'Static scan edges require NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS to be configured.',
-                'Method injection entry points are detected via namespace and naming heuristics.',
-                'Repeated direct instantiation of the same class may collapse to a single edge.',
-                'config() and env() edges use literal keys only; confidence is medium.',
-            ],
+            'limitations' => self::limitations(),
         ];
     }
 
     /**
      * @return array{
+     *     status: string,
+     *     limitations: list<string>,
      *     declared_count: int,
      *     hidden_count: int,
      *     total_count: int,
@@ -46,6 +56,8 @@ final class GraphCompleteness
         $total = $declaredCount + $hiddenCount;
 
         return [
+            'status' => 'partial',
+            'limitations' => self::limitations(),
             'declared_count' => $declaredCount,
             'hidden_count' => $hiddenCount,
             'total_count' => $total,
@@ -57,6 +69,8 @@ final class GraphCompleteness
 
     /**
      * @return array{
+     *     status: string,
+     *     limitations: list<string>,
      *     declared_count: int,
      *     hidden_count: int,
      *     total_count: int,
@@ -72,6 +86,8 @@ final class GraphCompleteness
 
     /**
      * @return array{
+     *     status: string,
+     *     limitations: list<string>,
      *     declared_count: int,
      *     hidden_count: int,
      *     total_count: int,
