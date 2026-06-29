@@ -2,7 +2,6 @@
 
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
-use Illuminate\Support\Facades\App;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -75,7 +74,7 @@ final class FacadeNodeResolver
 
     private function isServiceLocationAppMake(string $facadeClass, string $method): bool
     {
-        return $method === 'make'
-            && ($facadeClass === App::class || $facadeClass === 'App');
+        return in_array($method, ['make', 'makeWith'], true)
+            && AppFacadeClassChecker::is($facadeClass);
     }
 }

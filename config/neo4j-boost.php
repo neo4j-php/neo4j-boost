@@ -93,5 +93,13 @@ return [
             static fn (string $path): string => trim($path),
             explode(',', (string) env('NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS', '')),
         ))),
+        /*
+         * Additional absolute paths for provider/bootstrap service-locator scans.
+         * Merged with static_scan_paths when container:graph runs its static pass.
+         */
+        'static_scan_provider_paths' => array_values(array_filter(array_map(
+            static fn (string $path): string => trim($path),
+            explode(',', (string) env('NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PROVIDER_PATHS', '')),
+        ))),
     ],
 ];
