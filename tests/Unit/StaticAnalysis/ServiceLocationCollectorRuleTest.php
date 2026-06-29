@@ -39,7 +39,7 @@ class ServiceLocationCollectorRuleTest extends RuleTestCase
         $this->assertContains('app', array_map(static fn ($edge): string => $edge->via, $edges));
     }
 
-    public function test_collector_ignores_dynamic_app_call(): void
+    public function test_collector_records_dynamic_app_call_as_unresolved(): void
     {
         StaticAnalysisCollector::reset();
 
@@ -48,7 +48,17 @@ class ServiceLocationCollectorRuleTest extends RuleTestCase
             [],
         );
 
-        $this->assertSame([], StaticAnalysisCollector::serviceLocationEdges());
+        $edges = StaticAnalysisCollector::serviceLocationEdges();
+        $this->assertCount(2, $edges);
+
+        foreach ($edges as $edge) {
+            $this->assertFalse($edge->resolved);
+            $this->assertSame('__dynamic__', $edge->dependency);
+        }
+
+        $vias = array_map(static fn ($edge): string => $edge->via, $edges);
+        sort($vias);
+        $this->assertSame(['app', 'resolve'], $vias);
     }
 
     public static function getAdditionalConfigFiles(): array

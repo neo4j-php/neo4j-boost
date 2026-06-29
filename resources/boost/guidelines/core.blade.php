@@ -45,18 +45,27 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Binding keys and discovered project classes use `:Abstract` plus `:Interface` or `:Class`; explore with `MATCH p=(a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n) RETURN p LIMIT 200` or undirected `-[r:BINDS_TO|DEPENDS_ON]-` in Neo4j Browser.
+Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Bindings use `:Abstract` nodes; application dependencies use the three-node chain `(:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)`. Explore with:
+
+```cypher
+MATCH p=(i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier) RETURN p LIMIT 200;
+```
 
 **get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
 **contribute-graph-knowledge** (MCP tool): add dependency or binding edges when static analysis cannot infer them. Medium/low confidence returns `confirmation_required` without writing — ask the user, then retry with `confirmed: true` to persist with `source: user`. High confidence persists immediately with `source: agent`. Default contributed `DEPENDS_ON` type is `service_location`.
 
-**Relationship `type` glossary** (on `DEPENDS_ON` / `BINDS_TO` edges): `constructor_injection` (typed constructor param), `method_injection` (typed method param), `facade` (static facade call), `global_helper` (`cache()` / `auth()` / `view()`), `service_location` (`app()` / `resolve()` / `App::make()`), `instantiation` (direct `new`). Bindings: `normal` (transient bind) or `singleton` (shared instance). Legacy graphs without `type` are inferred as `constructor_injection` / `normal` with `confidence: inferred` — re-run `container:graph` after upgrades.
+**Dependency model:** `Instance-[:DEPENDS_ON {file,line,via,type,method,parameter,helper}]->Dependency-[:RESOLVES_TO {lifetime}]->Identifier`. `DEPENDS_ON.type`: `constructor_injection`, `method_injection` (controller actions, `handle()` on jobs/commands/listeners/middleware), `global_helper`, or `instantiation` (direct `new ClassName()`). `Dependency.access`: `di`, `facade`, `global_helper`, `service_location`. `RESOLVES_TO.lifetime`: `singleton` or `bind`. MCP dependency entries expose `access`, `lifetime`, method-injection metadata when present, `helper` for global helpers, and `type` for instantiation. Bindings: `BINDS_TO` with `normal` or `singleton` on `:Abstract` nodes. Contextual `when/needs/give` overrides: `Instance-[:CONTEXTUAL_BINDS {needs,needs_kind,reason}]->Identifier`. Re-run `container:graph` after upgrades.
+
+**Resolution catalog:** `Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog` maps facades to container contracts with `bindsToType` (`singleton` | `normal`). Static facade scanning resolves `Cache::put`-style calls through this catalog.
+
+**Static scan (hidden dependencies):** set `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` to comma-separated absolute paths (e.g. `base_path('app/Services')`). The scan adds `DEPENDS_ON` edges with `source: static` for **service_location** (`app()`, `resolve()`, `App::make()` with literal class args), **facade** (`Cache::put`, custom `Facade::method`, resolved via the resolution catalog), **global_helper** (`cache()`, `auth()`, `config('key')`, etc., resolved via the global helper catalog), and **instantiation** (`new ClassName()`, skipping builtins/anonymous/dynamic). Dynamic calls are skipped. Summary lines: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
 
 ```env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
+NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 ```
 
 ### Cursor: "Loading tools" stuck or HTTP 404

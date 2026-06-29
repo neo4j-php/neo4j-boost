@@ -2,10 +2,10 @@
 
 namespace Neo4j\LaravelBoost;
 
-use Neo4j\LaravelBoost\StaticAnalysis\DependencyEdgeSource;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
-use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 
 class ContainerGraphWriter
 {
@@ -38,41 +38,46 @@ MERGE (a)-[r:BINDS_TO]->(c)
 SET r.type = row.type
 CYPHER;
 
-    private const CYPHER_CLASSES = <<<'CYPHER'
+    private const CYPHER_INSTANCES = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (:Class:Abstract {name: row.class})
+MERGE (:Instance {name: row.class})
 CYPHER;
 
-    private const CYPHER_DEPENDENCIES = <<<'CYPHER'
+    private const CYPHER_RESOLVES_TO = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (c:Class:Abstract {name: row.class})
-FOREACH (_ IN CASE WHEN row.dependencyKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Interface:Abstract {name: row.dependency})
-  MERGE (c)-[r:DEPENDS_ON]->(d)
-  SET r.type = row.type,
-      r.source = row.source,
-      r.via = row.via,
-      r.file = row.file,
-      r.line = row.line
-)
-FOREACH (_ IN CASE WHEN row.dependencyKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Class:Abstract {name: row.dependency})
-  MERGE (c)-[r:DEPENDS_ON]->(d)
-  SET r.type = row.type,
-      r.source = row.source,
-      r.via = row.via,
-      r.file = row.file,
-      r.line = row.line
-)
+MERGE (dep:Dependency {key: row.dependency_key})
+SET dep.access = row.access
+MERGE (id:Identifier {name: row.identifier})
+SET id.kind = row.identifier_kind,
+    id.reason = coalesce(row.reason, id.reason)
+MERGE (dep)-[r:RESOLVES_TO]->(id)
+SET r.lifetime = row.lifetime
 CYPHER;
 
-    private const CYPHER_UNRESOLVED = <<<'CYPHER'
+    private const CYPHER_INSTANCE_DEPENDS_ON = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (c:Class:Abstract {name: row.class})
-MERGE (u:UnresolvedDependency:Abstract {name: row.name})
-SET u.reason = row.reason
-MERGE (c)-[r:DEPENDS_ON]->(u)
-SET r.type = row.type
+MERGE (i:Instance {name: row.instance})
+MERGE (dep:Dependency {key: row.dependency_key})
+MERGE (i)-[d:DEPENDS_ON]->(dep)
+SET d.file = row.file,
+    d.line = row.line,
+    d.via = row.via,
+    d.type = row.injection_type,
+    d.method = row.method,
+    d.parameter = row.parameter,
+    d.helper = coalesce(row.helper, '')
+CYPHER;
+
+    private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (i:Instance {name: row.when})
+MERGE (g:Identifier {name: row.give})
+SET g.kind = row.give_kind,
+    g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
+MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
+SET r.needs = row.needs,
+    r.needs_kind = row.needs_kind,
+    r.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE r.reason END
 CYPHER;
 
     public function __construct(
@@ -85,28 +90,41 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{class: string}>  $classRows
+     * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
-    public function write(array $classRows, array $bindingRows, array $dependencyRows, array $unresolvedRows): void
-    {
+    public function write(
+        array $instanceRows,
+        array $bindingRows,
+        array $dependencyChainRows,
+        array $contextualBindingRows = [],
+    ): void {
         $this->validateBindingRows($bindingRows);
-        $this->validateDependencyRows($dependencyRows);
-        $this->validateUnresolvedRows($unresolvedRows);
+        $this->validateDependencyChainRows($dependencyChainRows);
+        $this->validateContextualBindingRows($contextualBindingRows);
 
-        if ($classRows !== []) {
-            $this->connection->run(self::CYPHER_CLASSES, ['rows' => $classRows]);
+        if ($instanceRows !== []) {
+            $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);
         }
         if ($bindingRows !== []) {
             $this->connection->run(self::CYPHER_BINDINGS, ['rows' => $bindingRows]);
         }
-        if ($dependencyRows !== []) {
-            $this->connection->run(self::CYPHER_DEPENDENCIES, ['rows' => $dependencyRows]);
+        if ($dependencyChainRows !== []) {
+            $this->connection->run(self::CYPHER_RESOLVES_TO, ['rows' => $dependencyChainRows]);
+
+            $instanceChains = array_values(array_filter(
+                $dependencyChainRows,
+                static fn (array $row): bool => ($row['instance'] ?? '') !== '',
+            ));
+
+            if ($instanceChains !== []) {
+                $this->connection->run(self::CYPHER_INSTANCE_DEPENDS_ON, ['rows' => $instanceChains]);
+            }
         }
-        if ($unresolvedRows !== []) {
-            $this->connection->run(self::CYPHER_UNRESOLVED, ['rows' => $unresolvedRows]);
+        if ($contextualBindingRows !== []) {
+            $this->connection->run(self::CYPHER_CONTEXTUAL_BINDS, ['rows' => $contextualBindingRows]);
         }
     }
 
@@ -116,10 +134,11 @@ CYPHER;
     public function cypherTemplates(): array
     {
         return [
-            'classes' => self::CYPHER_CLASSES,
+            'instances' => self::CYPHER_INSTANCES,
             'bindings' => self::CYPHER_BINDINGS,
-            'dependencies' => self::CYPHER_DEPENDENCIES,
-            'unresolved' => self::CYPHER_UNRESOLVED,
+            'resolves_to' => self::CYPHER_RESOLVES_TO,
+            'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
+            'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
         ];
     }
 
@@ -134,43 +153,41 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>  $dependencyRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
-    private function validateDependencyRows(array $dependencyRows): void
+    private function validateDependencyChainRows(array $dependencyChainRows): void
     {
-        foreach ($dependencyRows as $row) {
-            DependsOnType::assertAllowed((string) ($row['type'] ?? ''));
-            $this->assertDependencyMetadata($row);
-        }
-    }
+        foreach ($dependencyChainRows as $row) {
+            DependencyAccessType::assertAllowed((string) ($row['access'] ?? ''));
+            ResolvesToLifetime::assertAllowed((string) ($row['lifetime'] ?? ''));
 
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function assertDependencyMetadata(array $row): void
-    {
-        foreach (['source', 'via', 'file'] as $key) {
-            if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
-                throw new \InvalidArgumentException("Dependency row is missing string {$key}");
+            foreach (['dependency_key', 'identifier', 'identifier_kind', 'via', 'file', 'injection_type', 'method', 'parameter'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Dependency chain row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('line', $row) || ! is_int($row['line'])) {
+                throw new \InvalidArgumentException('Dependency chain row is missing integer line');
+            }
+
+            if (! array_key_exists('instance', $row) || ! is_string($row['instance'])) {
+                throw new \InvalidArgumentException('Dependency chain row is missing string instance');
             }
         }
-
-        if (! array_key_exists('line', $row) || ! is_int($row['line'])) {
-            throw new \InvalidArgumentException('Dependency row is missing integer line');
-        }
-
-        if ($row['source'] === DependencyEdgeSource::Static->value && $row['type'] !== DependsOnType::ServiceLocation->value) {
-            throw new \InvalidArgumentException('Static analysis edges must use service_location type');
-        }
     }
 
     /**
-     * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
-    private function validateUnresolvedRows(array $unresolvedRows): void
+    private function validateContextualBindingRows(array $contextualBindingRows): void
     {
-        foreach ($unresolvedRows as $row) {
-            DependsOnType::assertAllowed((string) ($row['type'] ?? ''));
+        foreach ($contextualBindingRows as $row) {
+            foreach (['when', 'when_kind', 'needs', 'needs_kind', 'give', 'give_kind', 'reason'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Contextual binding row is missing string {$key}");
+                }
+            }
         }
     }
 }

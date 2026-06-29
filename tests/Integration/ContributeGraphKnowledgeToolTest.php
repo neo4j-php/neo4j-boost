@@ -35,10 +35,9 @@ class ContributeGraphKnowledgeToolTest extends TestCase
         $this->artisan('container:graph')->assertExitCode(0);
 
         $this->graphReader = InMemoryClassDependencyGraphReader::fromExportRows(
-            $writer->classRows,
+            $writer->instanceRows,
             $writer->bindingRows,
-            $writer->dependencyRows,
-            $writer->unresolvedRows,
+            $writer->dependencyChainRows,
         );
 
         $this->contributor = new RecordingGraphKnowledgeContributor;
