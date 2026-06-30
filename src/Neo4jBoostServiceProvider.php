@@ -19,6 +19,7 @@ use Neo4j\LaravelBoost\ContainerGraph\BindingLifetimeResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualGiveResolver;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
+use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionTargetResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
@@ -69,6 +70,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(BindingLifetimeResolver::class);
         $this->app->singleton(ContextualGiveResolver::class);
         $this->app->singleton(ContextualBindingExtractor::class);
+        $this->app->singleton(DependencyEdgeMetadataResolver::class);
         $this->app->singleton(DependencyChainBuilder::class);
         $this->app->singleton(ParameterDependencyResolver::class);
         $this->app->singleton(MethodInjectionTargetResolver::class);

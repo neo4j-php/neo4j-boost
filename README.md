@@ -247,7 +247,7 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-### Static analysis pass (SOFT-43 / SOFT-44)
+### Static analysis pass
 
 `container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by scanning configured paths. Opt-in only: when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
 
@@ -259,7 +259,7 @@ NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 
 Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
 
-#### Service location (SOFT-43)
+#### Service location
 
 Detects literal **service location** calls:
 
@@ -281,7 +281,7 @@ Dynamic calls such as `app($variable)` are skipped.
 }
 ```
 
-#### Facade static calls (SOFT-44)
+#### Facade static calls
 
 Detects static calls on Laravel first-party facades and custom app facades (`Cache::put`, `CustomFacade::handle`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
 
@@ -299,7 +299,7 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
 
 The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
 
-#### Global helper calls (SOFT-47)
+#### Global helper calls
 
 Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
 
@@ -355,7 +355,7 @@ $entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facade
 
 Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
 
-### Method injection (SOFT-46)
+### Method injection
 
 `container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
 
@@ -394,8 +394,12 @@ The command summary includes `Method injection edges: N`.
 **Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper, source, confidence, provenance, remarks}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
 - `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
+- `source` on edges: `reflection`, `static`, or `catalog`
+- `confidence` on edges: `high`, `medium`, or `low` (e.g. `config()` / `env()` literal keys are `medium`)
+- `provenance` on edges: `reflection`, `static_scan`, `resolution_catalog`, `heuristic`, or `container_binding`
+- `remarks` — short human-readable note explaining the confidence score
 - `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
@@ -420,7 +424,7 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies` (including `access` and `lifetime`), `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
+Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, and optional `remarks`), `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
 
 **Explore bindings from container keys outward:**
 

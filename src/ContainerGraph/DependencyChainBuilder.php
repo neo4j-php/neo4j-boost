@@ -9,31 +9,39 @@ use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 
 /**
  * Builds Instance → Dependency → Identifier export rows (SOFT-58).
+ *
+ * @phpstan-type DependencyChainRow array{
+ *     instance: string,
+ *     dependency_key: string,
+ *     access: string,
+ *     identifier: string,
+ *     identifier_kind: string,
+ *     lifetime: string,
+ *     injection_type: string,
+ *     method: string,
+ *     parameter: string,
+ *     via: string,
+ *     file: string,
+ *     line: int,
+ *     source: string,
+ *     confidence: string,
+ *     provenance: string,
+ *     remarks: string,
+ *     helper?: string,
+ *     reason?: string
+ * }
  */
 final class DependencyChainBuilder
 {
     public function __construct(
         private BindingLifetimeResolver $lifetimeResolver,
+        private DependencyEdgeMetadataResolver $metadataResolver,
     ) {}
 
     /**
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
      * @param  array{class: string, dependency: string, dependencyKind: string, type: string, method?: string, parameter?: string, source?: string, via?: string, file?: string, line?: int, helper?: string}  $row
-     * @return array{
-     *     instance: string,
-     *     dependency_key: string,
-     *     access: string,
-     *     identifier: string,
-     *     identifier_kind: string,
-     *     lifetime: string,
-     *     injection_type: string,
-     *     method: string,
-     *     parameter: string,
-     *     via: string,
-     *     file: string,
-     *     line: int,
-     *     helper?: string
-     * }
+     * @return DependencyChainRow
      */
     public function fromExtractedDependencyRow(array $row, array $bindings): array
     {
@@ -68,21 +76,11 @@ final class DependencyChainBuilder
             $chain['reason'] = $row['reason'];
         }
 
-        return $chain;
+        return array_merge($chain, $this->metadataResolver->forExtractedRow($row));
     }
 
     /**
-     * @return array{
-     *     instance: string,
-     *     dependency_key: string,
-     *     access: string,
-     *     identifier: string,
-     *     identifier_kind: string,
-     *     lifetime: string,
-     *     via: string,
-     *     file: string,
-     *     line: int
-     * }
+     * @return DependencyChainRow
      */
     public function fromUnresolvedRow(array $row, array $bindings): array
     {
@@ -105,7 +103,7 @@ final class DependencyChainBuilder
         );
         $chain['reason'] = (string) ($row['reason'] ?? 'unresolved');
 
-        return $chain;
+        return array_merge($chain, $this->metadataResolver->forUnresolvedRow($row));
     }
 
     /**
@@ -113,36 +111,29 @@ final class DependencyChainBuilder
      * catalog branch is merged; accepts FacadeCatalogExporter row shape.
      *
      * @param  array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}  $row
-     * @return array{
-     *     instance: string,
-     *     dependency_key: string,
-     *     access: string,
-     *     identifier: string,
-     *     identifier_kind: string,
-     *     lifetime: string,
-     *     via: string,
-     *     file: string,
-     *     line: int
-     * }
+     * @return DependencyChainRow
      */
     public function fromFacadeExportRow(array $row): array
     {
         $identifier = $row['binding_key'] !== '' ? $row['binding_key'] : $row['abstract'];
 
-        return $this->chain(
-            instance: '',
-            access: DependencyAccessType::Facade,
-            identifier: $identifier,
-            identifierKind: $row['abstractKind'],
-            lifetime: ResolvesToLifetime::fromBindsToType(
-                BindsToType::assertAllowed($row['binds_to_type']),
+        return array_merge(
+            $this->chain(
+                instance: '',
+                access: DependencyAccessType::Facade,
+                identifier: $identifier,
+                identifierKind: $row['abstractKind'],
+                lifetime: ResolvesToLifetime::fromBindsToType(
+                    BindsToType::assertAllowed($row['binds_to_type']),
+                ),
+                injectionType: '',
+                method: '',
+                parameter: '',
+                via: $row['facade_class'],
+                file: '',
+                line: 0,
             ),
-            injectionType: '',
-            method: '',
-            parameter: '',
-            via: $row['facade_class'],
-            file: '',
-            line: 0,
+            $this->metadataResolver->forFacadeCatalogRow($row),
         );
     }
 
