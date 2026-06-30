@@ -104,12 +104,12 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExists($class)) {
-            return [
+            return $this->finalizeResponse([
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ];
+            ]);
         }
 
         $result = [
@@ -130,6 +130,8 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependencies'] = $paginated['items'];
             $result['dependencies_pagination'] = $paginated['pagination'];
+            $result = $this->appendDependencyBuckets($result, $paginated['items']);
+            $result['graph_completeness'] = $this->buildGraphCompleteness($entries);
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
@@ -139,7 +141,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $result;
+        return $this->finalizeResponse($result);
     }
 
     private function classExists(string $class): bool
@@ -148,7 +150,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -177,19 +179,20 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             }
 
             $shared = (bool) ($contribution['shared'] ?? false);
-            $binding = [
+            $typeMeta = RelationshipTypeReader::bindsTo(
+                (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+                $shared,
+                $contribution['source'] ?? null,
+            );
+
+            return [
                 'abstract' => $from,
                 'concrete' => $to,
-                'shared' => $shared,
-                'type' => (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+                'shared' => $typeMeta['shared'],
+                'type' => $typeMeta['type'],
+                'source' => $typeMeta['source'],
+                'confidence' => $typeMeta['confidence'],
             ];
-
-            $source = $contribution['source'] ?? null;
-            if (is_string($source) && $source !== '') {
-                $binding['source'] = $source;
-            }
-
-            return $binding;
         }
 
         return null;
@@ -197,7 +200,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /**
      * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
      */
     private function formatBindingRow(array $row): array
     {
@@ -208,6 +211,8 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
+            'source' => $typeMeta['source'],
+            'confidence' => $typeMeta['confidence'],
         ];
     }
 
@@ -297,7 +302,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['source'] = $source;
             }
 
-            $entries[] = $entry;
+            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
         return $entries;
@@ -362,7 +367,11 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $entry['source'] = $source;
         }
 
-        return $entry;
+        return $this->withDependencyMetadata(
+            $entry,
+            (string) ($row['injection_type'] ?? ''),
+            $access,
+        );
     }
 
     /**
@@ -415,7 +424,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['helper'] = $row['helper'];
             }
 
-            $entries[] = $entry;
+            $entries[] = $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
         }
 
         return $entries;
