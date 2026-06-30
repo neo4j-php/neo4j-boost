@@ -8,6 +8,7 @@ use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
@@ -23,7 +24,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     private array $bindingRows = [];
 
-    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string}> */
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}> */
     private array $dependencyChainRows = [];
 
     /** @var array<int, array<string, mixed>> */
@@ -116,6 +117,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             'class' => $class,
             'found' => true,
             'graph_export_required' => false,
+            'graph_completeness' => GraphCompleteness::partial(),
         ];
 
         if ($includeBindings) {
@@ -148,7 +150,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source?: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -177,19 +179,22 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             }
 
             $shared = (bool) ($contribution['shared'] ?? false);
-            $binding = [
+            $typeMeta = RelationshipTypeReader::bindsTo(
+                (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+            );
+
+            return [
                 'abstract' => $from,
                 'concrete' => $to,
-                'shared' => $shared,
-                'type' => (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+                'shared' => $typeMeta['shared'],
+                'type' => $typeMeta['type'],
+                ...$this->edgeMetadataFromRow([
+                    'source' => $contribution['source'] ?? '',
+                    'confidence' => $contribution['confidence'] ?? 'high',
+                    'provenance' => '',
+                    'remarks' => $contribution['reason'] ?? '',
+                ]),
             ];
-
-            $source = $contribution['source'] ?? null;
-            if (is_string($source) && $source !== '') {
-                $binding['source'] = $source;
-            }
-
-            return $binding;
         }
 
         return null;
@@ -197,7 +202,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /**
      * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
      */
     private function formatBindingRow(array $row): array
     {
@@ -208,6 +213,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
+            ...$this->edgeMetadataFromRow($row),
         ];
     }
 
@@ -263,7 +269,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 continue;
             }
 
-            $entries[] = $this->entryFromChainRow($row, $instance);
+            $entries[] = $this->entryFromChainRow($row);
         }
 
         foreach ($this->contributedRows as $contribution) {
@@ -292,22 +298,22 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 'type' => $injectionType,
             ];
 
-            $source = $contribution['source'] ?? null;
-            if (is_string($source) && $source !== '') {
-                $entry['source'] = $source;
-            }
-
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRow([
+                'source' => $contribution['source'] ?? '',
+                'confidence' => $contribution['confidence'] ?? 'high',
+                'provenance' => '',
+                'remarks' => $contribution['reason'] ?? '',
+            ]));
         }
 
         return $entries;
     }
 
     /**
-     * @param  array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string}  $row
+     * @param  array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}  $row
      * @return array<string, mixed>
      */
-    private function entryFromChainRow(array $row, string $instance): array
+    private function entryFromChainRow(array $row): array
     {
         $access = DependencyAccessType::assertAllowed($row['access']);
         $kind = $row['identifier_kind'] === 'Unresolved' ? 'UnresolvedDependency' : $row['identifier_kind'];
@@ -352,17 +358,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             $entry['helper'] = $row['helper'];
         }
 
-        $source = $this->findContributionSource(
-            GraphKnowledgeContributor::RELATIONSHIP_DEPENDS_ON,
-            $instance,
-            $row['identifier'],
-        );
-
-        if ($source !== null) {
-            $entry['source'] = $source;
-        }
-
-        return $entry;
+        return array_merge($entry, $this->edgeMetadataFromRow($row));
     }
 
     /**
@@ -415,29 +411,10 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['helper'] = $row['helper'];
             }
 
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRow($row));
         }
 
         return $entries;
-    }
-
-    private function findContributionSource(string $relationship, string $from, string $to): ?string
-    {
-        foreach ($this->contributedRows as $contribution) {
-            if (($contribution['relationship'] ?? '') !== $relationship) {
-                continue;
-            }
-
-            if (($contribution['from'] ?? '') !== $from || ($contribution['to'] ?? '') !== $to) {
-                continue;
-            }
-
-            $source = $contribution['source'] ?? null;
-
-            return is_string($source) && $source !== '' ? $source : null;
-        }
-
-        return null;
     }
 
     private function kindForTypeName(string $name): string
@@ -462,6 +439,26 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         }
 
         return in_array($name, $this->classes, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function edgeMetadataFromRow(array $row): array
+    {
+        $metadata = [
+            'source' => (string) ($row['source'] ?? ''),
+            'confidence' => (string) ($row['confidence'] ?? ''),
+            'provenance' => (string) ($row['provenance'] ?? ''),
+        ];
+
+        $remarks = (string) ($row['remarks'] ?? '');
+        if ($remarks !== '') {
+            $metadata['remarks'] = $remarks;
+        }
+
+        return $metadata;
     }
 
     /**

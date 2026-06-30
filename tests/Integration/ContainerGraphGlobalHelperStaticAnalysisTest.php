@@ -39,10 +39,14 @@ class ContainerGraphGlobalHelperStaticAnalysisTest extends TestCase
         $this->assertSame('cache', $cacheEdge['helper'] ?? null);
         $this->assertSame(GlobalHelperWorker::class, $cacheEdge['instance']);
         $this->assertStringContainsString('GlobalHelperWorker.php', $cacheEdge['file']);
+        $this->assertSame('static', $cacheEdge['source']);
+        $this->assertSame('high', $cacheEdge['confidence']);
+        $this->assertSame('static_scan', $cacheEdge['provenance']);
 
         $configEdge = $this->findGlobalHelperEdge('config');
         $this->assertNotNull($configEdge);
         $this->assertSame('config.app.name', $configEdge['identifier']);
+        $this->assertSame('medium', $configEdge['confidence']);
     }
 
     public function test_static_scan_paths_can_be_disabled(): void
