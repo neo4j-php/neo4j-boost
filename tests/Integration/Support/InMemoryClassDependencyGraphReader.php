@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
@@ -88,6 +89,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             'class' => $class,
             'found' => true,
             'graph_export_required' => false,
+            'graph_completeness' => GraphCompleteness::partial(),
         ];
 
         if ($includeBindings) {
@@ -141,7 +143,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
     /**
      * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
-     * @return array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
      */
     private function formatBindingRow(array $row): array
     {
@@ -152,6 +154,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             'concrete' => $row['concrete'],
             'shared' => $typeMeta['shared'],
             'type' => $typeMeta['type'],
+            ...$this->edgeMetadataFromRow($row),
         ];
     }
 
@@ -250,7 +253,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['helper'] = $row['helper'];
             }
 
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRow($row));
         }
 
         return $entries;
@@ -306,7 +309,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 $entry['helper'] = $row['helper'];
             }
 
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRow($row));
         }
 
         return $entries;
@@ -321,6 +324,26 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         }
 
         return in_array($name, $this->classes, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function edgeMetadataFromRow(array $row): array
+    {
+        $metadata = [
+            'source' => (string) ($row['source'] ?? ''),
+            'confidence' => (string) ($row['confidence'] ?? ''),
+            'provenance' => (string) ($row['provenance'] ?? ''),
+        ];
+
+        $remarks = (string) ($row['remarks'] ?? '');
+        if ($remarks !== '') {
+            $metadata['remarks'] = $remarks;
+        }
+
+        return $metadata;
     }
 
     /**

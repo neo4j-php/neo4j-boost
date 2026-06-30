@@ -39,8 +39,23 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('d.type = row.injection_type', $dependsOnTemplate);
         $this->assertStringContainsString('d.method = row.method', $dependsOnTemplate);
         $this->assertStringContainsString('d.parameter = row.parameter', $dependsOnTemplate);
+        $this->assertStringContainsString('d.source = row.source', $dependsOnTemplate);
+        $this->assertStringContainsString('d.confidence = row.confidence', $dependsOnTemplate);
+        $this->assertStringContainsString('d.provenance = row.provenance', $dependsOnTemplate);
+        $this->assertStringContainsString('d.remarks = coalesce(row.remarks', $dependsOnTemplate);
         $this->assertStringContainsString(':Instance', $dependsOnTemplate);
         $this->assertStringContainsString(':Dependency', $dependsOnTemplate);
+    }
+
+    public function test_bindings_cypher_sets_edge_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $bindingsTemplate = $writer->cypherTemplates()['bindings'];
+
+        $this->assertStringContainsString('r.source = row.source', $bindingsTemplate);
+        $this->assertStringContainsString('r.confidence = row.confidence', $bindingsTemplate);
+        $this->assertStringContainsString('r.provenance = row.provenance', $bindingsTemplate);
+        $this->assertStringContainsString('r.remarks = coalesce(row.remarks', $bindingsTemplate);
     }
 
     public function test_resolves_to_cypher_sets_lifetime_and_identifier_kind(): void

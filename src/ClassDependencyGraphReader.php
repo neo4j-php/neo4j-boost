@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost;
 
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
 
 class ClassDependencyGraphReader
@@ -43,6 +44,7 @@ class ClassDependencyGraphReader
             'class' => $class,
             'found' => true,
             'graph_export_required' => false,
+            'graph_completeness' => GraphCompleteness::partial(),
         ];
 
         if ($includeBindings) {
@@ -87,14 +89,15 @@ CYPHER,
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type,
+       r.source AS source, r.confidence AS confidence, r.provenance AS provenance, r.remarks AS remarks
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -107,7 +110,8 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type,
+       r.source AS source, r.confidence AS confidence, r.provenance AS provenance, r.remarks AS remarks
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -116,7 +120,7 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
@@ -130,6 +134,7 @@ CYPHER,
                 'concrete' => (string) $record->get('concrete'),
                 'shared' => $typeMeta['shared'],
                 'type' => $typeMeta['type'],
+                ...$this->bindingMetadataFromRecord($record),
             ];
         }
 
@@ -241,7 +246,8 @@ CYPHER,
 MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
-       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -260,7 +266,8 @@ CYPHER,
 MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier {name: $identifier})
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
-       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper
+       d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
 ORDER BY i.name ASC
 CYPHER,
             ['identifier' => $identifier],
@@ -322,7 +329,7 @@ CYPHER,
                 $entry['helper'] = $helper;
             }
 
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRecord($record));
         }
 
         return $entries;
@@ -386,7 +393,7 @@ CYPHER,
                 $entry['helper'] = $helper;
             }
 
-            $entries[] = $entry;
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRecord($record));
         }
 
         return $entries;
@@ -402,6 +409,33 @@ CYPHER,
         $record = $result->first();
 
         return $record !== null && (int) $record->get('total') > 0;
+    }
+
+    /**
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function edgeMetadataFromRecord(object $record): array
+    {
+        $metadata = [
+            'source' => (string) $record->get('source'),
+            'confidence' => (string) $record->get('confidence'),
+            'provenance' => (string) $record->get('provenance'),
+        ];
+
+        $remarks = (string) $record->get('remarks');
+        if ($remarks !== '') {
+            $metadata['remarks'] = $remarks;
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function bindingMetadataFromRecord(object $record): array
+    {
+        return $this->edgeMetadataFromRecord($record);
     }
 
     /**
