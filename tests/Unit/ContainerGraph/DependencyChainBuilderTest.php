@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph;
 
 use Neo4j\LaravelBoost\ContainerGraph\BindingLifetimeResolver;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
+use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use PHPUnit\Framework\TestCase;
 
@@ -14,7 +15,10 @@ class DependencyChainBuilderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->builder = new DependencyChainBuilder(new BindingLifetimeResolver);
+        $this->builder = new DependencyChainBuilder(
+            new BindingLifetimeResolver,
+            new DependencyEdgeMetadataResolver,
+        );
     }
 
     public function test_extracted_dependency_row_maps_to_three_node_chain(): void
@@ -36,6 +40,9 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('Interface', $chain['identifier_kind']);
         $this->assertSame('bind', $chain['lifetime']);
         $this->assertSame(DependsOnType::ConstructorInjection->value, $chain['injection_type']);
+        $this->assertSame('reflection', $chain['source']);
+        $this->assertSame('high', $chain['confidence']);
+        $this->assertSame('reflection', $chain['provenance']);
     }
 
     public function test_method_injection_row_uses_unique_dependency_key_and_metadata(): void
@@ -76,6 +83,9 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('app', $chain['via']);
         $this->assertSame('app/Services/Foo.php', $chain['file']);
         $this->assertSame(42, $chain['line']);
+        $this->assertSame('static', $chain['source']);
+        $this->assertSame('high', $chain['confidence']);
+        $this->assertSame('static_scan', $chain['provenance']);
     }
 
     public function test_facade_export_row_creates_catalog_only_chain(): void
@@ -95,6 +105,9 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame('cache', $chain['identifier']);
         $this->assertSame('singleton', $chain['lifetime']);
         $this->assertSame('Illuminate\\Support\\Facades\\Cache', $chain['via']);
+        $this->assertSame('catalog', $chain['source']);
+        $this->assertSame('high', $chain['confidence']);
+        $this->assertSame('resolution_catalog', $chain['provenance']);
     }
 
     public function test_unresolved_row_sets_identifier_kind_and_reason(): void
@@ -129,6 +142,8 @@ class DependencyChainBuilderTest extends TestCase
         $this->assertSame(DependsOnType::GlobalHelper->value, $chain['injection_type']);
         $this->assertSame('cache', $chain['helper']);
         $this->assertSame('cache', $chain['via']);
+        $this->assertSame('static', $chain['source']);
+        $this->assertSame('high', $chain['confidence']);
     }
 
     public function test_instantiation_row_sets_injection_type_and_via(): void

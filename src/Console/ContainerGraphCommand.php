@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
+use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
@@ -35,6 +36,7 @@ class ContainerGraphCommand extends Command
         private GlobalHelperEdgeFinder $globalHelperEdgeFinder,
         private InstantiationEdgeFinder $instantiationEdgeFinder,
         private DependencyChainBuilder $dependencyChainBuilder,
+        private DependencyEdgeMetadataResolver $metadataResolver,
         private FacadeCatalogExporter $facadeCatalogExporter,
         private ContextualBindingExtractor $contextualBindingExtractor,
         private MethodInjectionExtractor $methodInjectionExtractor,
@@ -125,7 +127,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
      * @param  array<int, array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}>  $facadeCatalogRows
-     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>
+     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>
      */
     private function buildDependencyChainRows(
         array $dependencyRows,
@@ -151,7 +153,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>, 1: array<int, string>}
+     * @return array{0: array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>, 1: array<int, string>}
      */
     private function extractBindingRows(): array
     {
@@ -168,14 +170,14 @@ class ContainerGraphCommand extends Command
 
             $shared = (bool) ($binding['shared'] ?? false);
 
-            $rows[] = [
+            $rows[] = array_merge([
                 'abstract' => $abstract,
                 'abstractKind' => $this->kindForTypeName($abstract),
                 'concrete' => $resolved['name'],
                 'concreteKind' => $resolved['kind'],
                 'shared' => $shared,
                 'type' => BindsToType::fromShared($shared)->value,
-            ];
+            ], $this->metadataResolver->forContainerBinding());
 
             if ($resolved['kind'] === 'Class' && class_exists($resolved['name']) && ! interface_exists($resolved['name'])) {
                 $concreteClasses[$resolved['name']] = $resolved['name'];
@@ -523,8 +525,8 @@ class ContainerGraphCommand extends Command
 
     /**
      * @param  array<int, array{class: string}>  $instanceRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
     private function printCypher(

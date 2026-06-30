@@ -394,8 +394,12 @@ The command summary includes `Method injection edges: N`.
 **Dependencies** (three-node model):
 
 - `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper, source, confidence, provenance, remarks}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
 - `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
+- `source` on edges: `reflection`, `static`, or `catalog`
+- `confidence` on edges: `high`, `medium`, or `low` (e.g. `config()` / `env()` literal keys are `medium`)
+- `provenance` on edges: `reflection`, `static_scan`, `resolution_catalog`, `heuristic`, or `container_binding`
+- `remarks` — short human-readable note explaining the confidence score
 - `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
 - `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
 - `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
@@ -420,7 +424,7 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies` (backward compatible, including `access` and `lifetime`), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, and `graph_completeness`. Each dependency also includes `source`, `confidence`, and `visibility` (`declared` or `hidden`). Pagination metadata (`dependencies_pagination` / `dependents_pagination`) and `graph_export_required` are included when relevant. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
+Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, and optional `remarks`), `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations), and `graph_export_required` when data is missing. Default page size is 100 entries. Re-run `container:graph` after upgrading to refresh the three-node dependency model.
 
 **Explore bindings from container keys outward:**
 

@@ -4,7 +4,6 @@ namespace Neo4j\LaravelBoost;
 
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
-use Neo4j\LaravelBoost\Support\Graph\DependencyVisibility;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
@@ -35,18 +34,19 @@ class ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExistsInGraph($class)) {
-            return $this->finalizeResponse([
+            return [
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ]);
+            ];
         }
 
         $result = [
             'class' => $class,
             'found' => true,
             'graph_export_required' => false,
+            'graph_completeness' => GraphCompleteness::partial(),
         ];
 
         if ($includeBindings) {
@@ -57,15 +57,9 @@ class ClassDependencyGraphReader
         }
 
         if ($direction === 'outbound' || $direction === 'both') {
-            $allEntries = $this->traverseDependencyChains($class, $depth, outbound: true);
-            $total = count($allEntries);
-            $items = $this->uniqueDependencyEntries(
-                array_slice($allEntries, ($page - 1) * $perPage, $perPage),
-            );
-            $result['dependencies'] = $items;
-            $result['dependencies_pagination'] = $this->buildPaginationMeta($page, $perPage, $total);
-            $result = $this->appendDependencyBuckets($result, $items);
-            $result['graph_completeness'] = $this->buildGraphCompleteness($allEntries);
+            $paginated = $this->fetchDependencies($class, $depth, $page, $perPage);
+            $result['dependencies'] = $paginated['items'];
+            $result['dependencies_pagination'] = $paginated['pagination'];
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
@@ -74,7 +68,7 @@ class ClassDependencyGraphReader
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $this->finalizeResponse($result);
+        return $result;
     }
 
     private function classExistsInGraph(string $class): bool
@@ -97,14 +91,15 @@ CYPHER,
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}
      */
     private function fetchBinding(string $class): ?array
     {
         $binding = $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract {name: $class})-[r:BINDS_TO]->(t:Abstract)
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.source AS source
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type,
+       r.source AS source, r.confidence AS confidence, r.provenance AS provenance, r.remarks AS remarks
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -117,7 +112,8 @@ CYPHER,
         return $this->fetchBindingFromQuery(
             <<<'CYPHER'
 MATCH (a:Abstract)-[r:BINDS_TO]->(t:Abstract {name: $class})
-RETURN a.name AS abstract, t.name AS concrete, r.type AS type, r.source AS source
+RETURN a.name AS abstract, t.name AS concrete, r.type AS type,
+       r.source AS source, r.confidence AS confidence, r.provenance AS provenance, r.remarks AS remarks
 LIMIT 1
 CYPHER,
             ['class' => $class],
@@ -126,30 +122,39 @@ CYPHER,
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}
      */
     private function fetchBindingFromQuery(string $cypher, array $parameters): ?array
     {
         $result = $this->connection->run($cypher, $parameters);
 
         foreach ($result as $record) {
-            $typeMeta = RelationshipTypeReader::bindsTo(
-                $record->get('type'),
-                null,
-                $record->get('source'),
-            );
+            $typeMeta = RelationshipTypeReader::bindsTo($record->get('type'));
 
             return [
                 'abstract' => (string) $record->get('abstract'),
                 'concrete' => (string) $record->get('concrete'),
                 'shared' => $typeMeta['shared'],
                 'type' => $typeMeta['type'],
-                'source' => $typeMeta['source'],
-                'confidence' => $typeMeta['confidence'],
+                ...$this->bindingMetadataFromRecord($record),
             ];
         }
 
         return null;
+    }
+
+    /**
+     * @return array{items: array<int, array<string, mixed>>, pagination: array{page: int, per_page: int, total: int, last_page: int, has_more: bool}}
+     */
+    private function fetchDependencies(string $class, int $depth, int $page, int $perPage): array
+    {
+        $allEntries = $this->traverseDependencyChains($class, $depth, outbound: true);
+        $total = count($allEntries);
+
+        return [
+            'items' => $this->uniqueDependencyEntries(array_slice($allEntries, ($page - 1) * $perPage, $perPage)),
+            'pagination' => $this->buildPaginationMeta($page, $perPage, $total),
+        ];
     }
 
     /**
@@ -210,7 +215,9 @@ CYPHER,
                     $visited[$key] = true;
                     $entries[] = array_merge($chain, ['depth' => $currentDepth]);
 
-                    if ($this->instanceExists($targetName)) {
+                    if ($outbound && $this->instanceExists($targetName)) {
+                        $nextFrontier[] = $targetName;
+                    } elseif (! $outbound && $this->instanceExists($targetName)) {
                         $nextFrontier[] = $targetName;
                     }
                 }
@@ -242,7 +249,7 @@ MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVE
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
-       d.source AS source
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
 ORDER BY id.name ASC
 CYPHER,
             ['instance' => $instance],
@@ -268,7 +275,7 @@ MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identif
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
-       d.source AS source
+       d.source AS source, d.confidence AS confidence, d.provenance AS provenance, d.remarks AS remarks
 ORDER BY i.name ASC
 CYPHER,
             ['identifier' => $identifier],
@@ -286,7 +293,8 @@ CYPHER,
             <<<'CYPHER'
 MATCH (c:Abstract {name: $from})-[d:DEPENDS_ON]->(target:Abstract)
 WHERE d.source IS NOT NULL AND d.source <> ''
-RETURN target.name AS name, labels(target) AS labels, target.kind AS kind, d.type AS injection_type, d.source AS source
+RETURN target.name AS name, labels(target) AS labels, target.kind AS kind,
+       d.type AS injection_type, d.source AS source, d.confidence AS confidence, d.reason AS reason
 ORDER BY target.name ASC
 CYPHER,
             ['from' => $from],
@@ -309,12 +317,18 @@ CYPHER,
                 'type' => $injectionType,
             ];
 
-            $source = $record->get('source');
-            if (is_string($source) && $source !== '') {
-                $entry['source'] = $source;
+            $metadata = [
+                'source' => (string) $record->get('source'),
+                'confidence' => (string) ($record->get('confidence') ?: ''),
+                'provenance' => '',
+            ];
+
+            $reason = $record->get('reason');
+            if (is_string($reason) && $reason !== '') {
+                $metadata['remarks'] = $reason;
             }
 
-            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
+            $entries[] = array_merge($entry, $metadata);
         }
 
         return $entries;
@@ -338,10 +352,42 @@ CYPHER,
                 'lifetime' => (string) $record->get('lifetime'),
             ];
 
-            $this->appendChainMetadata($entry, $record);
+            $via = (string) $record->get('via');
+            if ($via !== '') {
+                $entry['via'] = $via;
+            }
+
+            $file = (string) $record->get('file');
+            if ($file !== '') {
+                $entry['file'] = $file;
+            }
+
+            $line = (int) $record->get('line');
+            if ($line > 0) {
+                $entry['line'] = $line;
+            }
 
             $injectionType = (string) $record->get('injection_type');
-            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
+            if ($injectionType !== '') {
+                $entry['type'] = $injectionType;
+            }
+
+            $method = (string) $record->get('method');
+            if ($method !== '') {
+                $entry['method'] = $method;
+            }
+
+            $parameter = (string) $record->get('parameter');
+            if ($parameter !== '') {
+                $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
+            }
+
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRecord($record));
         }
 
         return $entries;
@@ -370,59 +416,45 @@ CYPHER,
                 $entry['reason'] = (string) $record->get('reason');
             }
 
-            $this->appendChainMetadata($entry, $record);
+            $via = (string) $record->get('via');
+            if ($via !== '') {
+                $entry['via'] = $via;
+            }
+
+            $file = (string) $record->get('file');
+            if ($file !== '') {
+                $entry['file'] = $file;
+            }
+
+            $line = (int) $record->get('line');
+            if ($line > 0) {
+                $entry['line'] = $line;
+            }
 
             $injectionType = (string) $record->get('injection_type');
-            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
+            if ($injectionType !== '') {
+                $entry['type'] = $injectionType;
+            }
+
+            $method = (string) $record->get('method');
+            if ($method !== '') {
+                $entry['method'] = $method;
+            }
+
+            $parameter = (string) $record->get('parameter');
+            if ($parameter !== '') {
+                $entry['parameter'] = $parameter;
+            }
+
+            $helper = (string) $record->get('helper');
+            if ($helper !== '') {
+                $entry['helper'] = $helper;
+            }
+
+            $entries[] = array_merge($entry, $this->edgeMetadataFromRecord($record));
         }
 
         return $entries;
-    }
-
-    /**
-     * @param  array<string, mixed>  $entry
-     */
-    private function appendChainMetadata(array &$entry, mixed $record): void
-    {
-        $via = (string) $record->get('via');
-        if ($via !== '') {
-            $entry['via'] = $via;
-        }
-
-        $file = (string) $record->get('file');
-        if ($file !== '') {
-            $entry['file'] = $file;
-        }
-
-        $line = (int) $record->get('line');
-        if ($line > 0) {
-            $entry['line'] = $line;
-        }
-
-        $injectionType = (string) $record->get('injection_type');
-        if ($injectionType !== '') {
-            $entry['type'] = $injectionType;
-        }
-
-        $method = (string) $record->get('method');
-        if ($method !== '') {
-            $entry['method'] = $method;
-        }
-
-        $parameter = (string) $record->get('parameter');
-        if ($parameter !== '') {
-            $entry['parameter'] = $parameter;
-        }
-
-        $helper = (string) $record->get('helper');
-        if ($helper !== '') {
-            $entry['helper'] = $helper;
-        }
-
-        $source = $record->get('source');
-        if (is_string($source) && $source !== '') {
-            $entry['source'] = $source;
-        }
     }
 
     /**
@@ -462,6 +494,33 @@ CYPHER,
     }
 
     /**
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function edgeMetadataFromRecord(object $record): array
+    {
+        $metadata = [
+            'source' => (string) $record->get('source'),
+            'confidence' => (string) $record->get('confidence'),
+            'provenance' => (string) $record->get('provenance'),
+        ];
+
+        $remarks = (string) $record->get('remarks');
+        if ($remarks !== '') {
+            $metadata['remarks'] = $remarks;
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function bindingMetadataFromRecord(object $record): array
+    {
+        return $this->edgeMetadataFromRecord($record);
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $entries
      * @return array<int, array<string, mixed>>
      */
@@ -481,98 +540,5 @@ CYPHER,
         }
 
         return $unique;
-    }
-
-    /**
-     * @param  array<string, mixed>  $entry
-     * @return array<string, mixed>
-     */
-    protected function withDependencyMetadata(array $entry, string $injectionType, DependencyAccessType $access): array
-    {
-        $effectiveType = $injectionType !== ''
-            ? $injectionType
-            : $this->dependsOnTypeFromAccess($access);
-
-        $metadata = RelationshipTypeReader::dependsOn($effectiveType, $entry['source'] ?? null);
-
-        $entry['source'] = $metadata['source'];
-        $entry['confidence'] = $metadata['confidence'];
-        $entry['visibility'] = $metadata['visibility'];
-
-        return $entry;
-    }
-
-    protected function dependsOnTypeFromAccess(DependencyAccessType $access): string
-    {
-        return match ($access) {
-            DependencyAccessType::Facade => DependsOnType::Facade->value,
-            DependencyAccessType::GlobalHelper => DependsOnType::GlobalHelper->value,
-            DependencyAccessType::ServiceLocation => DependsOnType::ServiceLocation->value,
-            DependencyAccessType::Di => DependsOnType::ConstructorInjection->value,
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $result
-     * @param  array<int, array<string, mixed>>  $dependencies
-     * @return array<string, mixed>
-     */
-    protected function appendDependencyBuckets(array $result, array $dependencies): array
-    {
-        $declared = [];
-        $hidden = [];
-
-        foreach ($dependencies as $dependency) {
-            if (($dependency['visibility'] ?? null) === DependencyVisibility::Hidden->value) {
-                $hidden[] = $dependency;
-            } else {
-                $declared[] = $dependency;
-            }
-        }
-
-        $result['declared_dependencies'] = $declared;
-        $result['hidden_dependencies'] = $hidden;
-
-        return $result;
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $entries
-     * @return array{declared_count: int, hidden_count: int, total_count: int, coverage: string, detectors_active: list<string>, detectors_pending: list<string>}
-     */
-    protected function buildGraphCompleteness(array $entries): array
-    {
-        $declaredNames = [];
-        $hiddenNames = [];
-
-        foreach ($entries as $entry) {
-            $name = (string) ($entry['name'] ?? '');
-            if ($name === '') {
-                continue;
-            }
-
-            if (($entry['visibility'] ?? null) === DependencyVisibility::Hidden->value) {
-                $hiddenNames[$name] = true;
-            } else {
-                $declaredNames[$name] = true;
-            }
-        }
-
-        return GraphCompleteness::build(count($declaredNames), count($hiddenNames));
-    }
-
-    /**
-     * @param  array<string, mixed>  $result
-     * @return array<string, mixed>
-     */
-    protected function finalizeResponse(array $result): array
-    {
-        if (! isset($result['graph_completeness'])) {
-            $result['graph_completeness'] = ($result['found'] ?? false)
-                ? GraphCompleteness::empty()
-                : GraphCompleteness::unknown();
-        }
-
-        return $result;
     }
 }
