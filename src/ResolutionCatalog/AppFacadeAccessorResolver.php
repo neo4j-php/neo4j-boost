@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Resolves app-defined facades via getFacadeAccessor() introspection.
  */
-final class CustomFacadeAccessorResolver
+final class AppFacadeAccessorResolver
 {
     public function __construct(
         private FacadeAccessorParser $accessorParser,
@@ -50,7 +50,7 @@ final class CustomFacadeAccessorResolver
             return null;
         }
 
-        Log::warning('Custom facade accessor must return a string.', [
+        Log::warning('App facade accessor must return a string.', [
             'facade' => $facadeClass,
         ]);
 

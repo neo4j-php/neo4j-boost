@@ -2,9 +2,9 @@
 
 namespace Neo4j\LaravelBoost\StaticAnalysis\PhpStan;
 
+use Neo4j\LaravelBoost\ResolutionCatalog\AppFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingAbstractResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingLifetime;
-use Neo4j\LaravelBoost\ResolutionCatalog\CustomFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeAccessorParser;
 use Neo4j\LaravelBoost\ResolutionCatalog\LaravelFirstPartyFacadeCatalog;
 use Neo4j\LaravelBoost\ResolutionCatalog\RealTimeFacadeResolver;
@@ -37,7 +37,7 @@ final class FacadeNodeResolverFactory
 
         return new ResolutionCatalog(
             new LaravelFirstPartyFacadeCatalog($accessorParser, $abstractResolver, $lifetime),
-            new CustomFacadeAccessorResolver($accessorParser, $abstractResolver, $lifetime),
+            new AppFacadeAccessorResolver($accessorParser, $abstractResolver, $lifetime),
             new RealTimeFacadeResolver($lifetime),
         );
     }

@@ -2,7 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ResolutionCatalog;
 
-use Neo4j\LaravelBoost\ResolutionCatalog\CustomFacadeAccessorResolver;
+use Neo4j\LaravelBoost\ResolutionCatalog\AppFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalogSource;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\CustomAccessorService;
@@ -11,13 +11,13 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\InvalidObjec
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ResolutionCatalog\StringAliasFacade;
 use Neo4j\LaravelBoost\Tests\TestCase;
 
-class CustomFacadeAccessorResolverTest extends TestCase
+class AppFacadeAccessorResolverTest extends TestCase
 {
-    public function test_resolves_custom_facade_class_accessor(): void
+    public function test_resolves_app_facade_class_accessor(): void
     {
         $this->app->singleton(CustomAccessorService::class, fn (): CustomAccessorService => new CustomAccessorService);
 
-        $entry = $this->app->make(CustomFacadeAccessorResolver::class)->resolve(CustomClassAccessorFacade::class);
+        $entry = $this->app->make(AppFacadeAccessorResolver::class)->resolve(CustomClassAccessorFacade::class);
 
         $this->assertNotNull($entry);
         $this->assertSame(CustomAccessorService::class, $entry->abstract);
@@ -27,7 +27,7 @@ class CustomFacadeAccessorResolverTest extends TestCase
 
     public function test_resolves_string_binding_accessor(): void
     {
-        $entry = $this->app->make(CustomFacadeAccessorResolver::class)->resolve(StringAliasFacade::class);
+        $entry = $this->app->make(AppFacadeAccessorResolver::class)->resolve(StringAliasFacade::class);
 
         $this->assertNotNull($entry);
         $this->assertSame('app.legacy', $entry->abstract);
@@ -39,7 +39,7 @@ class CustomFacadeAccessorResolverTest extends TestCase
     {
         $this->app->singleton('app.legacy', fn (): CustomAccessorService => new CustomAccessorService);
 
-        $entry = $this->app->make(CustomFacadeAccessorResolver::class)->resolve(StringAliasFacade::class);
+        $entry = $this->app->make(AppFacadeAccessorResolver::class)->resolve(StringAliasFacade::class);
 
         $this->assertNotNull($entry);
         $this->assertSame(BindsToType::Singleton, $entry->bindsToType);
@@ -47,7 +47,7 @@ class CustomFacadeAccessorResolverTest extends TestCase
 
     public function test_returns_null_when_accessor_is_not_a_string(): void
     {
-        $entry = $this->app->make(CustomFacadeAccessorResolver::class)->resolve(InvalidObjectAccessorFacade::class);
+        $entry = $this->app->make(AppFacadeAccessorResolver::class)->resolve(InvalidObjectAccessorFacade::class);
 
         $this->assertNull($entry);
     }

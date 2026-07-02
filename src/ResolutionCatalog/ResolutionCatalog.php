@@ -6,7 +6,7 @@ final class ResolutionCatalog
 {
     public function __construct(
         private LaravelFirstPartyFacadeCatalog $facades,
-        private CustomFacadeAccessorResolver $customFacades,
+        private AppFacadeAccessorResolver $appFacades,
         private RealTimeFacadeResolver $realTimeFacades,
     ) {}
 
@@ -21,7 +21,7 @@ final class ResolutionCatalog
             return $this->realTimeFacades->resolve($facadeClass);
         }
 
-        return $this->customFacades->resolve($facadeClass);
+        return $this->appFacades->resolve($facadeClass);
     }
 
     /**
