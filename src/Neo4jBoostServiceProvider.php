@@ -25,13 +25,14 @@ use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionTargetResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
+use Neo4j\LaravelBoost\ResolutionCatalog\AppFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingAbstractResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ContainerBindingLifetime;
-use Neo4j\LaravelBoost\ResolutionCatalog\CustomFacadeAccessorResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeAccessorParser;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\ResolutionCatalog\GlobalHelperCatalog;
 use Neo4j\LaravelBoost\ResolutionCatalog\LaravelFirstPartyFacadeCatalog;
+use Neo4j\LaravelBoost\ResolutionCatalog\RealTimeFacadeResolver;
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\GlobalHelperEdgeFinder;
@@ -80,7 +81,8 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(FacadeAccessorParser::class);
         $this->app->singleton(ContainerBindingAbstractResolver::class);
         $this->app->singleton(ContainerBindingLifetime::class);
-        $this->app->singleton(CustomFacadeAccessorResolver::class);
+        $this->app->singleton(AppFacadeAccessorResolver::class);
+        $this->app->singleton(RealTimeFacadeResolver::class);
         $this->app->singleton(ResolutionCatalog::class);
     }
 

@@ -76,7 +76,8 @@ SET d.file = row.file,
     d.source = row.source,
     d.confidence = row.confidence,
     d.provenance = row.provenance,
-    d.remarks = coalesce(row.remarks, '')
+    d.remarks = coalesce(row.remarks, ''),
+    d.catalog_source = coalesce(row.catalog_source, '')
 CYPHER;
 
     private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
@@ -103,7 +104,7 @@ CYPHER;
     /**
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      */
     public function write(
@@ -167,7 +168,7 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      */
     private function validateDependencyChainRows(array $dependencyChainRows): void
     {
