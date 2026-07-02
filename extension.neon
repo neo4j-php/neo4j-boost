@@ -15,3 +15,10 @@ services:
         class: Neo4j\LaravelBoost\StaticAnalysis\PhpStan\ServiceLocationMethodCallRule
         tags:
             - phpstan.rules.rule
+    -
+        class: Neo4j\LaravelBoost\StaticAnalysis\FacadeNodeResolver
+        factory: Neo4j\LaravelBoost\StaticAnalysis\PhpStan\FacadeNodeResolverFactory::create()
+    -
+        class: Neo4j\LaravelBoost\StaticAnalysis\PhpStan\FacadeStaticCallRule
+        tags:
+            - phpstan.rules.rule

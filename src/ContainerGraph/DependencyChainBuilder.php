@@ -23,6 +23,7 @@ use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
  *     via: string,
  *     file: string,
  *     line: int,
+ *     catalog_source: string,
  *     source: string,
  *     confidence: string,
  *     provenance: string,
@@ -40,7 +41,7 @@ final class DependencyChainBuilder
 
     /**
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
-     * @param  array{class: string, dependency: string, dependencyKind: string, type: string, method?: string, parameter?: string, source?: string, via?: string, file?: string, line?: int, helper?: string}  $row
+     * @param  array{class: string, dependency: string, dependencyKind: string, type: string, method?: string, parameter?: string, source?: string, via?: string, file?: string, line?: int, helper?: string, catalog_source?: string}  $row
      * @return DependencyChainRow
      */
     public function fromExtractedDependencyRow(array $row, array $bindings): array
@@ -66,6 +67,7 @@ final class DependencyChainBuilder
             file: (string) ($row['file'] ?? ''),
             line: (int) ($row['line'] ?? 0),
             helper: $helper,
+            catalogSource: (string) ($row['catalog_source'] ?? ''),
         );
 
         if ($helper !== '') {
@@ -132,6 +134,7 @@ final class DependencyChainBuilder
                 via: $row['facade_class'],
                 file: '',
                 line: 0,
+                catalogSource: $row['source'],
             ),
             $this->metadataResolver->forFacadeCatalogRow($row),
         );
@@ -150,7 +153,8 @@ final class DependencyChainBuilder
      *     parameter: string,
      *     via: string,
      *     file: string,
-     *     line: int
+     *     line: int,
+     *     catalog_source: string
      * }
      */
     private function chain(
@@ -166,6 +170,7 @@ final class DependencyChainBuilder
         string $file,
         int $line,
         string $helper = '',
+        string $catalogSource = '',
     ): array {
         return [
             'instance' => $instance,
@@ -180,6 +185,7 @@ final class DependencyChainBuilder
             'via' => $via,
             'file' => $file,
             'line' => $line,
+            'catalog_source' => $catalogSource,
         ];
     }
 
