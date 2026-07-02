@@ -3,10 +3,14 @@
 namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
+use Neo4j\LaravelBoost\GraphKnowledgeContributor;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
+use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
 /**
@@ -20,8 +24,11 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     private array $bindingRows = [];
 
-    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string}> */
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}> */
     private array $dependencyChainRows = [];
+
+    /** @var array<int, array<string, mixed>> */
+    private array $contributedRows = [];
 
     /**
      * @param  array<int, array{class: string}>  $instanceRows
@@ -54,6 +61,27 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         $reader->classes = array_values(array_unique($reader->classes));
 
         return $reader;
+    }
+
+    /**
+     * @param  array<string, mixed>  $contribution
+     */
+    public function addContribution(array $contribution): void
+    {
+        $this->contributedRows[] = $contribution;
+
+        $from = (string) ($contribution['from'] ?? '');
+        $to = (string) ($contribution['to'] ?? '');
+
+        if ($from !== '') {
+            $this->classes[] = $from;
+        }
+
+        if ($to !== '') {
+            $this->classes[] = $to;
+        }
+
+        $this->classes = array_values(array_unique($this->classes));
     }
 
     public function __construct(ContainerGraphConnection $connection)
@@ -124,7 +152,7 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool, type: string}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
      */
     private function findBindingForClass(string $class): ?array
     {
@@ -138,6 +166,37 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             if ($row['concrete'] === $class) {
                 return $this->formatBindingRow($row);
             }
+        }
+
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_BINDS_TO) {
+                continue;
+            }
+
+            $from = (string) ($contribution['from'] ?? '');
+            $to = (string) ($contribution['to'] ?? '');
+
+            if ($from !== $class && $to !== $class) {
+                continue;
+            }
+
+            $shared = (bool) ($contribution['shared'] ?? false);
+            $typeMeta = RelationshipTypeReader::bindsTo(
+                (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+            );
+
+            return [
+                'abstract' => $from,
+                'concrete' => $to,
+                'shared' => $typeMeta['shared'],
+                'type' => $typeMeta['type'],
+                ...$this->edgeMetadataFromRow([
+                    'source' => $contribution['source'] ?? '',
+                    'confidence' => $contribution['confidence'] ?? 'high',
+                    'provenance' => '',
+                    'remarks' => $contribution['reason'] ?? '',
+                ]),
+            ];
         }
 
         return null;
@@ -212,59 +271,103 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
                 continue;
             }
 
-            $access = DependencyAccessType::assertAllowed($row['access']);
-            $kind = $row['identifier_kind'] === 'Unresolved' ? 'UnresolvedDependency' : $row['identifier_kind'];
+            $entries[] = $this->entryFromChainRow($row);
+        }
+
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_DEPENDS_ON) {
+                continue;
+            }
+
+            if (($contribution['from'] ?? '') !== $instance) {
+                continue;
+            }
+
+            $to = (string) ($contribution['to'] ?? '');
+            if ($to === '') {
+                continue;
+            }
+
+            $injectionType = (string) ($contribution['type'] ?? DependsOnType::ServiceLocation->value);
+            $access = DependencyAccessType::fromDependsOnType($injectionType);
 
             $entry = [
-                'name' => $row['identifier'],
-                'kind' => $kind,
+                'name' => $to,
+                'kind' => $this->kindForTypeName($to),
                 'relationship' => 'DEPENDS_ON',
                 'access' => $access->value,
-                'lifetime' => $row['lifetime'],
+                'lifetime' => ResolvesToLifetime::Bind->value,
+                'type' => $injectionType,
             ];
 
-            if ($kind === 'UnresolvedDependency') {
-                $entry['reason'] = $row['reason'] ?? 'unresolved';
-            }
-
-            if ($row['via'] !== '') {
-                $entry['via'] = $row['via'];
-            }
-
-            if ($row['file'] !== '') {
-                $entry['file'] = $row['file'];
-            }
-
-            if ($row['line'] > 0) {
-                $entry['line'] = $row['line'];
-            }
-
-            if (($row['injection_type'] ?? '') !== '') {
-                $entry['type'] = $row['injection_type'];
-            }
-
-            if (($row['method'] ?? '') !== '') {
-                $entry['method'] = $row['method'];
-            }
-
-            if (($row['parameter'] ?? '') !== '') {
-                $entry['parameter'] = $row['parameter'];
-            }
-
-            if (($row['helper'] ?? '') !== '') {
-                $entry['helper'] = $row['helper'];
-            }
-
-            $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
-
-            if (($row['catalog_source'] ?? '') !== '') {
-                $entry['catalog_source'] = $row['catalog_source'];
-            }
-
-            $entries[] = $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
+            $entry = array_merge($entry, $this->edgeMetadataFromRow([
+                'source' => $contribution['source'] ?? '',
+                'confidence' => $contribution['confidence'] ?? 'high',
+                'provenance' => '',
+                'remarks' => $contribution['reason'] ?? '',
+            ]));
+            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
 
         return $entries;
+    }
+
+    /**
+     * @param  array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}  $row
+     * @return array<string, mixed>
+     */
+    private function entryFromChainRow(array $row): array
+    {
+        $access = DependencyAccessType::assertAllowed($row['access']);
+        $kind = $row['identifier_kind'] === 'Unresolved' ? 'UnresolvedDependency' : $row['identifier_kind'];
+
+        $entry = [
+            'name' => $row['identifier'],
+            'kind' => $kind,
+            'relationship' => 'DEPENDS_ON',
+            'access' => $access->value,
+            'lifetime' => $row['lifetime'],
+        ];
+
+        if ($kind === 'UnresolvedDependency') {
+            $entry['reason'] = $row['reason'] ?? 'unresolved';
+        }
+
+        if ($row['via'] !== '') {
+            $entry['via'] = $row['via'];
+        }
+
+        if ($row['file'] !== '') {
+            $entry['file'] = $row['file'];
+        }
+
+        if ($row['line'] > 0) {
+            $entry['line'] = $row['line'];
+        }
+
+        if (($row['injection_type'] ?? '') !== '') {
+            $entry['type'] = $row['injection_type'];
+        }
+
+        if (($row['method'] ?? '') !== '') {
+            $entry['method'] = $row['method'];
+        }
+
+        if (($row['parameter'] ?? '') !== '') {
+            $entry['parameter'] = $row['parameter'];
+        }
+
+        if (($row['helper'] ?? '') !== '') {
+            $entry['helper'] = $row['helper'];
+        }
+
+        $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
+
+        if (($row['catalog_source'] ?? '') !== '') {
+            $entry['catalog_source'] = $row['catalog_source'];
+        }
+
+        return $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
     }
 
     /**
@@ -327,6 +430,19 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         }
 
         return $entries;
+    }
+
+    private function kindForTypeName(string $name): string
+    {
+        if (interface_exists($name)) {
+            return 'Interface';
+        }
+
+        if (class_exists($name)) {
+            return 'Class';
+        }
+
+        return 'Alias';
     }
 
     private function instanceExists(string $name): bool

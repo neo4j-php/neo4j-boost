@@ -3,6 +3,7 @@
 namespace Neo4j\LaravelBoost;
 
 use Illuminate\Support\ServiceProvider;
+use Neo4j\LaravelBoost\Boost\Tools\ContributeGraphKnowledgeTool;
 use Neo4j\LaravelBoost\Boost\Tools\GetClassDependencyGraphTool;
 use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Boost\Tools\ListGdsProceduresTool;
@@ -62,6 +63,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         });
         $this->app->singleton(ContainerGraphConnection::class);
         $this->app->singleton(ClassDependencyGraphReader::class);
+        $this->app->singleton(GraphKnowledgeContributor::class);
         $this->app->singleton(ServiceLocationEdgeFinder::class);
         $this->app->singleton(FacadeEdgeFinder::class);
         $this->app->singleton(GlobalHelperCatalog::class);
@@ -116,6 +118,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $ourTools = [
             GetSchemaTool::class,
             GetClassDependencyGraphTool::class,
+            ContributeGraphKnowledgeTool::class,
             ReadCypherTool::class,
             WriteCypherTool::class,
             ListGdsProceduresTool::class,

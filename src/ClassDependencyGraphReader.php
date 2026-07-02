@@ -8,6 +8,7 @@ use Neo4j\LaravelBoost\Support\Graph\DependencyVisibility;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
 use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
+use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 
 class ClassDependencyGraphReader
 {
@@ -248,7 +249,13 @@ CYPHER,
             ['instance' => $instance],
         );
 
-        return $this->mapChainRecords($result);
+        $entries = $this->mapChainRecords($result);
+
+        foreach ($this->fetchContributedOutboundChains($instance) as $contributed) {
+            $entries[] = $contributed;
+        }
+
+        return $entries;
     }
 
     /**
@@ -270,6 +277,60 @@ CYPHER,
         );
 
         return $this->mapInboundChainRecords($result);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchContributedOutboundChains(string $from): array
+    {
+        $result = $this->connection->run(
+            <<<'CYPHER'
+MATCH (c:Abstract {name: $from})-[d:DEPENDS_ON]->(target:Abstract)
+WHERE d.source IS NOT NULL AND d.source <> ''
+RETURN target.name AS name, labels(target) AS labels, target.kind AS kind,
+       d.type AS injection_type, d.source AS source, d.confidence AS confidence, d.reason AS reason
+ORDER BY target.name ASC
+CYPHER,
+            ['from' => $from],
+        );
+
+        $entries = [];
+
+        foreach ($result as $record) {
+            $labels = $record->get('labels');
+            $labelList = is_iterable($labels) ? array_values(iterator_to_array($labels)) : (array) $labels;
+            $injectionType = (string) ($record->get('injection_type') ?: DependsOnType::ServiceLocation->value);
+            $access = DependencyAccessType::fromDependsOnType($injectionType);
+
+            $entry = [
+                'name' => (string) $record->get('name'),
+                'kind' => $this->resolveNodeKind($labelList, $record->get('kind')),
+                'relationship' => 'DEPENDS_ON',
+                'access' => $access->value,
+                'lifetime' => ResolvesToLifetime::Bind->value,
+                'type' => $injectionType,
+            ];
+
+            $metadata = [
+                'source' => (string) $record->get('source'),
+                'confidence' => (string) ($record->get('confidence') ?: ''),
+                'provenance' => '',
+            ];
+
+            $reason = $record->get('reason');
+            if (is_string($reason) && $reason !== '') {
+                $metadata['remarks'] = $reason;
+            }
+
+            $entries[] = $this->withDependencyMetadata(
+                array_merge($entry, $metadata),
+                $injectionType,
+                $access,
+            );
+        }
+
+        return $entries;
     }
 
     /**
@@ -407,6 +468,30 @@ CYPHER,
         }
 
         return $entries;
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     */
+    private function resolveNodeKind(array $labels, mixed $kind): string
+    {
+        if (in_array('UnresolvedDependency', $labels, true)) {
+            return 'UnresolvedDependency';
+        }
+
+        if (in_array('Interface', $labels, true)) {
+            return 'Interface';
+        }
+
+        if (in_array('Class', $labels, true)) {
+            return 'Class';
+        }
+
+        if (is_string($kind) && $kind !== '') {
+            return $kind;
+        }
+
+        return 'Alias';
     }
 
     private function instanceExists(string $name): bool

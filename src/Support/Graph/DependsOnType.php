@@ -18,4 +18,12 @@ enum DependsOnType: string
         return self::tryFrom($value)
             ?? throw new InvalidArgumentException("Unknown DEPENDS_ON type: {$value}");
     }
+
+    /**
+     * @return list<string>
+     */
+    public static function values(): array
+    {
+        return array_map(static fn (self $type): string => $type->value, self::cases());
+    }
 }
