@@ -51,7 +51,7 @@ Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or se
 MATCH p=(i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier) RETURN p LIMIT 200;
 ```
 
-**get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
+**get-class-dependency-graph** (MCP tool): pass a fully-qualified class name to get structured DI dependencies/dependents from the exported graph. Responses include `dependencies`, `declared_dependencies`, `hidden_dependencies`, per-edge `type` / `source` / `confidence` / `visibility`, and a `graph_completeness` block. Prerequisite: run `php artisan container:graph` first. Example argument: `{ "class": "App\\\\Services\\\\FooService", "direction": "outbound", "page": 1, "per_page": 100 }`.
 
 **contribute-graph-knowledge** (MCP tool): add dependency or binding edges when static analysis cannot infer them. Medium/low confidence returns `confirmation_required` without writing — ask the user, then retry with `confirmed: true` to persist with `source: user`. High confidence persists immediately with `source: agent`. Default contributed `DEPENDS_ON` type is `service_location`.
 
