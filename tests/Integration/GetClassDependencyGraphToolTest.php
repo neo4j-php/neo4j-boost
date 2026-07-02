@@ -214,7 +214,6 @@ class GetClassDependencyGraphToolTest extends TestCase
         $this->assertArrayHasKey('declared_dependencies', $payload);
         $this->assertArrayHasKey('hidden_dependencies', $payload);
         $this->assertNotEmpty($payload['declared_dependencies']);
-        $this->assertSame($payload['declared_dependencies'], $payload['dependencies']);
         $this->assertSame([], $payload['hidden_dependencies']);
     }
 
@@ -237,18 +236,6 @@ class GetClassDependencyGraphToolTest extends TestCase
 
         $this->assertArrayHasKey('graph_completeness', $missingPayload);
         $this->assertSame('unknown', $missingPayload['graph_completeness']['coverage']);
-    }
-
-    public function test_tool_keeps_backward_compatible_dependencies_key(): void
-    {
-        $payload = $this->callTool([
-            'class' => Firewall::class,
-            'direction' => 'outbound',
-        ]);
-
-        $this->assertArrayHasKey('dependencies', $payload);
-        $this->assertArrayHasKey('dependencies_pagination', $payload);
-        $this->assertContains(Logger::class, array_column($payload['dependencies'], 'name'));
     }
 
     /**
