@@ -22,4 +22,14 @@ class RelationshipTypeReaderTest extends TestCase
         $this->assertSame('normal', $resolved['type']);
         $this->assertFalse($resolved['shared']);
     }
+
+    public function test_returns_high_confidence_for_stored_depends_on_type(): void
+    {
+        $resolved = RelationshipTypeReader::dependsOn('facade', 'user');
+
+        $this->assertSame('facade', $resolved['type']);
+        $this->assertSame('user', $resolved['source']);
+        $this->assertSame('high', $resolved['confidence']);
+        $this->assertSame('hidden', $resolved['visibility']);
+    }
 }
