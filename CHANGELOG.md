@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [Unreleased]
+
 ### Added
 
 - Method injection detection for controllers, jobs, commands, listeners, and middleware. `container:graph` emits `DEPENDS_ON` edges with `type: method_injection`, `method`, and `parameter` (includes Form Request types on controller actions).

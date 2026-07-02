@@ -127,7 +127,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{class: string, name: string, reason: string, type: string}>  $unresolvedRows
      * @param  array<string, array{concrete: mixed, shared: bool}>  $bindings
      * @param  array<int, array{facade_class: string, abstract: string, abstractKind: string, binding_key: string, source: string, binds_to_type: string}>  $facadeCatalogRows
-     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>
+     * @return array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source: string}>
      */
     private function buildDependencyChainRows(
         array $dependencyRows,
@@ -331,7 +331,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int}>
+     * @return array<int, array{class: string, dependency: string, dependencyKind: string, type: string, source: string, via: string, file: string, line: int, catalog_source: string}>
      */
     private function extractStaticFacadeRows(): array
     {

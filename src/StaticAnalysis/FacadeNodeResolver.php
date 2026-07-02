@@ -49,6 +49,7 @@ final class FacadeNodeResolver
             method: $method,
             file: $scope->getFile(),
             line: $node->getStartLine(),
+            catalogSource: $entry->source->value,
         );
     }
 

@@ -283,7 +283,12 @@ Dynamic calls such as `app($variable)` are skipped.
 
 #### Facade static calls
 
-Detects static calls on Laravel first-party facades and custom app facades (`Cache::put`, `CustomFacade::handle`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
+Detects static calls on Laravel first-party facades, auto-discovered custom app facades, and real-time facades (`Cache::put`, `CustomFacade::handle`, `\Facades\App\Services\PaymentGateway::charge`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
+
+Each edge carries a `catalog_source` describing how the binding was discovered:
+
+- `laravel_facade` — predefined Laravel first-party facade catalog.
+- `auto_discovered_facade` — custom app facades (`getFacadeAccessor()`) and real-time facades (`Facades\<FQCN>`), discovered outside the predefined catalog.
 
 **Output shape:**
 
@@ -293,7 +298,8 @@ Detects static calls on Laravel first-party facades and custom app facades (`Cac
   "via": "Illuminate\\Support\\Facades\\Cache::put",
   "file": "/path/InvoiceNotifier.php",
   "line": 12,
-  "source": "static"
+  "source": "static",
+  "catalog_source": "laravel_facade"
 }
 ```
 
@@ -334,26 +340,38 @@ Detects `new ClassName()` calls that bypass the Laravel container. Named classes
 
 **POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
 
-Run PHPStan service-location rules against fixtures only:
+Run the PHPStan static-analysis rules (service-location and facade collectors) against fixtures only:
 
 ```bash
 ./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
 ```
 
-Facade collector coverage lives in `tests/Unit/StaticAnalysis/FacadeCollectorRuleTest.php` (PHPStan `RuleTestCase` with the resolution catalog).
+The facade collector rule (`FacadeStaticCallRule`) is registered in `extension.neon` alongside the service-location rules and reuses the resolution catalog, so it picks up first-party, custom, and real-time facade calls. Collector coverage lives in `tests/Unit/StaticAnalysis/FacadeCollectorRuleTest.php` (PHPStan `RuleTestCase`).
 
 ### Resolution catalog (facade → contract)
 
-The package ships a **resolution catalog** mapping Laravel first-party facades and custom app facades to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). First-party facades resolve via `getFacadeAccessor()` introspection and live container bindings; custom app facades use the same accessor flow.
+The package ships a **resolution catalog** mapping facades to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). Resolution happens in three tiers, recorded on each entry's `source`:
+
+| Tier | `source` | How it is discovered |
+| --- | --- | --- |
+| Laravel first-party facades | `laravel_facade` | Predefined catalog built from `getFacadeAccessor()` introspection of `Illuminate\Support\Facades\*` against live container bindings. |
+| Custom app facades | `auto_discovered_facade` | Any `Facade` subclass outside `Illuminate\Support\Facades\*`, resolved via its `getFacadeAccessor()` (class, contract, or string binding key). |
+| Real-time facades | `auto_discovered_facade` | `Facades\<FQCN>` references; the leading `Facades\` segment is stripped to recover the underlying class the container resolves. |
 
 ```php
 use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
 
 $entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facades\Cache::class);
-// $entry->abstract, $entry->bindingKey, $entry->bindsToType
+// $entry->abstract, $entry->bindingKey, $entry->bindsToType, $entry->source
+
+// Auto-discovered custom facade
+$entry = app(ResolutionCatalog::class)->resolveFacade(\App\Facades\Payments::class);
+
+// Real-time facade → App\Services\PaymentGateway
+$entry = app(ResolutionCatalog::class)->resolveFacade('Facades\\App\\Services\\PaymentGateway');
 ```
 
-Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts.
+Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts, stamping the catalog tier onto each `DEPENDS_ON` edge as `catalog_source`.
 
 ### Method injection
 

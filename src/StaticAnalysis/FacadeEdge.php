@@ -16,6 +16,7 @@ final readonly class FacadeEdge
         public string $method,
         public string $file,
         public int $line,
+        public string $catalogSource = '',
     ) {}
 
     /**
@@ -27,7 +28,8 @@ final readonly class FacadeEdge
      *     via: string,
      *     file: string,
      *     line: int,
-     *     source: string
+     *     source: string,
+     *     catalog_source: string
      * }
      */
     public function toDependencyRow(): array
@@ -41,6 +43,7 @@ final readonly class FacadeEdge
             'file' => $this->file,
             'line' => $this->line,
             'source' => DependencyEdgeSource::Static->value,
+            'catalog_source' => $this->catalogSource,
         ];
     }
 

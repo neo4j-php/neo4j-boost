@@ -363,6 +363,10 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
 
         $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
 
+        if (($row['catalog_source'] ?? '') !== '') {
+            $entry['catalog_source'] = $row['catalog_source'];
+        }
+
         return $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
     }
 
@@ -417,6 +421,11 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
             }
 
             $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
+
+            if (($row['catalog_source'] ?? '') !== '') {
+                $entry['catalog_source'] = $row['catalog_source'];
+            }
+
             $entries[] = $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
         }
 

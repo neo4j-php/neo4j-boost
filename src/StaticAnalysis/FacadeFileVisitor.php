@@ -105,6 +105,7 @@ final class FacadeFileVisitor extends NodeVisitorAbstract
             method: $method,
             file: $this->file,
             line: $node->getStartLine(),
+            catalogSource: $entry->source->value,
         );
     }
 
