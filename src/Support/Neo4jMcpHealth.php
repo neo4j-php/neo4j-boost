@@ -11,6 +11,10 @@ final class Neo4jMcpHealth
 
     private const HTTP_AUTH_FAILED_MESSAGE = 'Neo4j MCP authentication failed. Check NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD.';
 
+    private const NO_NEO4J_SERVER_MESSAGE = "No Neo4j server was found.\nTo use the Neo4j Boost MCP Server, you'll need access to a Neo4j database. "
+        ."You can create a free Neo4j Aura instance here: https://neo4j.com/product/auradb/ \n"
+        .'Once your database is ready, reconnect the MCP server and try again.';
+
     public function isBinaryInstalled(): bool
     {
         $installer = new Neo4jMcpInstaller;
@@ -178,14 +182,21 @@ final class Neo4jMcpHealth
         return self::HTTP_AUTH_FAILED_MESSAGE;
     }
 
+    public static function noNeo4jServerMessage(): string
+    {
+        return self::NO_NEO4J_SERVER_MESSAGE;
+    }
+
     public static function serverUnreachableMessage(string $url): string
     {
-        return 'Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.';
+        return self::NO_NEO4J_SERVER_MESSAGE
+            .'\n\n(Technical detail: Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.)';
     }
 
     public static function stdioProcessFailedMessage(): string
     {
-        return 'Neo4j MCP STDIO process failed. Run php artisan neo4j-boost:setup and ensure the neo4j-mcp binary is installed.';
+        return self::NO_NEO4J_SERVER_MESSAGE
+            .'\n\n(Technical detail: Neo4j MCP STDIO process failed. Run php artisan neo4j-boost:setup and ensure the neo4j-mcp binary is installed.)';
     }
 
     private function runningInTinker(): bool
