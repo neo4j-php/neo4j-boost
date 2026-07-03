@@ -105,6 +105,7 @@ final class Neo4jMcpHealth
         }
 
         if ($transport === 'http' && ! $serverReachable) {
+            $suggestedResolutions[] = self::noInstanceFoundMessage();
             $suggestedResolutions[] = 'Start neo4j-mcp in HTTP mode and verify NEO4J_MCP_URL points to /mcp.';
             $suggestedResolutions[] = 'Verify Neo4j MCP auth settings (NEO4J_MCP_USERNAME / NEO4J_MCP_PASSWORD) if your endpoint requires authentication.';
         }
@@ -178,14 +179,31 @@ final class Neo4jMcpHealth
         return self::HTTP_AUTH_FAILED_MESSAGE;
     }
 
+    public static function noInstanceFoundMessage(): string
+    {
+        return implode("\n", [
+            'No Neo4j server was found.',
+            'To use the Neo4j Boost MCP Server, you\'ll need access to a Neo4j database.',
+            'You can create a free Neo4j Aura instance here: https://neo4j.com/product/auradb/',
+            'Once your database is ready, reconnect the MCP server and try again.',
+        ]);
+    }
+
     public static function serverUnreachableMessage(string $url): string
     {
-        return 'Neo4j MCP server is not reachable at '.$url.'. Start it or run php artisan neo4j-boost:setup.';
+        return self::noInstanceFoundMessage()
+            .'\n(Attempted URL: '.$url.' — start the server or run: php artisan neo4j-boost:setup)';
     }
 
     public static function stdioProcessFailedMessage(): string
     {
-        return 'Neo4j MCP STDIO process failed. Run php artisan neo4j-boost:setup and ensure the neo4j-mcp binary is installed.';
+        return implode("\n", [
+            'No Neo4j server was found.',
+            'To use the Neo4j Boost MCP Server, you\'ll need access to a Neo4j database.',
+            'You can create a free Neo4j Aura instance here: https://neo4j.com/product/auradb/',
+            'Once your database is ready, reconnect the MCP server and try again.',
+            '(The Neo4j MCP STDIO process failed — run: php artisan neo4j-boost:setup and ensure the neo4j-mcp binary is installed.)',
+        ]);
     }
 
     private function runningInTinker(): bool

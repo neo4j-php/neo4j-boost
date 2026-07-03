@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
+use Neo4j\LaravelBoost\Support\Neo4jMcpHealth;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -51,6 +52,7 @@ class ContainerGraphCommand extends Command
             $writer->connect();
             $writer->write($classRows, $bindingRows, $dependencyRows, $unresolvedRows);
         } catch (Throwable $e) {
+            $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
 
             return self::FAILURE;

@@ -6,6 +6,7 @@ use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\Support\CypherQueryClassifier;
 use Neo4j\LaravelBoost\Support\McpToolResult;
+use Neo4j\LaravelBoost\Support\Neo4jMcpHealth;
 use Throwable;
 
 /**
@@ -71,7 +72,7 @@ CYPHER;
                 return $this->getSchemaWithoutApoc();
             }
 
-            return McpToolResult::error($e->getMessage());
+            return $this->connectionErrorResult($e);
         }
     }
 
@@ -126,7 +127,7 @@ CYPHER;
 
             return McpToolResult::jsonRows(Neo4jBoltExecutor::summarizedResultToRows($result));
         } catch (Throwable $e) {
-            return McpToolResult::error($e->getMessage());
+            return $this->connectionErrorResult($e);
         }
     }
 
@@ -148,7 +149,7 @@ CYPHER;
 
             return McpToolResult::jsonRows(Neo4jBoltExecutor::summarizedResultToRows($result));
         } catch (Throwable $e) {
-            return McpToolResult::error($e->getMessage());
+            return $this->connectionErrorResult($e);
         }
     }
 
@@ -167,6 +168,30 @@ CYPHER;
                 .'. Ensure that the Graph Data Science (GDS) library is installed and properly configured in your Neo4j database.'
             );
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function connectionErrorResult(Throwable $e): array
+    {
+        if ($this->isConnectionFailure($e)) {
+            return McpToolResult::error(Neo4jMcpHealth::noInstanceFoundMessage());
+        }
+
+        return McpToolResult::error($e->getMessage());
+    }
+
+    private function isConnectionFailure(Throwable $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        return str_contains($message, 'connection refused')
+            || str_contains($message, 'connection timed out')
+            || str_contains($message, 'failed to connect')
+            || str_contains($message, 'no route to host')
+            || str_contains($message, 'could not connect')
+            || str_contains($message, 'unable to connect');
     }
 
     private function isApocMissing(Throwable $e): bool
