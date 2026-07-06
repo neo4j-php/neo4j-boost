@@ -1,6 +1,6 @@
 # Neo4j Laravel Boost
 
-Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases). Use Neo4j tools (get-schema, read-cypher, write-cypher, etc.) from MCP clients like Cursor or Claude.
+Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases). Use Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, get-class-dependency-graph, contribute-graph-knowledge) from MCP clients like Cursor or Claude.
 
 Release notes: [CHANGELOG.md](CHANGELOG.md).
 
@@ -205,9 +205,14 @@ When developing the package and running Artisan from the repo (e.g. e2e testing 
 | Command | Description |
 |--------|-------------|
 | `php artisan neo4j-boost:cursor-config` | Create or update `.cursor/mcp.json` with the Neo4j MCP server URL (merge with existing servers) |
+| `php artisan neo4j-boost:setup` | Interactive STDIO-first setup (binary, env checks, Cursor config) |
+| `php artisan neo4j-boost:install-mcp` | Download/install the official `neo4j-mcp` binary |
+| `php artisan neo4j-boost:start-neo4j` | Start local Neo4j Docker for STDIO mode |
+| `php artisan neo4j-boost:doctor` | Diagnose transport, binary, password, and readiness |
+| `php artisan neo4j-boost:test-stdio --tool=get-schema` | Verbose end-to-end STDIO handshake/tool test |
 | `php artisan container:graph` | Export Laravel container bindings/dependencies into Neo4j graph (`--dry-run`, `--print-cypher`) |
 
-Neo4j tools exposed via Laravel Boost MCP (`php artisan boost:mcp`) include **get-class-dependency-graph**, which returns a structured dependency graph for a fully-qualified class (requires `container:graph` export first). Other tools: get-schema, read-cypher, write-cypher, list-gds-procedures.
+Neo4j tools exposed via Laravel Boost MCP (`php artisan boost:mcp`) include **get-class-dependency-graph** and **contribute-graph-knowledge** (container graph; require `container:graph` export first), plus get-schema, read-cypher, write-cypher, and list-gds-procedures.
 
 ---
 
@@ -444,6 +449,32 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 
 Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, optional `remarks`, and `visibility`), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations, plus per-class `coverage` and declared/hidden counts), and `graph_export_required` when data is missing. Default page size is 100 entries.
 
+### contribute-graph-knowledge (MCP tool)
+
+Add dependency or binding edges when static analysis cannot infer them. Prerequisite: run `php artisan container:graph` first.
+
+| Field | Description |
+| --- | --- |
+| `relationship` | `DEPENDS_ON` or `BINDS_TO` |
+| `from` | Source fully-qualified class or interface |
+| `to` | Target fully-qualified class or interface |
+| `confidence` | `high` (persists immediately as `source: agent`), `medium` or `low` (returns `confirmation_required` until user confirms) |
+| `confirmed` | Set `true` after user confirms a medium/low proposal (persists as `source: user`) |
+| `reason` | Optional explanation |
+| `depends_on_type` | For `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `global_helper`, `service_location`, or `instantiation` (default: `service_location`) |
+| `shared` | For `BINDS_TO`: whether the binding is a singleton |
+
+```json
+{
+  "relationship": "DEPENDS_ON",
+  "from": "App\\Services\\OrderProcessor",
+  "to": "App\\Contracts\\PaymentGateway",
+  "confidence": "high",
+  "depends_on_type": "service_location",
+  "reason": "Resolved manually from route action"
+}
+```
+
 **Explore bindings from container keys outward:**
 
 ```cypher
@@ -495,12 +526,7 @@ RETURN i.name, id.name, id.reason
 LIMIT 25;
 ```
 
-Re-running the command is idempotent (`MERGE`-based), so nodes/relationships are not duplicated.
-| `php artisan neo4j-boost:setup` | Interactive STDIO-first setup (binary, env checks, Cursor config) |
-| `php artisan neo4j-boost:install-mcp` | Download/install the official `neo4j-mcp` binary |
-| `php artisan neo4j-boost:start-neo4j` | Start local Neo4j Docker for STDIO mode |
-| `php artisan neo4j-boost:doctor` | Diagnose transport, binary, password, and readiness |
-| `php artisan neo4j-boost:test-stdio --tool=get-schema` | Verbose end-to-end STDIO handshake/tool test |
+Re-running `container:graph` is **merge-idempotent**: identical nodes and relationships are upserted via `MERGE` and are not duplicated. It does **not** remove edges from prior exports (for example after disabling static scan paths or upgrading graph schema). To replace the graph entirely, clear container-graph data in Neo4j before re-exporting, or use a dedicated database.
 
 ### Auto-install supported platforms (`neo4j-boost:install-mcp`)
 

@@ -2,9 +2,9 @@
 
 This package integrates the official [Neo4j MCP](https://github.com/neo4j/mcp/releases) server into Laravel so you can use Neo4j tools from MCP clients (Cursor, Claude, etc.).
 
-### HTTP only
+### Transport modes
 
-The package talks to the Neo4j MCP server over **HTTP only**. Run the Neo4j MCP server elsewhere (e.g. Docker) with HTTP transport, then set in `.env`:
+The package supports **STDIO** (default — local `neo4j-mcp` binary), **HTTP** (remote MCP server), and **driver** (in-process Bolt via `NEO4J_MCP_TRANSPORT=driver`). For HTTP-only setups, run the Neo4j MCP server elsewhere (e.g. Docker) with HTTP transport, then set in `.env`:
 
 ```env
 NEO4J_MCP_URL=http://localhost:8080/mcp
