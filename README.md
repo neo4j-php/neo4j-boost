@@ -247,14 +247,192 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
+### Static analysis pass
+
+`container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by scanning configured paths. Opt-in only: when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
+
+Configure scan paths (comma-separated absolute paths):
+
+```env
+NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
+```
+
+Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
+
+#### Service location
+
+Detects literal **service location** calls:
+
+- `app(Foo::class)`
+- `resolve(Foo::class)`
+- `App::make(Foo::class)`
+
+Dynamic calls such as `app($variable)` are skipped.
+
+**Output shape:**
+
+```json
+{
+  "type": "service_location",
+  "via": "app",
+  "file": "/path/OrderProcessor.php",
+  "line": 12,
+  "source": "static"
+}
+```
+
+#### Facade static calls
+
+Detects static calls on Laravel first-party facades, auto-discovered custom app facades, and real-time facades (`Cache::put`, `CustomFacade::handle`, `\Facades\App\Services\PaymentGateway::charge`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
+
+Each edge carries a `catalog_source` describing how the binding was discovered:
+
+- `laravel_facade` — predefined Laravel first-party facade catalog.
+- `auto_discovered_facade` — custom app facades (`getFacadeAccessor()`) and real-time facades (`Facades\<FQCN>`), discovered outside the predefined catalog.
+
+**Output shape:**
+
+```json
+{
+  "type": "facade",
+  "via": "Illuminate\\Support\\Facades\\Cache::put",
+  "file": "/path/InvoiceNotifier.php",
+  "line": 12,
+  "source": "static",
+  "catalog_source": "laravel_facade"
+}
+```
+
+The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
+
+#### Global helper calls
+
+Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
+
+**Output shape:**
+
+```json
+{
+  "type": "global_helper",
+  "helper": "cache",
+  "via": "cache",
+  "file": "/path/GlobalHelperWorker.php",
+  "line": 9,
+  "source": "static"
+}
+```
+
+#### Direct instantiation
+
+Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`) and dynamic class expressions (`new $variable()`) are skipped. PHP internal/builtin classes (`DateTime`, `stdClass`, etc.) are recorded too, since an application can bind them into the container; opt-in filtering of specific classes is planned as a separate, configurable policy.
+
+**Output shape:**
+
+```json
+{
+  "type": "instantiation",
+  "via": "new App\\Services\\PaymentGateway",
+  "file": "/path/DirectInstantiator.php",
+  "line": 11,
+  "source": "static"
+}
+```
+
+**POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
+
+Run the PHPStan static-analysis rules (service-location and facade collectors) against fixtures only:
+
+```bash
+./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
+```
+
+The facade collector rule (`FacadeStaticCallRule`) is registered in `extension.neon` alongside the service-location rules and reuses the resolution catalog, so it picks up first-party, custom, and real-time facade calls. Collector coverage lives in `tests/Unit/StaticAnalysis/FacadeCollectorRuleTest.php` (PHPStan `RuleTestCase`).
+
+### Resolution catalog (facade → contract)
+
+The package ships a **resolution catalog** mapping facades to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). Resolution happens in three tiers, recorded on each entry's `source`:
+
+| Tier | `source` | How it is discovered |
+| --- | --- | --- |
+| Laravel first-party facades | `laravel_facade` | Predefined catalog built from `getFacadeAccessor()` introspection of `Illuminate\Support\Facades\*` against live container bindings. |
+| Custom app facades | `auto_discovered_facade` | Any `Facade` subclass outside `Illuminate\Support\Facades\*`, resolved via its `getFacadeAccessor()` (class, contract, or string binding key). |
+| Real-time facades | `auto_discovered_facade` | `Facades\<FQCN>` references; the leading `Facades\` segment is stripped to recover the underlying class the container resolves. |
+
+```php
+use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
+
+$entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facades\Cache::class);
+// $entry->abstract, $entry->bindingKey, $entry->bindsToType, $entry->source
+
+// Auto-discovered custom facade
+$entry = app(ResolutionCatalog::class)->resolveFacade(\App\Facades\Payments::class);
+
+// Real-time facade → App\Services\PaymentGateway
+$entry = app(ResolutionCatalog::class)->resolveFacade('Facades\\App\\Services\\PaymentGateway');
+```
+
+Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts, stamping the catalog tier onto each `DEPENDS_ON` edge as `catalog_source`.
+
+### Method injection
+
+`container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
+
+- **Controllers** — public action methods (excluding magic methods)
+- **Jobs, commands, listeners** — `handle()`
+- **Middleware** — `handle()` container dependencies only (`Request`, `Response`, `Closure` are skipped)
+- **Listeners** — `handle()` skips the first parameter (event payload from the dispatcher)
+
+Entry points are discovered via namespace/suffix heuristics (`Http\Controllers`, `Jobs`, `Listeners`, `Middleware`, etc.). `file` / `line` on `DEPENDS_ON` point to the **method declaration**, not individual parameters.
+
+Form requests and other typed parameters become `DEPENDS_ON` edges with `type: method_injection`, plus `method` and `parameter` on the relationship. Constructor-only reflection misses these; method injection closes that gap.
+
+**Output shape (on `DEPENDS_ON`):**
+
+```json
+{
+  "type": "method_injection",
+  "method": "store",
+  "parameter": "request",
+  "access": "di",
+  "file": "/path/PostController.php",
+  "line": 18
+}
+```
+
+The command summary includes `Method injection edges: N`.
+
 ### Graph model
 
-- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is an interface
-- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is a class
-- `(:Class:Abstract)` class nodes are also added for discovered project classes (PSR-4 autoloaded classes from the app)
-- **`Abstract`** – use as the entry label to start from registered binding keys and walk the graph (`MATCH (a:Abstract) …`).
-- `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
-- `(:UnresolvedDependency:Abstract {name, reason})`
+**Bindings** (unchanged):
+
+- `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)
+- `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
+- **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
+
+**Dependencies** (three-node model):
+
+- `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
+- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper, source, confidence, provenance, remarks}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
+- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
+- `source` on edges: `reflection`, `static`, or `catalog`
+- `confidence` on edges: `high`, `medium`, or `low` (e.g. `config()` / `env()` literal keys are `medium`)
+- `provenance` on edges: `reflection`, `static_scan`, `resolution_catalog`, `heuristic`, or `container_binding`
+- `remarks` — short human-readable note explaining the confidence score
+- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
+- `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
+- `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
+- Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)
+
+There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
+
+**Contextual bindings**:
+
+- `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
+- `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
+- Array `give()` values (variadic injection) produce one edge per concrete class
+- **Limitations:** fully dynamic `give()` closures that cannot be introspected export as `closure@{needs}` with `give_kind: Closure` and `reason: dynamic_give_closure`. Best-effort parsing covers class-name `give()`, array `give()`, closure return types, and literal `Storage::disk('name')` in closure source. `giveTagged()`, `giveConfig()`, and runtime-dependent closures are not resolved to concrete targets.
+
+The command summary includes `Contextual bindings: N`.
 
 ### Example Cypher queries
 
@@ -264,25 +442,39 @@ For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questio
 { "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
 ```
 
-Returns structured JSON with `dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), and `graph_export_required` when data is missing. Default page size is 100 entries.
+Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, optional `remarks`, and `visibility`), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations, plus per-class `coverage` and declared/hidden counts), and `graph_export_required` when data is missing. Default page size is 100 entries.
 
-**Explore from container binding keys outward (graph view in Neo4j Browser):**
+**Explore bindings from container keys outward:**
 
 ```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n)
+MATCH p = (a:Abstract)-[:BINDS_TO*1..10]->(n)
 RETURN p
 LIMIT 200;
 ```
 
-**Bidirectional neighborhood (idiomatic; no duplicate reverse edges):**
+**Explore instance dependency chains:**
 
 ```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..6]-(n)
+MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
 RETURN p
 LIMIT 200;
 ```
 
-Cycle-only patterns such as `(x:Abstract)-[*..]->(x)` mostly surface self-binds or trivial paths; prefer outward or undirected expansion above.
+**Explore contextual when/needs/give overrides:**
+
+```cypher
+MATCH p = (i:Instance)-[r:CONTEXTUAL_BINDS]->(g:Identifier)
+RETURN i.name AS when, r.needs AS needs, g.name AS give, r.reason AS reason
+LIMIT 200;
+```
+
+**Bidirectional neighborhood around an instance:**
+
+```cypher
+MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+RETURN p
+LIMIT 200;
+```
 
 ```cypher
 MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
@@ -291,14 +483,15 @@ LIMIT 25;
 ```
 
 ```cypher
-MATCH p = (:Class:Abstract {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
-RETURN p
-LIMIT 10;
+MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+RETURN i.name, id.name, id.kind
+LIMIT 25;
 ```
 
 ```cypher
-MATCH (c:Class:Abstract)-[:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN c.name, u.name, u.reason
+MATCH (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
+WHERE id.kind = 'Unresolved'
+RETURN i.name, id.name, id.reason
 LIMIT 25;
 ```
 

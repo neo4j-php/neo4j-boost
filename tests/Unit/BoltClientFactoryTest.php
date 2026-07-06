@@ -2,8 +2,10 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit;
 
+use Laudis\Neo4j\Client;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use ReflectionClass;
 use RuntimeException;
 
 class BoltClientFactoryTest extends TestCase
@@ -14,6 +16,27 @@ class BoltClientFactoryTest extends TestCase
         $this->app->forgetInstance(Neo4jBoltClient::class);
 
         parent::tearDown();
+    }
+
+    public function test_client_uses_laravel_boost_user_agent(): void
+    {
+        config([
+            'neo4j-boost.bolt.uri' => 'bolt://localhost:7687',
+            'neo4j-boost.bolt.username' => 'neo4j',
+            'neo4j-boost.bolt.password' => '',
+        ]);
+
+        $client = $this->app->make(Neo4jBoltClient::class)->client();
+        $this->assertInstanceOf(Client::class, $client);
+
+        $driverSetups = (new ReflectionClass($client))
+            ->getProperty('driverSetups')
+            ->getValue($client);
+
+        $this->assertSame(
+            Neo4jBoltClient::USER_AGENT,
+            $driverSetups->getDriverConfiguration()->getUserAgent()
+        );
     }
 
     public function test_missing_uri_throws_actionable_error(): void

@@ -5,9 +5,14 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Storage;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Commands\SyncReportsCommand;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Contracts\EventPusherInterface;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PhotoController;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PostController;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\VideoController;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Listeners\OrderShippedListener;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\VerifyJsonApi;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\DecoratableService;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\DecoratedService;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Filter;
@@ -64,7 +69,7 @@ final class ComplexContainerRegistry
 
         $app->alias(RedisEventPusher::class, 'event.pusher');
 
-        $app->bind('billing.currency', 'USD');
+        $app->bind('app.currency', 'USD');
 
         $app->bind('reports.analyzer', fn (Application $application): ReportAggregator => $application->make(ReportAggregator::class));
 
@@ -94,5 +99,11 @@ final class ComplexContainerRegistry
         $app->bind(DecoratableService::class, fn (): DecoratableService => new DecoratableService('base'));
 
         $app->extend(DecoratableService::class, fn (DecoratableService $service): DecoratedService => new DecoratedService($service));
+
+        $app->bind(PostController::class, PostController::class);
+        $app->bind(ProcessInvoiceJob::class, ProcessInvoiceJob::class);
+        $app->bind(SyncReportsCommand::class, SyncReportsCommand::class);
+        $app->bind(OrderShippedListener::class, OrderShippedListener::class);
+        $app->bind(VerifyJsonApi::class, VerifyJsonApi::class);
     }
 }

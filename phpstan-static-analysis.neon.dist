@@ -1,0 +1,18 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - extension.neon
+
+parameters:
+    phpVersion: 80200
+    paths:
+        - tests/Integration/Fixtures/StaticAnalysis
+        - tests/Integration/Fixtures/ResolutionCatalog
+        - tests/Unit/StaticAnalysis/Fixtures
+    level: 5
+    treatPhpDocTypesAsCertain: false
+
+    # Real-time facade fixture references a virtual Facades\* class that Laravel
+    # generates at runtime; PHPStan cannot reflect it without a writable facade
+    # cache, so it is scanned by the runtime finder only.
+    excludePaths:
+        - tests/Integration/Fixtures/StaticAnalysis/Services/RealTimeFacadeReporter.php

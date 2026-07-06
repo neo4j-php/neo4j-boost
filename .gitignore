@@ -28,5 +28,6 @@ coverage/
 # Laravel logs
 storage/logs/*.log
 
-# Local usage notes (do not commit)
+# Local usage / testing notes (do not commit)
 USAGE.local.md
+TESTING.local.md
