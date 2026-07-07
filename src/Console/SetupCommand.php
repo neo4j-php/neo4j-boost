@@ -13,7 +13,7 @@ class SetupCommand extends Command
                             {--skip-mcp : Skip Neo4j MCP binary installation}
                             {--no-cursor-config : Skip running neo4j-boost:cursor-config}';
 
-    protected $description = 'Interactive setup for Neo4j Laravel Boost (Cursor config, optional STDIO binary). Use -n/--no-interaction for manual steps only.';
+    protected $description = 'Interactive setup for Neo4j Laravel Boost (Neo4j, optional MCP binary, Cursor config). Use -n/--no-interaction for manual steps only.';
 
     public function handle(): int
     {
@@ -60,6 +60,14 @@ class SetupCommand extends Command
 
         $this->newLine();
 
+        $transport = Neo4jMcpConfig::transport();
+
+        if ($transport === 'driver' && Neo4jMcpConfig::hasNeo4jPassword()) {
+            $this->components->info('Neo4j Laravel Boost setup complete. Driver transport is ready (Bolt — no neo4j-mcp binary required).');
+
+            return self::SUCCESS;
+        }
+
         if ($installer->isInstalled() && Neo4jMcpConfig::hasNeo4jPassword()) {
             $this->components->info('Neo4j Laravel Boost setup complete. STDIO transport is ready with the local neo4j-mcp binary.');
 
@@ -81,14 +89,13 @@ class SetupCommand extends Command
     {
         $this->newLine();
         $this->components->info('Neo4j Laravel Boost setup');
-        $this->line('Default proxy path: <fg=cyan>Boost MCP -> driver -> laudis/neo4j-php-client (Bolt)</>');
-        $this->line('Driver transport is the default — no neo4j-mcp binary required.');
+        $this->line('Default path: <fg=cyan>Boost MCP -> driver transport (in-process Bolt)</>');
+        $this->line('No neo4j-mcp binary is required unless you set <fg=cyan>NEO4J_MCP_TRANSPORT=stdio</>.');
         $this->newLine();
         $this->line('Add these lines to your <fg=cyan>.env</> (reminder):');
         $this->line('  <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('  <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('  <fg=gray>NEO4J_PASSWORD=password</>');
-        $this->line('  <fg=gray># Optional: set NEO4J_MCP_TRANSPORT=stdio to use the neo4j-mcp binary instead</>');
         $this->newLine();
     }
 
@@ -96,18 +103,22 @@ class SetupCommand extends Command
     {
         $this->components->warn('Non-interactive mode: run these steps manually.');
         $this->newLine();
-        $this->line('  1. Ensure .env contains:');
+        $this->line('  1. Install the Neo4j MCP binary:');
+        $this->line('     <fg=gray>php artisan neo4j-boost:install-mcp</>');
+        $this->newLine();
+        $this->line('  2. Start local Neo4j:');
+        $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
+        $this->newLine();
+        $this->line('  3. Ensure .env contains:');
         $this->line('     <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('     <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('     <fg=gray>NEO4J_PASSWORD=password</>');
         $this->newLine();
-        $this->line('  2. Configure Cursor MCP:');
-        $this->line('     <fg=gray>php artisan neo4j-boost:cursor-config</>');
+        $this->line('  4. (Optional) For STDIO transport, also run install-mcp and set:');
+        $this->line('     <fg=gray>NEO4J_MCP_TRANSPORT=stdio</>');
         $this->newLine();
-        $this->line('  Optional (STDIO transport only):');
-        $this->line('     <fg=gray>php artisan neo4j-boost:install-mcp</>');
-        $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
-        $this->line('     Set NEO4J_MCP_TRANSPORT=stdio in .env');
+        $this->line('  5. Configure Cursor MCP:');
+        $this->line('     <fg=gray>php artisan neo4j-boost:cursor-config</>');
         $this->newLine();
     }
 
@@ -123,6 +134,13 @@ class SetupCommand extends Command
 
         if (! $this->canPromptInteractively()) {
             return false;
+        }
+
+        if (Neo4jMcpConfig::transport() === 'driver') {
+            return $this->confirm(
+                'Install the official Neo4j MCP server binary? (only required for NEO4J_MCP_TRANSPORT=stdio)',
+                false
+            );
         }
 
         return $this->confirm(

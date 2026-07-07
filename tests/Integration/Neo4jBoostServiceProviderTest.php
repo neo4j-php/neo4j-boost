@@ -6,6 +6,7 @@ use Neo4j\LaravelBoost\Boost\Tools\GetSchemaTool;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\Neo4jDriverClient;
 use Neo4j\LaravelBoost\Neo4jHttpClient;
+use Neo4j\LaravelBoost\Neo4jStdioClient;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 use Neo4j\LaravelBoost\Tests\TestCase;
@@ -17,6 +18,16 @@ class Neo4jBoostServiceProviderTest extends TestCase
         $client = $this->app->make(Neo4jMcpClientInterface::class);
 
         $this->assertInstanceOf(Neo4jDriverClient::class, $client);
+    }
+
+    public function test_resolves_neo4j_mcp_client_as_stdio_when_transport_is_stdio(): void
+    {
+        config(['neo4j-boost.neo4j_mcp.transport' => 'stdio']);
+
+        $this->app->forgetInstance(Neo4jMcpClientInterface::class);
+        $client = $this->app->make(Neo4jMcpClientInterface::class);
+
+        $this->assertInstanceOf(Neo4jStdioClient::class, $client);
     }
 
     public function test_resolves_neo4j_mcp_client_as_http_when_transport_is_http(): void

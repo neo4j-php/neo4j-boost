@@ -8,18 +8,18 @@ return [
     |
     | How this package talks to the Neo4j MCP server:
     |
-    | - http  : Connect to a remote MCP server over HTTP (e.g. a separate
-    |           neo4j-mcp process or container). Set NEO4J_MCP_TRANSPORT=http
-    |           and configure the "http" section below.
+    | - driver : Run MCP tools in PHP via laudis/neo4j-php-client (Bolt). No
+    |           neo4j-mcp binary required. This is the default. Set
+    |           NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD (or DSN).
     |
     | - stdio  : Run the MCP server as a subprocess and talk over stdin/stdout.
     |           Set NEO4J_MCP_TRANSPORT=stdio and configure the "stdio" section.
     |           The subprocess receives NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD
     |           from transport.stdio.env so it can connect to Neo4j.
     |
-    | - driver : Run MCP tools in PHP via laudis/neo4j-php-client (Bolt). No
-    |           neo4j-mcp binary required. Set NEO4J_MCP_TRANSPORT=driver and
-    |           NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD (or DSN).
+    | - http   : Connect to a remote MCP server over HTTP (e.g. a separate
+    |           neo4j-mcp process or container). Set NEO4J_MCP_TRANSPORT=http
+    |           and configure the "http" section below.
     |
     */
     'transport' => [

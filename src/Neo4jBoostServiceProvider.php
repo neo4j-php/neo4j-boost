@@ -54,7 +54,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(BoltExecutorInterface::class, Neo4jBoltExecutor::class);
 
         $this->app->singleton(Neo4jMcpClientInterface::class, function ($app) {
-            $driver = strtolower((string) config('neo4j-boost.neo4j_mcp.transport', 'stdio'));
+            $driver = strtolower((string) config('neo4j-boost.neo4j_mcp.transport', 'driver'));
 
             return match ($driver) {
                 'driver' => new Neo4jDriverClient($app->make(BoltExecutorInterface::class)),
