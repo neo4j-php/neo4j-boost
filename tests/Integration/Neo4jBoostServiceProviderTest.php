@@ -13,8 +13,18 @@ use Neo4j\LaravelBoost\Tests\TestCase;
 
 class Neo4jBoostServiceProviderTest extends TestCase
 {
-    public function test_resolves_neo4j_mcp_client_as_stdio_by_default(): void
+    public function test_resolves_neo4j_mcp_client_as_driver_by_default(): void
     {
+        $client = $this->app->make(Neo4jMcpClientInterface::class);
+
+        $this->assertInstanceOf(Neo4jDriverClient::class, $client);
+    }
+
+    public function test_resolves_neo4j_mcp_client_as_stdio_when_transport_is_stdio(): void
+    {
+        config(['neo4j-boost.neo4j_mcp.transport' => 'stdio']);
+
+        $this->app->forgetInstance(Neo4jMcpClientInterface::class);
         $client = $this->app->make(Neo4jMcpClientInterface::class);
 
         $this->assertInstanceOf(Neo4jStdioClient::class, $client);

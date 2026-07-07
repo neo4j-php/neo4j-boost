@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Default `NEO4J_MCP_TRANSPORT` is now **`driver`** (in-process Bolt) instead of `stdio`. Set `NEO4J_MCP_TRANSPORT=stdio` explicitly to use the `neo4j-mcp` binary.
+
 ## [1.0.0] - 2026-07-06
 
 ### Added
