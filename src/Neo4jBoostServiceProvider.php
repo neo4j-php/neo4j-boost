@@ -41,6 +41,7 @@ use Neo4j\LaravelBoost\StaticAnalysis\InstantiationBuiltinFilter;
 use Neo4j\LaravelBoost\StaticAnalysis\InstantiationEdgeFinder;
 use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\DevDependencyConfigPublisher;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 
 class Neo4jBoostServiceProvider extends ServiceProvider
@@ -90,9 +91,18 @@ class Neo4jBoostServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $configSource = __DIR__.'/../config/neo4j-boost.php';
+        $configDestination = config_path('neo4j-boost.php');
+
         $this->publishes([
-            __DIR__.'/../config/neo4j-boost.php' => config_path('neo4j-boost.php'),
+            $configSource => $configDestination,
         ], 'neo4j-boost-config');
+
+        (new DevDependencyConfigPublisher)->publishIfMissing(
+            $configSource,
+            $configDestination,
+            $this->app->basePath(),
+        );
 
         $this->mergeBoostTools();
 
