@@ -85,7 +85,7 @@ class SetupCommand extends Command
         $this->line('STDIO is the default transport, so installing the binary is enough for local setup.');
         $this->newLine();
         $this->line('Add these lines to your <fg=cyan>.env</> (reminder):');
-        $this->line('  <fg=gray>NEO4J_TRANSPORT_MODE=stdio</>');
+        $this->line('  <fg=gray>NEO4J_MCP_TRANSPORT=stdio</>');
         $this->line('  <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('  <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('  <fg=gray>NEO4J_PASSWORD=password</>');
@@ -103,7 +103,7 @@ class SetupCommand extends Command
         $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
         $this->newLine();
         $this->line('  3. Ensure .env contains:');
-        $this->line('     <fg=gray>NEO4J_TRANSPORT_MODE=stdio</>');
+        $this->line('     <fg=gray>NEO4J_MCP_TRANSPORT=stdio</>');
         $this->line('     <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('     <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('     <fg=gray>NEO4J_PASSWORD=password</>');
