@@ -33,7 +33,7 @@ composer require --dev laravel/boost neo4j/laravel-boost
 
 ### 2. Update Your Environment Variables
 
-By default, the package uses the **driver transport** method, which runs Neo4j tools in PHP over Bolt. This means you don't even need the `neo4j-mcp` binary. Just add your connection details to your `.env` file:
+By default, the package uses **STDIO transport**, which spawns the official `neo4j-mcp` binary as a subprocess. Add your Neo4j connection details to your `.env` file:
 
 ```env
 NEO4J_URI=bolt://localhost:7687
@@ -42,7 +42,7 @@ NEO4J_PASSWORD=your-password
 
 ```
 
-> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `driver`. You only need to set it if you decide to switch to STDIO or HTTP (see the Notes section below).
+> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `stdio`. You can switch to `driver` (Bolt in PHP, no binary needed) or `http` (remote MCP server) — see the Notes section below.
 
 ### 3. Run the Interactive Setup
 
@@ -51,7 +51,7 @@ php artisan neo4j-boost:setup
 
 ```
 
-This command checks your connection and automatically writes the required Cursor MCP configuration to `.cursor/mcp.json`. If you need STDIO transport, it can also spin up a local Neo4j Docker instance and install the `neo4j-mcp` binary for you.
+This command checks your connection, writes the required Cursor MCP configuration to `.cursor/mcp.json`, and can install the `neo4j-mcp` binary and spin up a local Neo4j Docker instance.
 
 ### 4. Start a Local Neo4j Instance (Optional)
 
@@ -142,12 +142,12 @@ Once exported, you can use the **get-class-dependency-graph** MCP tool to query 
 ## Important Notes & Advanced Configuration
 
 **Transport Modes**
-The default mode is `driver` (which uses Bolt directly in PHP, so no extra binary is needed). However, you have two other options:
+The default is `stdio`, which spawns the official `neo4j-mcp` binary as a subprocess. You have two other options:
 
-* **STDIO:** Spawns the official `neo4j-mcp` binary as a background process. To use this, install the binary with `php artisan neo4j-boost:install-mcp`, then add `NEO4J_MCP_TRANSPORT=stdio` to your `.env`.
-* **HTTP:** Connects to a remote or containerized MCP server. Set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=http://localhost:8080/mcp`. *Note: In HTTP mode, this package sends your Neo4j credentials with every request, so do not set `NEO4J_USERNAME` or `NEO4J_PASSWORD` on the MCP server container itself.*
+* **Driver:** Runs Neo4j tools in PHP over Bolt directly — no binary needed. Set `NEO4J_MCP_TRANSPORT=driver` in your `.env`.
+* **HTTP:** Connects to a remote or containerized MCP server. Set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=http://localhost:8080/mcp`. In HTTP mode, this package sends your Neo4j credentials with every request, so do not set `NEO4J_USERNAME` or `NEO4J_PASSWORD` on the MCP server container itself.
 
-*Remember to run `php artisan config:clear` after editing your `.env` file so Laravel registers the changes!*
+Remember to run `php artisan config:clear` after editing your `.env` file so Laravel picks up the change.
 
 **Using Docker Compose (HTTP mode, Neo4j + MCP server)**
 Here is a quick setup guide if you prefer Docker:
