@@ -1,29 +1,22 @@
 # Neo4j Laravel Boost
 
-Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases). Use Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, get-class-dependency-graph, contribute-graph-knowledge) from MCP clients like Cursor or Claude.
-
-Release notes: [CHANGELOG.md](CHANGELOG.md).
+Laravel integration for the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases). It exposes Neo4j tools — `get-schema`, `read-cypher`, `write-cypher`, `list-gds-procedures`, `get-class-dependency-graph`, `contribute-graph-knowledge` — to MCP clients like Cursor or Claude.
 
 **Requirements:** PHP 8.2+, Laravel 12 or 13, [Laravel Boost](https://github.com/laravel/boost).
 
-### CI (this repository)
+Release notes: [CHANGELOG.md](CHANGELOG.md).
 
-GitHub Actions include four workflows on a **PHP × Laravel** matrix compatible with upstream constraints: **Laravel 12** on PHP **8.2** and **8.5**; **Laravel 13** (requires PHP **^8.3**) on PHP **8.3** and **8.5**. Workflows: [Pint](https://github.com/laravel/pint) (`.github/workflows/pint.yml`), [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) (`.github/workflows/phpstan.yml`), PHPUnit (`.github/workflows/phpunit.yml`), and **[Testbench](https://packages.tools/testbench.html)** (`.github/workflows/testbench.yml`) — which runs `composer run build` then PHPUnit against [`Orchestra\Testbench\TestCase`](tests/TestCase.php).
+---
 
-Locally after `composer install`:
+## Why use it
 
-```bash
-composer run ci
-# or: ./vendor/bin/pint --test && ./vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress && ./vendor/bin/phpunit -c phpunit.xml.dist
-```
+Your AI coding assistant (Cursor, Claude, etc.) cannot query your database schema or run Cypher directly — it can only read files. This package bridges that gap by wiring the official Neo4j MCP server into Laravel Boost, so your assistant can:
 
-### Workbench (`composer run serve`)
+- Inspect your live Neo4j schema
+- Run read/write Cypher queries
+- Query your Laravel container's dependency graph as a graph
 
-The [Orchestra Testbench](https://packages.tools/testbench.html) workbench is a small Laravel app inside this repo. **`composer run build`** only runs asset steps so it works **without** the PHP SQLite extension (`pdo_sqlite`). Session/cache/queue defaults are set in `testbench.yaml` (`env:`) so the skeleton does not need a SQL database for a quick `composer run serve`.
-
-**Neo4j** is configured separately via **`NEO4J_*`** (Bolt) and **`NEO4J_MCP_*`** (MCP HTTP), not via `DB_*`. Defaults are in `testbench.yaml` under `env:`; override them by copying `workbench/.env.example` to `workbench/.env` and editing.
-
-**Optional SQL (migrations / `DatabaseSeeder`):** install `php-sqlite3` (or configure MySQL in `workbench/.env`), then run `./vendor/bin/testbench workbench:create-sqlite-db` and `./vendor/bin/testbench migrate:fresh` if you need the database.
+You get **one** MCP server entry in Cursor (`php artisan boost:mcp`) that covers both Laravel Boost tools and Neo4j tools.
 
 ---
 
@@ -32,34 +25,168 @@ The [Orchestra Testbench](https://packages.tools/testbench.html) workbench is a 
 ### 1. Install the package
 
 ```bash
-composer require neo4j/laravel-boost
+composer require laravel/boost laravel/mcp neo4j/laravel-boost
 ```
 
-### 2. Run interactive setup
+### 2. Configure your `.env`
+
+By default the package uses **driver transport** — Neo4j tools run in PHP over Bolt, so no `neo4j-mcp` binary is required. Add to your `.env`:
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+```
+
+`NEO4J_MCP_TRANSPORT` defaults to `driver`. Only set it when switching to STDIO or HTTP (see Notes below).
+
+### 3. Run interactive setup
 
 ```bash
 php artisan neo4j-boost:setup
 ```
 
-By default, this package uses **STDIO transport** and manages the official `neo4j-mcp` binary directly for local usage.  
-The setup command installs/checks the binary, validates STDIO requirements, keeps `NEO4J_MCP_TRANSPORT=stdio`, and writes Cursor MCP config.
+This validates your connection, writes Cursor MCP config (`.cursor/mcp.json`), and optionally starts a local Neo4j Docker instance and installs the `neo4j-mcp` binary (only needed for STDIO transport).
 
-### 3. Start local Neo4j (for STDIO mode)
+### 4. Start a local Neo4j instance (if you don't have one)
 
 ```bash
 php artisan neo4j-boost:start-neo4j
 ```
 
-This command starts a local Docker Neo4j instance on:
+Starts a local Docker Neo4j instance on `bolt://localhost:7687` and `http://localhost:7474`, with APOC defaults required by schema tools.
 
-- `bolt://localhost:7687`
-- `http://localhost:7474`
+### 5. Reload Cursor
 
-It also configures APOC defaults required by schema tools.
+Open your **Laravel application folder** as the Cursor workspace and reload MCP settings. Enable the `laravel-boost` server entry. Neo4j tools will appear alongside Boost tools once connected.
 
-### Optional: automate setup with a Composer hook
+---
 
-Add this to your app `composer.json` to run setup automatically after `composer update`:
+## Usage
+
+### Cursor MCP config
+
+The setup command writes this to `.cursor/mcp.json`:
+
+```json
+"mcpServers": {
+  "laravel-boost": {
+    "command": "php",
+    "args": ["artisan", "boost:mcp"],
+    "env": {
+      "APP_ENV": "local"
+    }
+  }
+}
+```
+
+You can also regenerate it manually:
+
+```bash
+php artisan neo4j-boost:cursor-config
+```
+
+### Container dependency graph
+
+Export your Laravel container's runtime wiring into Neo4j so an LLM can query dependency resolution as a graph:
+
+```bash
+php artisan container:graph
+php artisan container:graph --dry-run
+php artisan container:graph --print-cypher
+```
+
+> **Large codebases:** The export reflects all PSR-4 classes in the container. On apps with hundreds of services it will take meaningful time and produce a large graph — that's expected.
+
+To also detect hidden dependencies (service-location calls, facade usage, direct `new` instantiation), opt in to static scanning by setting the paths to scan in `.env`:
+
+```env
+NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/absolute/path/to/app/Services,/absolute/path/to/app/Http
+```
+
+Or publish the config and set `container_graph.static_scan_paths`. When unset, no PHP files are scanned and only runtime reflection edges are exported.
+
+After exporting, use the **get-class-dependency-graph** MCP tool to query a specific class:
+
+```json
+{ "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4 }
+```
+
+### Available Artisan commands
+
+| Command | Description |
+|--------|-------------|
+| `neo4j-boost:setup` | Interactive setup (connection check, optional Docker Neo4j, Cursor config) |
+| `neo4j-boost:start-neo4j` | Start local Neo4j Docker instance |
+| `neo4j-boost:cursor-config` | Create or update `.cursor/mcp.json` |
+| `neo4j-boost:install-mcp` | Download/install the official `neo4j-mcp` binary (STDIO only) |
+| `neo4j-boost:doctor` | Diagnose transport, binary, password, and readiness |
+| `neo4j-boost:test-stdio` | Verbose end-to-end STDIO handshake/tool test |
+| `container:graph` | Export Laravel container bindings into Neo4j (`--dry-run`, `--print-cypher`) |
+
+---
+
+## Notes
+
+**Transport modes:** The default is `driver` (Bolt in PHP, no binary needed). Two alternatives:
+
+- **STDIO** — spawns the official `neo4j-mcp` binary as a subprocess. Install it with `php artisan neo4j-boost:install-mcp`, then set `NEO4J_MCP_TRANSPORT=stdio` in `.env`.
+- **HTTP** — connects to a remote or containerised MCP server. Set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=http://localhost:8080/mcp`. In HTTP mode the package sends Neo4j credentials per-request; do **not** set `NEO4J_USERNAME`/`NEO4J_PASSWORD` on the MCP server container itself.
+
+After editing `.env`, always run `php artisan config:clear` so Laravel picks up the change.
+
+**Docker Compose (HTTP mode — Neo4j + MCP server):**
+
+```yaml
+services:
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/your-password
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*,gds.*'
+      NEO4J_dbms_security_procedures_allowlist: 'apoc.*,gds.*'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Official Neo4j MCP server (HTTP mode)
+  neo4j-mcp:
+    image: mcp/neo4j
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_DATABASE: neo4j
+      NEO4J_READ_ONLY: "false"
+      NEO4J_TELEMETRY: "false"
+      NEO4J_TRANSPORT_MODE: http
+      NEO4J_MCP_HTTP_HOST: 0.0.0.0
+      NEO4J_MCP_HTTP_PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+```
+
+Then in your Laravel `.env`:
+
+```env
+NEO4J_MCP_TRANSPORT=http
+NEO4J_MCP_URL=http://localhost:8080/mcp
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+```
+
+**GDS plugin (`list-gds-procedures`):** Requires the [Graph Data Science](https://neo4j.com/docs/graph-data-science/current/) plugin. Without it that tool errors; `get-schema`, `read-cypher`, and `write-cypher` still work. For Docker, add `NEO4J_PLUGINS: '["apoc", "graph-data-science"]'` and the appropriate `NEO4J_dbms_security_procedures_*` env vars to your Neo4j service.
+
+**Automate setup after deploys:** Add to your app's `composer.json`:
 
 ```json
 {
@@ -71,533 +198,32 @@ Add this to your app `composer.json` to run setup automatically after `composer 
 }
 ```
 
-### 4. Configure Neo4j connection (for the MCP server)
-
-For STDIO mode, the `neo4j-mcp` binary still needs Neo4j credentials. If you use Laravel’s Neo4j driver elsewhere, add to your `.env`:
-
-```env
-NEO4J_TRANSPORT_MODE=stdio
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your-password
-```
-
-For full local clarity, a complete example is:
-
-```env
-NEO4J_TRANSPORT_MODE=stdio
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
-```
-
-### 5. (Optional) Cursor MCP config
-
-To add/update Cursor MCP config:
-
-```bash
-php artisan neo4j-boost:cursor-config
-```
-
-This creates or updates `.cursor/mcp.json` for the Boost MCP entry, merged with any existing servers.
-
-### 6. Advanced / Custom Server (HTTP or Docker)
-
-If you want to run Neo4j MCP as a separate server instead of local STDIO binary mode:
-
-- Set `NEO4J_MCP_TRANSPORT=http`
-- Set `NEO4J_MCP_URL=http://localhost:8080/mcp` (or your remote URL)
-
-Run your own Neo4j MCP server (manually, Docker, or remote host), then point this package at that URL.
-
-**Example with Docker (custom server mode):**
-
-```bash
-docker run --rm -p 8080:8080 \
-  -e NEO4J_URI=bolt://host.docker.internal:7687 \
-  -e NEO4J_TRANSPORT_MODE=http \
-  docker.io/mcp/neo4j:latest
-```
-
-### 7. (Optional) Enable GDS for `list-gds-procedures`
-
-The **list-gds-procedures** tool requires the [Graph Data Science](https://neo4j.com/docs/graph-data-science/current/) (GDS) plugin in Neo4j. Without it, that tool will error; other tools (get-schema, read-cypher, write-cypher) still work.
-
-**Docker:** enable the GDS and APOC plugins and allow procedures:
-
-```yaml
-# docker-compose.yml (neo4j service)
-neo4j:
-  image: neo4j:5-community
-  environment:
-    NEO4J_AUTH: neo4j/your-password
-    NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
-    NEO4J_dbms_security_procedures_unrestricted: 'apoc.*,gds.*'
-    NEO4J_dbms_security_procedures_allowlist: 'apoc.*,gds.*'
-  ports:
-    - "7474:7474"
-    - "7687:7687"
-```
-
-**Non-Docker:** install the GDS plugin for your Neo4j version and configure procedure allowlists as in the [Neo4j GDS docs](https://neo4j.com/docs/graph-data-science/current/installation/).
-
----
-
-## Single MCP server with Laravel Boost
-
-This package requires [Laravel Boost](https://github.com/laravel/boost) and automatically adds Neo4j tools to Boost's MCP server, so you get **both** Boost tools and Neo4j tools from **one** server.
-
-1. Install both packages:
-
-   ```bash
-   composer require laravel/boost laravel/mcp neo4j/laravel-boost
-   ```
-
-   For local development, default to STDIO and run:
-
-   ```bash
-   php artisan neo4j-boost:setup
-   php artisan neo4j-boost:start-neo4j
-   ```
-
-   If you prefer a remote/custom MCP server, set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=...`.
-
-2. Use **one** Cursor MCP entry that runs Laravel Boost:
-
-   ```json
-   "mcpServers": {
-     "laravel-boost": {
-       "command": "php",
-       "args": ["artisan", "boost:mcp"],
-       "env": {
-         "APP_ENV": "local"
-       }
-     }
-   }
-   ```
-
-   **If your workspace is this package repo** (neo4j-boost): the `env` block is required so Laravel Boost registers its commands. In a normal Laravel app with `.env` already set to `APP_ENV=local`, you can omit `env` if you prefer.
-
-3. This package adds its Neo4j tools to Boost's tool list. You get Boost tools (search-docs, browser-logs, database, etc.) **and** the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures). Neo4j tools call the official server over STDIO by default, or over HTTP when `NEO4J_MCP_TRANSPORT=http`.
-
-
----
-
-## Using with Cursor
-
-1. Open your **Laravel application folder** (the project where you ran `composer require`) as the Cursor workspace—not the neo4j-boost package directory.
-2. Reload Cursor or open MCP settings so it picks up `.cursor/mcp.json`.
-3. Enable **laravel-boost** (one MCP server via `php artisan boost:mcp`). Cursor uses stdio; this package calls Neo4j MCP over HTTP internally. Tools (get-schema, read-cypher, write-cypher, list-gds-procedures) appear when the server is connected.
-
----
-
-## Local development (this repo)
-
-When developing the package and running Artisan from the repo (e.g. e2e testing `boost:mcp`), either:
-
-- **Option A:** In `.cursor/mcp.json`, add `"env": { "APP_ENV": "local" }` to the `laravel-boost` server entry (see config above). Cursor will pass it when starting the process.
-- **Option B:** Copy `.env.example` to `.env` in the repo root so that `php artisan boost:mcp` sees `APP_ENV=local` when run from the terminal or by Cursor.
-
----
-
-## Artisan commands
-
-| Command | Description |
-|--------|-------------|
-| `php artisan neo4j-boost:cursor-config` | Create or update `.cursor/mcp.json` with the Neo4j MCP server URL (merge with existing servers) |
-| `php artisan neo4j-boost:setup` | Interactive STDIO-first setup (binary, env checks, Cursor config) |
-| `php artisan neo4j-boost:install-mcp` | Download/install the official `neo4j-mcp` binary |
-| `php artisan neo4j-boost:start-neo4j` | Start local Neo4j Docker for STDIO mode |
-| `php artisan neo4j-boost:doctor` | Diagnose transport, binary, password, and readiness |
-| `php artisan neo4j-boost:test-stdio --tool=get-schema` | Verbose end-to-end STDIO handshake/tool test |
-| `php artisan container:graph` | Export Laravel container bindings/dependencies into Neo4j graph (`--dry-run`, `--print-cypher`) |
-
-Neo4j tools exposed via Laravel Boost MCP (`php artisan boost:mcp`) include **get-class-dependency-graph** and **contribute-graph-knowledge** (container graph; require `container:graph` export first), plus get-schema, read-cypher, write-cypher, and list-gds-procedures.
-
----
-
-## Container Graph POC (LLM Debugging)
-
-This spike exports runtime Laravel container wiring into Neo4j so dependency resolution can be queried as a graph.
-
-### Environment variables
-
-**Option A – explicit URI (recommended for local dev):**
-
-```env
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
-`NEO4J_USERNAME` is also supported as a fallback for `NEO4J_USER`.
-
-**Option B – only a DSN (e.g. Docker / Laravel `NEO4J_DEFAULT_CONNECTION_DSN`):**
-
-If `NEO4J_URI` is not set, `container:graph` uses `NEO4J_DEFAULT_CONNECTION_DSN` when it looks like a Neo4j URL (user and password can be embedded: `neo4j://user:pass@host:7687`).
-
-This matches setups that already set the DSN in `docker-compose` and avoids duplicating the host. Inside Docker, use the Neo4j service host name (for example `neo4j-core1:7687`), not `localhost` in the DSN.
-
-`config/neo4j-boost.php` exposes `container_graph.uri` and `container_graph.default_connection_dsn` (both read from the env vars above). Re-publish the config after upgrading the package if you use a published copy:
-
-```bash
-php artisan vendor:publish --tag=neo4j-boost-config --force
-```
-
-### Run
-
-```bash
-php artisan container:graph
-php artisan container:graph --dry-run
-php artisan container:graph --print-cypher
-```
-
-### Static analysis pass
-
-`container:graph` can merge **hidden** `DEPENDS_ON` edges discovered by scanning configured paths. Opt-in only: when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is unset or empty, `static_scan_paths` is `[]` and no PHP files are scanned.
-
-Configure scan paths (comma-separated absolute paths):
-
-```env
-NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
-```
-
-Or in `config/neo4j-boost.php` → `container_graph.static_scan_paths`.
-
-#### Service location
-
-Detects literal **service location** calls:
-
-- `app(Foo::class)`
-- `resolve(Foo::class)`
-- `App::make(Foo::class)`
-
-Dynamic calls such as `app($variable)` are skipped.
-
-**Output shape:**
-
-```json
-{
-  "type": "service_location",
-  "via": "app",
-  "file": "/path/OrderProcessor.php",
-  "line": 12,
-  "source": "static"
-}
-```
-
-#### Facade static calls
-
-Detects static calls on Laravel first-party facades, auto-discovered custom app facades, and real-time facades (`Cache::put`, `CustomFacade::handle`, `\Facades\App\Services\PaymentGateway::charge`, etc.). Each call is resolved through the **resolution catalog** to the container abstract (contract, class, or binding key). `App::make()` is excluded (handled as service location).
-
-Each edge carries a `catalog_source` describing how the binding was discovered:
-
-- `laravel_facade` — predefined Laravel first-party facade catalog.
-- `auto_discovered_facade` — custom app facades (`getFacadeAccessor()`) and real-time facades (`Facades\<FQCN>`), discovered outside the predefined catalog.
-
-**Output shape:**
-
-```json
-{
-  "type": "facade",
-  "via": "Illuminate\\Support\\Facades\\Cache::put",
-  "file": "/path/InvoiceNotifier.php",
-  "line": 12,
-  "source": "static",
-  "catalog_source": "laravel_facade"
-}
-```
-
-The command summary includes separate counts: `Static service_location edges`, `Static facade edges`, `Static global_helper edges`, and `Static instantiation edges`.
-
-#### Global helper calls
-
-Detects Laravel global helper function calls (`cache()`, `auth()`, `view()`, `response()`, `redirect()`, `route()`, `event()`, `dispatch()`, `logger()`, `session()`, `config()`, `env()`). Each call is resolved through the **global helper catalog** to a container binding key and abstract. For `config()` and `env()`, a string literal first argument resolves to a specific key (e.g. `config('app.name')` → identifier `config.app.name`).
-
-**Output shape:**
-
-```json
-{
-  "type": "global_helper",
-  "helper": "cache",
-  "via": "cache",
-  "file": "/path/GlobalHelperWorker.php",
-  "line": 9,
-  "source": "static"
-}
-```
-
-#### Direct instantiation
-
-Detects `new ClassName()` calls that bypass the Laravel container. Named classes only — anonymous classes (`new class {}`) and dynamic class expressions (`new $variable()`) are skipped. PHP internal/builtin classes (`DateTime`, `stdClass`, etc.) are recorded too, since an application can bind them into the container; opt-in filtering of specific classes is planned as a separate, configurable policy.
-
-**Output shape:**
-
-```json
-{
-  "type": "instantiation",
-  "via": "new App\\Services\\PaymentGateway",
-  "file": "/path/DirectInstantiator.php",
-  "line": 11,
-  "source": "static"
-}
-```
-
-**POC run target:** package fixtures under `tests/Integration/Fixtures/StaticAnalysis` (enabled in integration tests). Consumer apps opt in via `static_scan_paths`.
-
-Run the PHPStan static-analysis rules (service-location and facade collectors) against fixtures only:
-
-```bash
-./vendor/bin/phpstan analyse -c phpstan-static-analysis.neon.dist --no-progress
-```
-
-The facade collector rule (`FacadeStaticCallRule`) is registered in `extension.neon` alongside the service-location rules and reuses the resolution catalog, so it picks up first-party, custom, and real-time facade calls. Collector coverage lives in `tests/Unit/StaticAnalysis/FacadeCollectorRuleTest.php` (PHPStan `RuleTestCase`).
-
-### Resolution catalog (facade → contract)
-
-The package ships a **resolution catalog** mapping facades to container abstracts and `BINDS_TO` lifetime hints (`singleton` | `normal`). Resolution happens in three tiers, recorded on each entry's `source`:
-
-| Tier | `source` | How it is discovered |
-| --- | --- | --- |
-| Laravel first-party facades | `laravel_facade` | Predefined catalog built from `getFacadeAccessor()` introspection of `Illuminate\Support\Facades\*` against live container bindings. |
-| Custom app facades | `auto_discovered_facade` | Any `Facade` subclass outside `Illuminate\Support\Facades\*`, resolved via its `getFacadeAccessor()` (class, contract, or string binding key). |
-| Real-time facades | `auto_discovered_facade` | `Facades\<FQCN>` references; the leading `Facades\` segment is stripped to recover the underlying class the container resolves. |
-
-```php
-use Neo4j\LaravelBoost\ResolutionCatalog\ResolutionCatalog;
-
-$entry = app(ResolutionCatalog::class)->resolveFacade(\Illuminate\Support\Facades\Cache::class);
-// $entry->abstract, $entry->bindingKey, $entry->bindsToType, $entry->source
-
-// Auto-discovered custom facade
-$entry = app(ResolutionCatalog::class)->resolveFacade(\App\Facades\Payments::class);
-
-// Real-time facade → App\Services\PaymentGateway
-$entry = app(ResolutionCatalog::class)->resolveFacade('Facades\\App\\Services\\PaymentGateway');
-```
-
-Static facade scanning consumes this catalog when resolving `Cache::put`-style calls to container abstracts, stamping the catalog tier onto each `DEPENDS_ON` edge as `catalog_source`.
-
-### Method injection
-
-`container:graph` reflects **method parameters** on Laravel entry points that the container resolves at runtime:
-
-- **Controllers** — public action methods (excluding magic methods)
-- **Jobs, commands, listeners** — `handle()`
-- **Middleware** — `handle()` container dependencies only (`Request`, `Response`, `Closure` are skipped)
-- **Listeners** — `handle()` skips the first parameter (event payload from the dispatcher)
-
-Entry points are discovered via namespace/suffix heuristics (`Http\Controllers`, `Jobs`, `Listeners`, `Middleware`, etc.). `file` / `line` on `DEPENDS_ON` point to the **method declaration**, not individual parameters.
-
-Form requests and other typed parameters become `DEPENDS_ON` edges with `type: method_injection`, plus `method` and `parameter` on the relationship. Constructor-only reflection misses these; method injection closes that gap.
-
-**Output shape (on `DEPENDS_ON`):**
-
-```json
-{
-  "type": "method_injection",
-  "method": "store",
-  "parameter": "request",
-  "access": "di",
-  "file": "/path/PostController.php",
-  "line": 18
-}
-```
-
-The command summary includes `Method injection edges: N`.
-
-### Graph model
-
-**Bindings** (unchanged):
-
-- `(:Interface:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is an interface (`type`: `normal` or `singleton`)
-- `(:Class:Abstract)-[:BINDS_TO {type}]->(:Class:Abstract)` when the binding key is a class
-- **`Abstract`** – use as the entry label to start from registered binding keys and walk bindings (`MATCH (a:Abstract) …`).
-
-**Dependencies** (three-node model):
-
-- `(:Instance {name})` — application class/component (discovered PSR-4 classes and binding concretes)
-- `(:Instance)-[:DEPENDS_ON {file, line, via, type, method, parameter, helper, source, confidence, provenance, remarks}]->(:Dependency {key, access})-[:RESOLVES_TO {lifetime}]->(:Identifier {name, kind})`
-- `type` on `DEPENDS_ON`: `constructor_injection`, `method_injection`, `global_helper`, `instantiation`, `facade`, `service_location`, etc.
-- `source` on edges: `reflection`, `static`, or `catalog`
-- `confidence` on edges: `high`, `medium`, or `low` (e.g. `config()` / `env()` literal keys are `medium`)
-- `provenance` on edges: `reflection`, `static_scan`, `resolution_catalog`, `heuristic`, or `container_binding`
-- `remarks` — short human-readable note explaining the confidence score
-- `access` on `Dependency`: `di`, `facade`, `global_helper`, `service_location` (direct `new ClassName()` uses `access: di` with `DEPENDS_ON.type: instantiation`)
-- `lifetime` on `RESOLVES_TO`: `singleton`, `bind`
-- `Identifier.kind`: `Class`, `Interface`, `Alias`, or `Unresolved` (with optional `reason` on the node)
-- Facade catalog entries from the resolution catalog export as catalog-only `Dependency → Identifier` chains (`access: facade`, empty `instance`; `via` holds the facade class)
-
-There are no direct `DEPENDS_ON` edges from `Instance` to implementation classes.
-
-**Contextual bindings**:
-
-- `(:Instance)-[:CONTEXTUAL_BINDS {needs, needs_kind, reason}]->(:Identifier {name, kind})` for Laravel `when()->needs()->give()` overrides read from the live container (`$app->contextual`)
-- `needs` is the type-hint being overridden (e.g. `Illuminate\Contracts\Filesystem\Filesystem`); `give` is the resolved implementation identifier on the target node (class name, `storage.disk:local`, etc.)
-- Array `give()` values (variadic injection) produce one edge per concrete class
-- **Limitations:** fully dynamic `give()` closures that cannot be introspected export as `closure@{needs}` with `give_kind: Closure` and `reason: dynamic_give_closure`. Best-effort parsing covers class-name `give()`, array `give()`, closure return types, and literal `Storage::disk('name')` in closure source. `giveTagged()`, `giveConfig()`, and runtime-dependent closures are not resolved to concrete targets.
-
-The command summary includes `Contextual bindings: N`.
-
-### Example Cypher queries
-
-For ad-hoc exploration you can still use **read-cypher**. For Laravel DI questions, prefer the **get-class-dependency-graph** MCP tool (after running `container:graph`):
-
-```json
-{ "class": "App\\Services\\FooService", "direction": "outbound", "depth": 4, "page": 1, "per_page": 100 }
-```
-
-Returns structured JSON with `dependencies` (including `access`, `lifetime`, `source`, `confidence`, `provenance`, optional `remarks`, and `visibility`), `declared_dependencies`, `hidden_dependencies`, `dependents`, `binding`, pagination metadata (`dependencies_pagination` / `dependents_pagination`), `graph_completeness` (`status: partial` with known limitations, plus per-class `coverage` and declared/hidden counts), and `graph_export_required` when data is missing. Default page size is 100 entries.
-
-### contribute-graph-knowledge (MCP tool)
-
-Add dependency or binding edges when static analysis cannot infer them. Prerequisite: run `php artisan container:graph` first.
-
-| Field | Description |
-| --- | --- |
-| `relationship` | `DEPENDS_ON` or `BINDS_TO` |
-| `from` | Source fully-qualified class or interface |
-| `to` | Target fully-qualified class or interface |
-| `confidence` | `high` (persists immediately as `source: agent`), `medium` or `low` (returns `confirmation_required` until user confirms) |
-| `confirmed` | Set `true` after user confirms a medium/low proposal (persists as `source: user`) |
-| `reason` | Optional explanation |
-| `depends_on_type` | For `DEPENDS_ON`: `constructor_injection`, `method_injection`, `facade`, `global_helper`, `service_location`, or `instantiation` (default: `service_location`) |
-| `shared` | For `BINDS_TO`: whether the binding is a singleton |
-
-```json
-{
-  "relationship": "DEPENDS_ON",
-  "from": "App\\Services\\OrderProcessor",
-  "to": "App\\Contracts\\PaymentGateway",
-  "confidence": "high",
-  "depends_on_type": "service_location",
-  "reason": "Resolved manually from route action"
-}
-```
-
-**Explore bindings from container keys outward:**
-
-```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO*1..10]->(n)
-RETURN p
-LIMIT 200;
-```
-
-**Explore instance dependency chains:**
-
-```cypher
-MATCH p = (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(:Identifier)
-RETURN p
-LIMIT 200;
-```
-
-**Explore contextual when/needs/give overrides:**
-
-```cypher
-MATCH p = (i:Instance)-[r:CONTEXTUAL_BINDS]->(g:Identifier)
-RETURN i.name AS when, r.needs AS needs, g.name AS give, r.reason AS reason
-LIMIT 200;
-```
-
-**Bidirectional neighborhood around an instance:**
-
-```cypher
-MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
-RETURN p
-LIMIT 200;
-```
-
-```cypher
-MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
-RETURN i.name, c.name
-LIMIT 25;
-```
-
-```cypher
-MATCH p = (i:Instance {name: 'App\\Services\\FooService'})-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
-RETURN i.name, id.name, id.kind
-LIMIT 25;
-```
-
-```cypher
-MATCH (i:Instance)-[:DEPENDS_ON]->(:Dependency)-[:RESOLVES_TO]->(id:Identifier)
-WHERE id.kind = 'Unresolved'
-RETURN i.name, id.name, id.reason
-LIMIT 25;
-```
-
-Re-running `container:graph` is **merge-idempotent**: identical nodes and relationships are upserted via `MERGE` and are not duplicated. It does **not** remove edges from prior exports (for example after disabling static scan paths or upgrading graph schema). To replace the graph entirely, clear container-graph data in Neo4j before re-exporting, or use a dedicated database.
-
-### Auto-install supported platforms (`neo4j-boost:install-mcp`)
-
-The binary is downloaded from the [official Neo4j MCP GitHub releases](https://github.com/neo4j/mcp/releases) and auto-detected for the current platform. Override with `NEO4J_MCP_PLATFORM_ASSET` in `.env`.
-
-| OS | Architecture | Archive | PHP requirement |
-|---|---|---|---|
-| Linux | x86\_64 / amd64 | `.tar.gz` | — |
-| Linux | arm64 / aarch64 | `.tar.gz` | — |
-| Linux | i386 / i686 | `.tar.gz` | — |
-| macOS | x86\_64 / amd64 | `.tar.gz` | — |
-| macOS | arm64 (Apple Silicon) | `.tar.gz` | — |
-| Windows | x86\_64 / amd64 | `.zip` | **ext-zip** required |
-| Windows | arm64 | `.zip` | **ext-zip** required |
-| Windows | i386 | `.zip` | **ext-zip** required |
-
-> [!NOTE]
-> Windows platforms use ZIP archives. The `ext-zip` PHP extension must be enabled (`extension=zip` in `php.ini`). On Linux and macOS, only the built-in `PharData` class is used — no extra extensions needed.
-
----
-
-## Configuration
-
-Publish the config file (optional):
+**Publish config** (optional):
 
 ```bash
 php artisan vendor:publish --tag=neo4j-boost-config
 ```
 
-Edit `config/neo4j-boost.php`:
+Key options in `config/neo4j-boost.php`: `neo4j_mcp.transport` (`driver` / `stdio` / `http`), `bolt.uri` / `bolt.username` / `bolt.password`, `http.url`, `http.username` / `http.password`, `container_graph.uri`.
 
-- **`neo4j_mcp.transport`** – How Neo4j MCP tools run (`stdio` default, `http`, or `driver` for in-process Bolt). Env: `NEO4J_MCP_TRANSPORT`.
-- **`bolt.uri`** / **`bolt.username`** / **`bolt.password`** – Bolt connection when `NEO4J_MCP_TRANSPORT=driver`. Env: `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` (or `NEO4J_DEFAULT_CONNECTION_DSN`).
-- **`neo4j_mcp.binary_path`** / **`neo4j_mcp.version`** – Local binary install path and version.
-- **`http.url`** – MCP endpoint (e.g. `http://localhost:8080/mcp`). Env: `NEO4J_MCP_URL`.
-- **`http.username`** / **`http.password`** – Optional Basic Auth for the HTTP endpoint. Env: `NEO4J_MCP_USERNAME`, `NEO4J_MCP_PASSWORD` (fallback to `NEO4J_USERNAME` / `NEO4J_PASSWORD`).
-- **`container_graph.uri`** / **`container_graph.default_connection_dsn`** – Used by `php artisan container:graph` for the direct Neo4j driver. Env: `NEO4J_URI`, `NEO4J_DEFAULT_CONNECTION_DSN` (DSN is used when `NEO4J_URI` is empty).
+**Binary platform support** (`neo4j-boost:install-mcp`): Linux (x86_64, arm64, i386), macOS (x86_64, Apple Silicon), Windows (x86_64, arm64, i386). Windows uses `.zip` and requires `ext-zip`; Linux/macOS use `.tar.gz` with no extra extensions. Override auto-detection with `NEO4J_MCP_PLATFORM_ASSET` in `.env`.
 
----
+**Common issues:**
 
-## Troubleshooting
-
-- **"Could not open input file: artisan"** or **"Loading tools" stuck**  
-  When using Laravel Boost, Cursor must run the MCP command from your Laravel app directory. Open the **Laravel app folder** as the workspace and ensure `.cursor/mcp.json` exists.
-
-- **"Unexpected token … is not valid JSON"** or **"ERROR … Did you mean this? neo4j-boost"** when Cursor runs `boost:mcp`  
-  The MCP client expects only JSON on stdout. That error usually means `boost:mcp` failed to start and Artisan printed a message to stdout (e.g. "There are no commands defined in the 'boost' namespace"). Laravel Boost only registers its commands when **APP_ENV=local** or **APP_DEBUG=true**. Fix: in `.cursor/mcp.json`, add `"env": { "APP_ENV": "local" }` to the `laravel-boost` server entry so Cursor passes it when starting the process. Alternatively, ensure `.env` in the project root has `APP_ENV=local` (or copy `.env.example` to `.env`).
-
-- **Neo4j MCP HTTP errors**  
-  Ensure the Neo4j MCP server is running with HTTP transport and that `NEO4J_MCP_URL` matches. Check the MCP server logs for connection or Neo4j errors.
-
-- **`container:graph` connects to `bolt://localhost:7687` in Docker (or "Cannot connect to any server on alias: container-graph")**  
-  Set `NEO4J_URI` to your Neo4j host on the container network, or set `NEO4J_DEFAULT_CONNECTION_DSN` to a full URL (for example `neo4j://neo4j:password@neo4j-core1:7687`). In Docker, `localhost` in the DSN/URI is the app container, not the Neo4j service. Re-publish `neo4j-boost` config after upgrading and run `php artisan config:clear` if you use `config:cache`.
-
-- **STDIO test fails with "Neo4j password is required for STDIO mode"**  
-  Set `NEO4J_PASSWORD` in your `.env`, then run `php artisan config:clear`.
-
-- **STDIO test fails with APOC/meta error**  
-  Recreate local Neo4j with required plugins:
-  `php artisan neo4j-boost:start-neo4j --recreate`
-
-- **HTTP 404: "This server only handles requests to /mcp"**  
-  Cursor may try several connection methods (streamable HTTP, SSE) and can send **GET** requests. The official Neo4j MCP server in HTTP mode typically only accepts **POST** on `/mcp`, so those GETs return this 404.  
-  **Recommended:** Use **Laravel Boost** so Cursor talks to one MCP server over stdio (`php artisan boost:mcp`). This package then calls the Neo4j MCP server over HTTP (POST only) from your app; Cursor never hits the Neo4j HTTP URL directly.  
-  If you must connect Cursor directly to the Neo4j MCP URL: ensure the URL in `.cursor/mcp.json` ends with `/mcp` (run `php artisan neo4j-boost:cursor-config` to normalize it) and that the Neo4j MCP server is running with `NEO4J_TRANSPORT_MODE=http`. Compatibility depends on the client using POST to the configured URL.
-
-- **GDS errors**  
-  Messages like "Unknown function 'gds.version'" mean Neo4j does not have the GDS plugin. Install it and set procedure allowlists (see **Enable GDS** above). The MCP server still runs and standard Cypher (get-schema, read-cypher, write-cypher) works without GDS.
+- *"Could not open input file: artisan"* — Open the Laravel app folder as the Cursor workspace, not the package directory.
+- *"There are no commands defined in the 'boost' namespace"* — Add `"env": { "APP_ENV": "local" }` to the server entry in `.cursor/mcp.json`. Laravel Boost only registers commands when `APP_ENV=local` or `APP_DEBUG=true`.
+- *STDIO fails with "Neo4j password is required"* — Set `NEO4J_PASSWORD` in `.env` and run `php artisan config:clear`.
+- *APOC/meta errors* — Recreate Neo4j with required plugins: `php artisan neo4j-boost:start-neo4j --recreate`.
+- *Docker: cannot connect to `bolt://localhost:7687`* — Set `NEO4J_URI` to the Neo4j service hostname on the container network (e.g. `neo4j://neo4j:password@neo4j-core1:7687`). Re-publish config and run `php artisan config:clear` if you use `config:cache`.
+- *HTTP 404 "This server only handles requests to /mcp"* — Cursor may send GET requests; the Neo4j MCP server only accepts POST on `/mcp`. Use Laravel Boost (`php artisan boost:mcp`) so Cursor talks to one stdio server and this package calls Neo4j internally. If connecting Cursor directly, ensure the URL ends with `/mcp` and `NEO4J_TRANSPORT_MODE=http` is set on the server.
+- *"Unknown function 'gds.version'"* — The GDS plugin is not installed. See GDS note above; `get-schema`, `read-cypher`, and `write-cypher` still work without it.
 
 ---
 
 ## License
 
 MIT.
+
+---
+
+Maintained by [nagels.tech](https://nagels.tech/).
