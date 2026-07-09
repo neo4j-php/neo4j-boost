@@ -33,7 +33,7 @@ composer require --dev neo4j/laravel-boost
 
 ### 2. Update Your Environment Variables
 
-By default, the package uses **STDIO transport**, which spawns the official `neo4j-mcp` binary as a subprocess. Add your Neo4j connection details to your `.env` file:
+By default, the package uses **driver transport**, which runs Neo4j tools in PHP over Bolt via `laudis/neo4j-php-client`. No `neo4j-mcp` binary is needed. Add your Neo4j connection details to your `.env` file:
 
 ```env
 NEO4J_URI=bolt://localhost:7687
@@ -42,7 +42,7 @@ NEO4J_PASSWORD=your-password
 
 ```
 
-> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `stdio`. You can switch to `driver` (Bolt in PHP, no binary needed) or `http` (remote MCP server) — see the Notes section below.
+> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `driver`. You can switch to `stdio` (spawns the `neo4j-mcp` binary as a subprocess) or `http` (remote MCP server) — see the Notes section below.
 
 ### 3. Run the Interactive Setup
 
@@ -150,9 +150,9 @@ Once exported, you can use the **get-class-dependency-graph** MCP tool to query 
 ## Important Notes & Advanced Configuration
 
 **Transport Modes**
-The default is `stdio`, which spawns the official `neo4j-mcp` binary as a subprocess. You have two other options:
+The default is `driver`, which runs Neo4j tools in PHP over Bolt via `laudis/neo4j-php-client`. No binary needed. You have two other options:
 
-* **Driver:** Runs Neo4j tools in PHP over Bolt directly — no binary needed. Set `NEO4J_MCP_TRANSPORT=driver` in your `.env`.
+* **STDIO:** Spawns the official `neo4j-mcp` binary as a subprocess. Install it with `php artisan neo4j-boost:install-mcp`, then set `NEO4J_MCP_TRANSPORT=stdio` in your `.env`.
 * **HTTP:** Connects to a remote or containerized MCP server. Set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=http://localhost:8080/mcp`. In HTTP mode, this package sends your Neo4j credentials with every request, so do not set `NEO4J_USERNAME` or `NEO4J_PASSWORD` on the MCP server container itself.
 
 Remember to run `php artisan config:clear` after editing your `.env` file so Laravel picks up the change.

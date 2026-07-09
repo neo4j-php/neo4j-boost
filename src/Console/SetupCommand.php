@@ -13,7 +13,7 @@ class SetupCommand extends Command
                             {--skip-mcp : Skip Neo4j MCP binary installation}
                             {--no-cursor-config : Skip running neo4j-boost:cursor-config}';
 
-    protected $description = 'Interactive setup for Neo4j Laravel Boost (STDIO binary + Cursor config). Use -n/--no-interaction for manual steps only.';
+    protected $description = 'Interactive setup for Neo4j Laravel Boost (Cursor config, optional STDIO binary). Use -n/--no-interaction for manual steps only.';
 
     public function handle(): int
     {
@@ -81,14 +81,14 @@ class SetupCommand extends Command
     {
         $this->newLine();
         $this->components->info('Neo4j Laravel Boost setup');
-        $this->line('Default proxy path: <fg=cyan>Boost MCP -> STDIO -> neo4j-mcp binary</>');
-        $this->line('STDIO is the default transport, so installing the binary is enough for local setup.');
+        $this->line('Default proxy path: <fg=cyan>Boost MCP -> driver -> laudis/neo4j-php-client (Bolt)</>');
+        $this->line('Driver transport is the default — no neo4j-mcp binary required.');
         $this->newLine();
         $this->line('Add these lines to your <fg=cyan>.env</> (reminder):');
-        $this->line('  <fg=gray>NEO4J_MCP_TRANSPORT=stdio</>');
         $this->line('  <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('  <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('  <fg=gray>NEO4J_PASSWORD=password</>');
+        $this->line('  <fg=gray># Optional: set NEO4J_MCP_TRANSPORT=stdio to use the neo4j-mcp binary instead</>');
         $this->newLine();
     }
 
@@ -96,20 +96,18 @@ class SetupCommand extends Command
     {
         $this->components->warn('Non-interactive mode: run these steps manually.');
         $this->newLine();
-        $this->line('  1. Install the Neo4j MCP binary:');
-        $this->line('     <fg=gray>php artisan neo4j-boost:install-mcp</>');
-        $this->newLine();
-        $this->line('  2. Start local Neo4j:');
-        $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
-        $this->newLine();
-        $this->line('  3. Ensure .env contains:');
-        $this->line('     <fg=gray>NEO4J_MCP_TRANSPORT=stdio</>');
+        $this->line('  1. Ensure .env contains:');
         $this->line('     <fg=gray>NEO4J_URI=bolt://localhost:7687</>');
         $this->line('     <fg=gray>NEO4J_USERNAME=neo4j</>');
         $this->line('     <fg=gray>NEO4J_PASSWORD=password</>');
         $this->newLine();
-        $this->line('  4. Configure Cursor MCP:');
+        $this->line('  2. Configure Cursor MCP:');
         $this->line('     <fg=gray>php artisan neo4j-boost:cursor-config</>');
+        $this->newLine();
+        $this->line('  Optional (STDIO transport only):');
+        $this->line('     <fg=gray>php artisan neo4j-boost:install-mcp</>');
+        $this->line('     <fg=gray>php artisan neo4j-boost:start-neo4j</>');
+        $this->line('     Set NEO4J_MCP_TRANSPORT=stdio in .env');
         $this->newLine();
     }
 

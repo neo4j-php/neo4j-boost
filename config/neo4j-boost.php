@@ -23,7 +23,7 @@ return [
     |
     */
     'transport' => [
-        'driver' => env('NEO4J_MCP_TRANSPORT', 'stdio'),
+        'driver' => env('NEO4J_MCP_TRANSPORT', 'driver'),
         'stdio' => [
             'command' => env('NEO4J_MCP_STDIO_COMMAND', 'neo4j-mcp'),
             'env' => [
@@ -41,7 +41,7 @@ return [
     ],
 
     'neo4j_mcp' => [
-        'transport' => env('NEO4J_MCP_TRANSPORT', 'stdio'),
+        'transport' => env('NEO4J_MCP_TRANSPORT', 'driver'),
         'version' => env('NEO4J_MCP_VERSION', 'v1.4.0'),
         'binary_path' => env('NEO4J_MCP_BINARY_PATH'),
         'platform_asset' => env('NEO4J_MCP_PLATFORM_ASSET'),
