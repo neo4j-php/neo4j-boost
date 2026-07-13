@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-13
+
+### Added
+
+- Auto-publish `config/neo4j-boost.php` on first install when the package is required as a dev dependency (`DevDependencyConfigPublisher`).
+
 ### Changed
 
 - Default `NEO4J_MCP_TRANSPORT` is now **`driver`** (in-process Bolt) instead of `stdio`. Set `NEO4J_MCP_TRANSPORT=stdio` explicitly to use the `neo4j-mcp` binary.
+- Moved `laravel/mcp` from production `require` to `require-dev` (applications typically receive it via `laravel/boost`).
+- `neo4j-boost:setup` messaging updated for driver-first installs; MCP binary installation is optional unless STDIO transport is selected.
+- README restructured with a table of contents and anchor links; Boost guidelines document driver as the default transport.
 
 ## [1.0.0] - 2026-07-06
 
@@ -48,5 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public semver release under `neo4j/laravel-boost` (previously `1.0.0` placeholder in `composer.json`).
 
+[1.0.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.1
 [1.0.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.0
 [0.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v0.1.0
