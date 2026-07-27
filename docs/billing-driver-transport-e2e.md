@@ -1,5 +1,7 @@
 # Billing app E2E: `feat/driver-transport`
 
+> **Archived verification notes** (not end-user onboarding). Paths below are historical and machine-specific. Prefer the README for current setup. The `scripts/e2e-driver-transport.php` helper referenced later may not exist in this repository anymore.
+
 **App:** `/home/zaeem-ul-huda/dev/bitbucket/billing-management-system`  
 **Package:** `neo4j/laravel-boost` @ `feat/driver-transport` (copied into `vendor/neo4j/laravel-boost`)  
 **Date:** 2026-06-03  

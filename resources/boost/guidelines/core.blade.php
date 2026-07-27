@@ -1,39 +1,41 @@
 ## Neo4j Boost
 
-This package integrates the official [Neo4j MCP](https://github.com/neo4j/mcp/releases) server into Laravel so you can use Neo4j tools from MCP clients (Cursor, Claude, etc.).
+This package integrates the official [Neo4j MCP](https://github.com/neo4j/mcp/releases) server into Laravel so you can use Neo4j tools from MCP clients (Cursor, Claude, etc.). It requires [Laravel Boost](https://github.com/laravel/boost).
 
-### HTTP only
+### Transport
 
-The package talks to the Neo4j MCP server over **HTTP only**. Run the Neo4j MCP server elsewhere (e.g. Docker) with HTTP transport, then set in `.env`:
+Set how this package reaches Neo4j MCP tools with `NEO4J_MCP_TRANSPORT`:
 
-```env
-NEO4J_MCP_URL=http://localhost:8080/mcp
-NEO4J_MCP_USERNAME=neo4j   # optional
-NEO4J_MCP_PASSWORD=...     # optional
-```
+- **`stdio` (default):** run the local official `neo4j-mcp` binary. Install with `php artisan neo4j-boost:setup` or `php artisan neo4j-boost:install-mcp`. Requires `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`.
+- **`http`:** call a remote Neo4j MCP server. Set `NEO4J_MCP_URL=http://localhost:8080/mcp` (optional `NEO4J_MCP_USERNAME` / `NEO4J_MCP_PASSWORD`).
+- **`driver`:** run tools in-process over Bolt via `laudis/neo4j-php-client` (no MCP binary). Set `NEO4J_URI` / credentials or `NEO4J_DEFAULT_CONNECTION_DSN`.
+
+Local helpers: `php artisan neo4j-boost:start-neo4j` (Docker + APOC), `php artisan neo4j-boost:doctor`, `php artisan neo4j-boost:test-stdio`.
+
+**Note:** `NEO4J_TRANSPORT_MODE` configures the official neo4j-mcp process/container itself. Laravel apps select transport with `NEO4J_MCP_TRANSPORT`.
 
 ### Cursor config
-
-To add the Neo4j MCP server to Cursor’s MCP config (using the same HTTP URL):
 
 ```bash
 php artisan neo4j-boost:cursor-config
 ```
 
-This creates or updates `.cursor/mcp.json` with the server URL from config (merged with existing servers).
+This creates or updates `.cursor/mcp.json` with a **`laravel-boost`** entry that runs `php artisan boost:mcp` (merged with existing servers). Prefer one MCP server for Boost + Neo4j tools.
 
 ### Run the MCP server
 
-- **With Laravel Boost:** Use a single MCP server: run `php artisan boost:mcp`. This package adds the official Neo4j tools (get-schema, read-cypher, write-cypher, list-gds-procedures, **get-class-dependency-graph**) to Boost’s server automatically. Tools call the HTTP MCP URL from `config/neo4j-boost.http` except **get-class-dependency-graph**, which reads the container graph directly from Neo4j using `config/neo4j-boost.container_graph`.
-- **Without Boost:** Add the Neo4j MCP server to Cursor as an HTTP server. Run `php artisan neo4j-boost:cursor-config` so `.cursor/mcp.json` includes the `neo4j-boost` server with the configured URL.
+Use a single MCP server: `php artisan boost:mcp`. This package adds Neo4j tools to Boost automatically:
 
-Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` where the Neo4j MCP server runs (and in Laravel if you use the Neo4j driver).
+- Proxied official tools: **get-schema**, **read-cypher**, **write-cypher**, **list-gds-procedures** (via `NEO4J_MCP_TRANSPORT`)
+- Package-native: **get-class-dependency-graph** (reads Neo4j directly using `config/neo4j-boost.container_graph` after `php artisan container:graph`)
 
-**GDS (list-gds-procedures):** Install the Graph Data Science plugin in Neo4j. With Docker, set `NEO4J_PLUGINS: '["apoc", "graph-data-science"]'`, `NEO4J_dbms_security_procedures_unrestricted: 'apoc.*,gds.*'`, and `NEO4J_dbms_security_procedures_allowlist: 'apoc.*,gds.*'`.
+Set `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` for STDIO/driver (and wherever the Neo4j MCP server runs for HTTP).
+
+**GDS (list-gds-procedures):** Install the Graph Data Science plugin in Neo4j. With Docker, set `NEO4J_PLUGINS: '["apoc", "graph-data-science"]'`, `NEO4J_dbms_security_procedures_unrestricted: 'apoc.*,gds.*'`, and `NEO4J_dbms_security_procedures_allowlist: 'apoc.*,gds.*'`. Local `neo4j-boost:start-neo4j` enables APOC only.
 
 ### Config
 
-Publish with `php artisan vendor:publish --tag=neo4j-boost-config`. Options in `config/neo4j-boost.php`: `http.url`, `http.username`, `http.password`.
+Publish with `php artisan vendor:publish --tag=neo4j-boost-config`. Options in `config/neo4j-boost.php` include `neo4j_mcp.transport`, `transport.stdio`, `transport.http`, `bolt`, and `container_graph`.
 
 ### Container graph POC
 
@@ -59,5 +61,6 @@ NEO4J_PASSWORD=password
 
 - Open your **Laravel app folder** (the project where you ran `composer require neo4j/laravel-boost`) as the Cursor workspace, not the neo4j-boost package folder.
 - If `.cursor/mcp.json` is missing, run `php artisan neo4j-boost:cursor-config` to create it.
-- Ensure the Neo4j MCP server is running at the URL set in `NEO4J_MCP_URL` and that it is started with HTTP transport.
-- If you see **404 "This server only handles requests to /mcp"**: Cursor may send GET requests (e.g. for SSE); the Neo4j MCP server only accepts POST on `/mcp`. Using **Boost** (one server: `boost:mcp`) avoids this—Cursor uses stdio and this package calls Neo4j MCP over HTTP. Otherwise ensure the URL ends with `/mcp` and the server is running with HTTP transport.
+- Ensure Laravel Boost can register commands (`APP_ENV=local` or `APP_DEBUG=true`).
+- For HTTP transport, ensure the Neo4j MCP server is running at `NEO4J_MCP_URL` with HTTP transport.
+- If you see **404 "This server only handles requests to /mcp"**: Cursor may send GET requests (e.g. for SSE); the Neo4j MCP server only accepts POST on `/mcp`. Using **Boost** (one server: `boost:mcp`) avoids Cursor talking to Neo4j MCP HTTP directly. Default STDIO transport runs the local binary instead of HTTP.

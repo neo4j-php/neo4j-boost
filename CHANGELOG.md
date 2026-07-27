@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Interactive setup and local helpers: `neo4j-boost:setup`, `neo4j-boost:install-mcp`, `neo4j-boost:start-neo4j`, `neo4j-boost:doctor`, `neo4j-boost:test-stdio`.
+- In-process `driver` transport (`NEO4J_MCP_TRANSPORT=driver`) via Bolt.
+- Container graph export (`container:graph`) and MCP tool `get-class-dependency-graph`.
+- Documentation media layout under `docs/media/` with README GIF embed placeholders.
+
+### Changed
+
+- Default local path documented as STDIO (`NEO4J_MCP_TRANSPORT=stdio`); clarified vs official binary `NEO4J_TRANSPORT_MODE`.
+- `neo4j-boost:cursor-config` documented as writing the `laravel-boost` (`boost:mcp`) entry when Laravel Boost is present.
+- Boost agent guidelines updated to match STDIO/HTTP/driver transports.
+
 ## [0.1.0] - 2026-04-29
 
 ### Added
