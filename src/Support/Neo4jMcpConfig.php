@@ -11,7 +11,7 @@ final class Neo4jMcpConfig
         $transport = config('neo4j-boost.neo4j_mcp.transport');
 
         if (! is_string($transport) || $transport === '') {
-            $transport = config('neo4j-boost.transport.driver', 'stdio');
+            $transport = config('neo4j-boost.transport.driver', 'driver');
         }
 
         return strtolower((string) $transport);

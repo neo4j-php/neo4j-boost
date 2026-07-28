@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Support;
 use Laudis\Neo4j\Authentication\Authenticate;
 use Laudis\Neo4j\ClientBuilder;
 use Laudis\Neo4j\Contracts\ClientInterface;
+use Laudis\Neo4j\Databags\DriverConfiguration;
 use RuntimeException;
 
 /**
@@ -13,6 +14,8 @@ use RuntimeException;
 final class Neo4jBoltClient
 {
     public const DRIVER_ALIAS = 'neo4j-boost';
+
+    public const USER_AGENT = 'Neo4j/Laravel-Boost';
 
     private ?ClientInterface $client = null;
 
@@ -65,6 +68,9 @@ final class Neo4jBoltClient
     private function buildClient(string $uri, string $user, string $password): ClientInterface
     {
         return ClientBuilder::create()
+            ->withDefaultDriverConfiguration(
+                DriverConfiguration::default()->withUserAgent(self::USER_AGENT)
+            )
             ->withDriver(self::DRIVER_ALIAS, $uri, Authenticate::basic($user, $password))
             ->withDefaultDriver(self::DRIVER_ALIAS)
             ->build();

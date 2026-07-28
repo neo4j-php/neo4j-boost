@@ -3,7 +3,14 @@
 namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 
 use Neo4j\LaravelBoost\ClassDependencyGraphReader;
+use Neo4j\LaravelBoost\GraphKnowledgeContributor;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\BindsToType;
+use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
+use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\GraphCompleteness;
+use Neo4j\LaravelBoost\Support\Graph\RelationshipTypeReader;
+use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
 /**
@@ -14,51 +21,67 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /** @var array<int, string> */
     private array $classes = [];
 
-    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}> */
+    /** @var array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}> */
     private array $bindingRows = [];
 
-    /** @var array<int, array{class: string, dependency: string, dependencyKind: string}> */
-    private array $dependencyRows = [];
+    /** @var array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}> */
+    private array $dependencyChainRows = [];
 
-    /** @var array<int, array{class: string, name: string, reason: string}> */
-    private array $unresolvedRows = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $contributedRows = [];
 
     /**
-     * @param  array<int, array{class: string}>  $classRows
-     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool}>  $bindingRows
-     * @param  array<int, array{class: string, dependency: string, dependencyKind: string}>  $dependencyRows
-     * @param  array<int, array{class: string, name: string, reason: string}>  $unresolvedRows
+     * @param  array<int, array{class: string}>  $instanceRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int}>  $dependencyChainRows
      */
     public static function fromExportRows(
-        array $classRows,
+        array $instanceRows,
         array $bindingRows,
-        array $dependencyRows,
-        array $unresolvedRows,
+        array $dependencyChainRows,
     ): self {
         $reader = new self(new UnusedContainerGraphConnection);
-        $reader->classes = array_map(static fn (array $row): string => $row['class'], $classRows);
+        $reader->classes = array_map(static fn (array $row): string => $row['class'], $instanceRows);
         $reader->bindingRows = $bindingRows;
-        $reader->dependencyRows = $dependencyRows;
-        $reader->unresolvedRows = $unresolvedRows;
+        $reader->dependencyChainRows = array_values(array_filter(
+            $dependencyChainRows,
+            static fn (array $row): bool => ($row['instance'] ?? '') !== '',
+        ));
 
         foreach ($bindingRows as $row) {
             $reader->classes[] = $row['abstract'];
             $reader->classes[] = $row['concrete'];
         }
 
-        foreach ($dependencyRows as $row) {
-            $reader->classes[] = $row['class'];
-            $reader->classes[] = $row['dependency'];
-        }
-
-        foreach ($unresolvedRows as $row) {
-            $reader->classes[] = $row['class'];
-            $reader->classes[] = $row['name'];
+        foreach ($reader->dependencyChainRows as $row) {
+            $reader->classes[] = $row['instance'];
+            $reader->classes[] = $row['identifier'];
         }
 
         $reader->classes = array_values(array_unique($reader->classes));
 
         return $reader;
+    }
+
+    /**
+     * @param  array<string, mixed>  $contribution
+     */
+    public function addContribution(array $contribution): void
+    {
+        $this->contributedRows[] = $contribution;
+
+        $from = (string) ($contribution['from'] ?? '');
+        $to = (string) ($contribution['to'] ?? '');
+
+        if ($from !== '') {
+            $this->classes[] = $from;
+        }
+
+        if ($to !== '') {
+            $this->classes[] = $to;
+        }
+
+        $this->classes = array_values(array_unique($this->classes));
     }
 
     public function __construct(ContainerGraphConnection $connection)
@@ -82,18 +105,19 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         $perPage = min(max(1, $perPage), self::MAX_PER_PAGE);
 
         if (! $this->classExists($class)) {
-            return [
+            return $this->finalizeResponse([
                 'class' => $class,
                 'found' => false,
                 'graph_export_required' => true,
                 'message' => 'No container graph data for this class. Run: php artisan container:graph',
-            ];
+            ]);
         }
 
         $result = [
             'class' => $class,
             'found' => true,
             'graph_export_required' => false,
+            'graph_completeness' => GraphCompleteness::partial(),
         ];
 
         if ($includeBindings) {
@@ -104,20 +128,22 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
         }
 
         if ($direction === 'outbound' || $direction === 'both') {
-            $entries = $this->traverseDependencies($class, $depth);
+            $entries = $this->traverseDependencyChains($class, $depth, outbound: true);
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependencies'] = $paginated['items'];
             $result['dependencies_pagination'] = $paginated['pagination'];
+            $result = $this->appendDependencyBuckets($result, $paginated['items']);
+            $result['graph_completeness'] = $this->buildGraphCompleteness($entries);
         }
 
         if ($direction === 'inbound' || $direction === 'both') {
-            $entries = $this->traverseDependents($class, $depth);
+            $entries = $this->traverseDependencyChains($class, $depth, outbound: false);
             $paginated = $this->paginateEntries($entries, $page, $perPage);
             $result['dependents'] = $paginated['items'];
             $result['dependents_pagination'] = $paginated['pagination'];
         }
 
-        return $result;
+        return $this->finalizeResponse($result);
     }
 
     private function classExists(string $class): bool
@@ -126,53 +152,108 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     }
 
     /**
-     * @return null|array{abstract: string, concrete: string, shared: bool}
+     * @return null|array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
      */
     private function findBindingForClass(string $class): ?array
     {
         foreach ($this->bindingRows as $row) {
             if ($row['abstract'] === $class) {
-                return [
-                    'abstract' => $row['abstract'],
-                    'concrete' => $row['concrete'],
-                    'shared' => $row['shared'],
-                ];
+                return $this->formatBindingRow($row);
             }
         }
 
         foreach ($this->bindingRows as $row) {
             if ($row['concrete'] === $class) {
-                return [
-                    'abstract' => $row['abstract'],
-                    'concrete' => $row['concrete'],
-                    'shared' => $row['shared'],
-                ];
+                return $this->formatBindingRow($row);
             }
+        }
+
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_BINDS_TO) {
+                continue;
+            }
+
+            $from = (string) ($contribution['from'] ?? '');
+            $to = (string) ($contribution['to'] ?? '');
+
+            if ($from !== $class && $to !== $class) {
+                continue;
+            }
+
+            $shared = (bool) ($contribution['shared'] ?? false);
+            $typeMeta = RelationshipTypeReader::bindsTo(
+                (string) ($contribution['type'] ?? BindsToType::fromShared($shared)->value),
+            );
+
+            return [
+                'abstract' => $from,
+                'concrete' => $to,
+                'shared' => $typeMeta['shared'],
+                'type' => $typeMeta['type'],
+                ...$this->edgeMetadataFromRow([
+                    'source' => $contribution['source'] ?? '',
+                    'confidence' => $contribution['confidence'] ?? 'high',
+                    'provenance' => '',
+                    'remarks' => $contribution['reason'] ?? '',
+                ]),
+            ];
         }
 
         return null;
     }
 
     /**
+     * @param  array{abstract: string, concrete: string, shared: bool, type: string}  $row
+     * @return array{abstract: string, concrete: string, shared: bool, type: string, source?: string, confidence?: string, provenance?: string, remarks?: string}
+     */
+    private function formatBindingRow(array $row): array
+    {
+        $typeMeta = RelationshipTypeReader::bindsTo($row['type']);
+
+        return [
+            'abstract' => $row['abstract'],
+            'concrete' => $row['concrete'],
+            'shared' => $typeMeta['shared'],
+            'type' => $typeMeta['type'],
+            ...$this->edgeMetadataFromRow($row),
+        ];
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
-    private function traverseDependencies(string $class, int $depth): array
+    private function traverseDependencyChains(string $class, int $depth, bool $outbound): array
     {
         $entries = [];
-        $this->walkDependencies($class, 1, $depth, $entries);
+        $visited = [];
+        $frontier = [$class];
 
-        foreach ($this->unresolvedRows as $row) {
-            if ($row['class'] !== $class) {
-                continue;
+        for ($currentDepth = 1; $currentDepth <= $depth; $currentDepth++) {
+            $nextFrontier = [];
+
+            foreach ($frontier as $nodeName) {
+                $chains = $outbound
+                    ? $this->directOutboundChains($nodeName)
+                    : $this->directInboundChains($nodeName);
+
+                foreach ($chains as $chain) {
+                    $targetName = (string) $chain['name'];
+                    $key = $targetName.'@'.$currentDepth;
+
+                    if (isset($visited[$key])) {
+                        continue;
+                    }
+
+                    $visited[$key] = true;
+                    $entries[] = array_merge($chain, ['depth' => $currentDepth]);
+
+                    if ($this->instanceExists($targetName)) {
+                        $nextFrontier[] = $targetName;
+                    }
+                }
             }
 
-            $entries[] = [
-                'name' => $row['name'],
-                'kind' => 'UnresolvedDependency',
-                'relationship' => 'DEPENDS_ON',
-                'reason' => $row['reason'],
-                'depth' => 1,
-            ];
+            $frontier = array_values(array_unique($nextFrontier));
         }
 
         return $this->sortEntries($this->uniqueEntries($entries));
@@ -181,62 +262,218 @@ class InMemoryClassDependencyGraphReader extends ClassDependencyGraphReader
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function traverseDependents(string $class, int $depth): array
+    private function directOutboundChains(string $instance): array
     {
         $entries = [];
-        $this->walkDependents($class, 1, $depth, $entries);
 
-        return $this->sortEntries($this->uniqueEntries($entries));
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $entries
-     */
-    private function walkDependencies(string $class, int $currentDepth, int $maxDepth, array &$entries): void
-    {
-        if ($currentDepth > $maxDepth) {
-            return;
-        }
-
-        foreach ($this->dependencyRows as $row) {
-            if ($row['class'] !== $class) {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] !== $instance) {
                 continue;
             }
 
-            $entries[] = [
-                'name' => $row['dependency'],
-                'kind' => $row['dependencyKind'],
+            $entries[] = $this->entryFromChainRow($row);
+        }
+
+        foreach ($this->contributedRows as $contribution) {
+            if (($contribution['relationship'] ?? '') !== GraphKnowledgeContributor::RELATIONSHIP_DEPENDS_ON) {
+                continue;
+            }
+
+            if (($contribution['from'] ?? '') !== $instance) {
+                continue;
+            }
+
+            $to = (string) ($contribution['to'] ?? '');
+            if ($to === '') {
+                continue;
+            }
+
+            $injectionType = (string) ($contribution['type'] ?? DependsOnType::ServiceLocation->value);
+            $access = DependencyAccessType::fromDependsOnType($injectionType);
+
+            $entry = [
+                'name' => $to,
+                'kind' => $this->kindForTypeName($to),
                 'relationship' => 'DEPENDS_ON',
-                'depth' => $currentDepth,
+                'access' => $access->value,
+                'lifetime' => ResolvesToLifetime::Bind->value,
+                'type' => $injectionType,
             ];
 
-            $this->walkDependencies($row['dependency'], $currentDepth + 1, $maxDepth, $entries);
+            $entry = array_merge($entry, $this->edgeMetadataFromRow([
+                'source' => $contribution['source'] ?? '',
+                'confidence' => $contribution['confidence'] ?? 'high',
+                'provenance' => '',
+                'remarks' => $contribution['reason'] ?? '',
+            ]));
+            $entries[] = $this->withDependencyMetadata($entry, $injectionType, $access);
         }
+
+        return $entries;
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $entries
+     * @param  array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, via: string, file: string, line: int, reason?: string, injection_type?: string, method?: string, parameter?: string, helper?: string, source?: string, confidence?: string, provenance?: string, remarks?: string}  $row
+     * @return array<string, mixed>
      */
-    private function walkDependents(string $class, int $currentDepth, int $maxDepth, array &$entries): void
+    private function entryFromChainRow(array $row): array
     {
-        if ($currentDepth > $maxDepth) {
-            return;
+        $access = DependencyAccessType::assertAllowed($row['access']);
+        $kind = $row['identifier_kind'] === 'Unresolved' ? 'UnresolvedDependency' : $row['identifier_kind'];
+
+        $entry = [
+            'name' => $row['identifier'],
+            'kind' => $kind,
+            'relationship' => 'DEPENDS_ON',
+            'access' => $access->value,
+            'lifetime' => $row['lifetime'],
+        ];
+
+        if ($kind === 'UnresolvedDependency') {
+            $entry['reason'] = $row['reason'] ?? 'unresolved';
         }
 
-        foreach ($this->dependencyRows as $row) {
-            if ($row['dependency'] !== $class) {
+        if ($row['via'] !== '') {
+            $entry['via'] = $row['via'];
+        }
+
+        if ($row['file'] !== '') {
+            $entry['file'] = $row['file'];
+        }
+
+        if ($row['line'] > 0) {
+            $entry['line'] = $row['line'];
+        }
+
+        if (($row['injection_type'] ?? '') !== '') {
+            $entry['type'] = $row['injection_type'];
+        }
+
+        if (($row['method'] ?? '') !== '') {
+            $entry['method'] = $row['method'];
+        }
+
+        if (($row['parameter'] ?? '') !== '') {
+            $entry['parameter'] = $row['parameter'];
+        }
+
+        if (($row['helper'] ?? '') !== '') {
+            $entry['helper'] = $row['helper'];
+        }
+
+        $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
+
+        if (($row['catalog_source'] ?? '') !== '') {
+            $entry['catalog_source'] = $row['catalog_source'];
+        }
+
+        return $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function directInboundChains(string $identifier): array
+    {
+        $entries = [];
+
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['identifier'] !== $identifier) {
                 continue;
             }
 
-            $entries[] = [
-                'name' => $row['class'],
+            $access = DependencyAccessType::assertAllowed($row['access']);
+
+            $entry = [
+                'name' => $row['instance'],
                 'kind' => 'Class',
                 'relationship' => 'DEPENDS_ON',
-                'depth' => $currentDepth,
+                'access' => $access->value,
+                'lifetime' => $row['lifetime'],
             ];
 
-            $this->walkDependents($row['class'], $currentDepth + 1, $maxDepth, $entries);
+            if (($row['via'] ?? '') !== '') {
+                $entry['via'] = $row['via'];
+            }
+
+            if (($row['file'] ?? '') !== '') {
+                $entry['file'] = $row['file'];
+            }
+
+            if (($row['line'] ?? 0) > 0) {
+                $entry['line'] = $row['line'];
+            }
+
+            if (($row['injection_type'] ?? '') !== '') {
+                $entry['type'] = $row['injection_type'];
+            }
+
+            if (($row['method'] ?? '') !== '') {
+                $entry['method'] = $row['method'];
+            }
+
+            if (($row['parameter'] ?? '') !== '') {
+                $entry['parameter'] = $row['parameter'];
+            }
+
+            if (($row['helper'] ?? '') !== '') {
+                $entry['helper'] = $row['helper'];
+            }
+
+            $entry = array_merge($entry, $this->edgeMetadataFromRow($row));
+
+            if (($row['catalog_source'] ?? '') !== '') {
+                $entry['catalog_source'] = $row['catalog_source'];
+            }
+
+            $entries[] = $this->withDependencyMetadata($entry, (string) ($row['injection_type'] ?? ''), $access);
         }
+
+        return $entries;
+    }
+
+    private function kindForTypeName(string $name): string
+    {
+        if (interface_exists($name)) {
+            return 'Interface';
+        }
+
+        if (class_exists($name)) {
+            return 'Class';
+        }
+
+        return 'Alias';
+    }
+
+    private function instanceExists(string $name): bool
+    {
+        foreach ($this->dependencyChainRows as $row) {
+            if ($row['instance'] === $name) {
+                return true;
+            }
+        }
+
+        return in_array($name, $this->classes, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{source: string, confidence: string, provenance: string, remarks?: string}
+     */
+    private function edgeMetadataFromRow(array $row): array
+    {
+        $metadata = [
+            'source' => (string) ($row['source'] ?? ''),
+            'confidence' => (string) ($row['confidence'] ?? ''),
+            'provenance' => (string) ($row['provenance'] ?? ''),
+        ];
+
+        $remarks = (string) ($row['remarks'] ?? '');
+        if ($remarks !== '') {
+            $metadata['remarks'] = $remarks;
+        }
+
+        return $metadata;
     }
 
     /**
