@@ -25,6 +25,7 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
   - [MCP Client Configuration](#mcp-client-configuration)
     - [Cursor](#cursor)
     - [Claude Code](#claude-code)
+  - [Copy-paste prompts](#copy-paste-prompts)
   - [Exploring Your Container Dependency Graph](#exploring-your-container-dependency-graph)
   - [Available Artisan Commands](#available-artisan-commands)
 - [Important Notes & Advanced Configuration](#important-notes--advanced-configuration)
@@ -151,6 +152,10 @@ php artisan neo4j-boost:cursor-config
 Add the entry to your `claude_code_config.json` (or run `claude mcp add` and point it at the same server definition). Make sure to open your Laravel application folder as the workspace so `artisan` is reachable.
 
 Common MCP client issues (wrong workspace, missing `APP_ENV=local`, HTTP `/mcp` 404s) are covered in [MCP configuration troubleshooting](docs/TROUBLESHOOTING.md#mcp-configuration).
+
+### Copy-paste prompts
+
+Ready-to-use prompts for common Neo4j Boost workflows (schema inspection, Cypher, container dependency graphs, GDS, and diagnostics) are collected in **[docs/PROMPTS.md](docs/PROMPTS.md)**. Copy a prompt into your MCP client and swap in your class names or labels as needed.
 
 ### Exploring Your Container Dependency Graph
 
