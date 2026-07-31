@@ -10,6 +10,7 @@ This package integrates the official [Neo4j MCP](https://github.com/neo4j/mcp/re
 - [Config](#config)
 - [Container graph POC](#container-graph-poc)
 - [Cursor: "Loading tools" stuck or HTTP 404](#cursor-loading-tools-stuck-or-http-404)
+- [Troubleshooting](#troubleshooting)
 
 ### Transport modes
 
@@ -83,4 +84,8 @@ NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS=/var/www/html/app/Services
 - Open your **Laravel app folder** (the project where you ran `composer require neo4j/laravel-boost`) as the Cursor workspace, not the neo4j-boost package folder.
 - If `.cursor/mcp.json` is missing, run `php artisan neo4j-boost:cursor-config` to create it.
 - Ensure the Neo4j MCP server is running at the URL set in `NEO4J_MCP_URL` and that it is started with HTTP transport.
-- If you see **404 "This server only handles requests to /mcp"**: Cursor may send GET requests (e.g. for SSE); the Neo4j MCP server only accepts POST on `/mcp`. Using **Boost** (one server: `boost:mcp`) avoids this—Cursor uses stdio to Laravel and this package talks to Neo4j via driver (default), HTTP, or STDIO. Otherwise ensure the URL ends with `/mcp` and the server is running with HTTP transport.
+- If you see **404 "This server only handles requests to /mcp"**: Cursor may send GET requests (e.g. for SSE); the Neo4j MCP server only accepts POST on `/mcp`. Using **Boost** (one server: `boost:mcp`) avoids this: Cursor uses stdio to Laravel and this package talks to Neo4j via driver (default), HTTP, or STDIO. Otherwise ensure the URL ends with `/mcp` and the server is running with HTTP transport.
+
+### Troubleshooting
+
+For Docker, Neo4j Aura, MCP client setup, authentication, environment variables, and common error messages with step-by-step fixes, see the package troubleshooting guide: `docs/TROUBLESHOOTING.md` (also linked from the README). Start with `php artisan neo4j-boost:doctor` after changing `.env`, then `php artisan config:clear`.

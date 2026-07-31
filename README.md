@@ -31,6 +31,7 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
   - [Publishing Configuration (Optional)](#publishing-configuration-optional)
   - [Binary Platform Support](#binary-platform-support)
   - [Common Issues & Troubleshooting](#common-issues--troubleshooting)
+- [Troubleshooting guide](docs/TROUBLESHOOTING.md)
 - [License](#license)
 
 ---
@@ -69,7 +70,7 @@ NEO4J_PASSWORD=your-password
 
 ```
 
-> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `driver`. You can switch to `stdio` (spawns the `neo4j-mcp` binary as a subprocess) or `http` (remote MCP server) — see [Transport Modes](#transport-modes) below.
+> **Note:** `NEO4J_MCP_TRANSPORT` defaults to `driver`. You can switch to `stdio` (spawns the `neo4j-mcp` binary as a subprocess) or `http` (remote MCP server). See [Transport Modes](#transport-modes) below. For env and connectivity problems, see [Troubleshooting](docs/TROUBLESHOOTING.md#environment-configuration).
 
 ### 3. Run the Interactive Setup
 
@@ -91,11 +92,13 @@ php artisan neo4j-boost:start-neo4j
 
 This starts a local Docker Neo4j instance on `bolt://localhost:7687` and `http://localhost:7474`, complete with the default APOC plugins required by the schema tools.
 
+If the container fails to start or Bolt is unreachable, see [Docker setup troubleshooting](docs/TROUBLESHOOTING.md#docker-setup).
+
 ### 5. Connect Your MCP Client
 
 Add the following entry to your MCP client's configuration, then open your **Laravel application folder** as the workspace and reload the MCP settings. You'll see the Neo4j tools sitting right alongside your Boost tools.
 
-See the [MCP Client Configuration](#mcp-client-configuration) section below for Cursor and Claude Code examples.
+See the [MCP Client Configuration](#mcp-client-configuration) section below for Cursor and Claude Code examples. If tools do not appear, see [MCP configuration troubleshooting](docs/TROUBLESHOOTING.md#mcp-configuration).
 
 ---
 
@@ -130,6 +133,8 @@ php artisan neo4j-boost:cursor-config
 #### Claude Code
 
 Add the entry to your `claude_code_config.json` (or run `claude mcp add` and point it at the same server definition). Make sure to open your Laravel application folder as the workspace so `artisan` is reachable.
+
+Common MCP client issues (wrong workspace, missing `APP_ENV=local`, HTTP `/mcp` 404s) are covered in [MCP configuration troubleshooting](docs/TROUBLESHOOTING.md#mcp-configuration).
 
 ### Exploring Your Container Dependency Graph
 
@@ -183,7 +188,9 @@ The default is `driver`, which runs Neo4j tools in PHP over Bolt via `laudis/neo
 * **STDIO:** Spawns the official `neo4j-mcp` binary as a subprocess. Install it with `php artisan neo4j-boost:install-mcp`, then set `NEO4J_MCP_TRANSPORT=stdio` in your `.env`.
 * **HTTP:** Connects to a remote or containerized MCP server. Set `NEO4J_MCP_TRANSPORT=http` and `NEO4J_MCP_URL=http://localhost:8080/mcp`. In HTTP mode, this package sends your Neo4j credentials with every request, so do not set `NEO4J_USERNAME` or `NEO4J_PASSWORD` on the MCP server container itself.
 
-Remember to run `php artisan config:clear` after editing your `.env` file so Laravel picks up the change.
+Remember to run `php artisan config:clear` after editing your `.env` file so Laravel picks up the change. Auth and env mistakes are documented in [Authentication issues](docs/TROUBLESHOOTING.md#authentication-issues) and [Environment configuration](docs/TROUBLESHOOTING.md#environment-configuration).
+
+Connecting to Neo4j Aura? Use the Aura URI from the console (`neo4j+s://...`) with driver transport. See [Neo4j Aura connectivity](docs/TROUBLESHOOTING.md#neo4j-aura-connectivity).
 
 ### Using Docker Compose (HTTP mode)
 
@@ -238,9 +245,11 @@ NEO4J_PASSWORD=your-password
 
 ```
 
+Docker networking, plugin, and port issues: [Docker setup troubleshooting](docs/TROUBLESHOOTING.md#docker-setup).
+
 ### Graph Data Science (GDS) Plugin
 
-The `list-gds-procedures` tool specifically requires the [Graph Data Science](https://neo4j.com/docs/graph-data-science/current/) plugin. If you don't have it installed, that specific tool will throw an error, but don't worry—`get-schema`, `read-cypher`, and `write-cypher` will still work perfectly. For Docker setups, just add `NEO4J_PLUGINS: '["apoc", "graph-data-science"]'` and the necessary `NEO4J_dbms_security_procedures_*` variables to your Neo4j service.
+The `list-gds-procedures` tool specifically requires the [Graph Data Science](https://neo4j.com/docs/graph-data-science/current/) plugin. If you don't have it installed, that specific tool will throw an error, but don't worry: `get-schema`, `read-cypher`, and `write-cypher` will still work perfectly. For Docker setups, just add `NEO4J_PLUGINS: '["apoc", "graph-data-science"]'` and the necessary `NEO4J_dbms_security_procedures_*` variables to your Neo4j service.
 
 ### Automating Setup After Updates
 
@@ -274,13 +283,18 @@ If you're using `neo4j-boost:install-mcp`, the binary supports Linux (x86_64, ar
 
 ### Common Issues & Troubleshooting
 
-* **"Could not open input file: artisan"** — Ensure you have opened your actual Laravel application folder as the workspace, not the package directory itself.
-* **"There are no commands defined in the 'boost' namespace"** — Laravel Boost only registers its commands when your app is in a local environment. Make sure `"env": { "APP_ENV": "local" }` is included in your MCP server entry.
-* **STDIO fails with "Neo4j password is required"** — You need to set `NEO4J_PASSWORD` in your `.env` file, and then run `php artisan config:clear`.
-* **APOC/meta errors** — Your Neo4j instance might be missing the required plugins. Recreate it by running `php artisan neo4j-boost:start-neo4j --recreate`.
-* **Docker: cannot connect to `bolt://localhost:7687`** — Ensure `NEO4J_URI` is pointing to the Neo4j service hostname on your container network (for example, `neo4j://neo4j:password@neo4j-core1:7687`). If you use config caching, remember to clear it with `php artisan config:clear`.
-* **HTTP 404 "This server only handles requests to /mcp"** — Some MCP clients send GET requests, but the Neo4j MCP server strictly accepts POST requests on `/mcp`. The best fix is to use Laravel Boost (`php artisan boost:mcp`) so the client talks to one STDIO server, and this package handles talking to Neo4j internally. If you *must* connect a client directly, ensure the URL ends exactly with `/mcp` and that `NEO4J_TRANSPORT_MODE=http` is set on your server.
-* **"Unknown function 'gds.version'"** — The GDS plugin is missing. Please see the [GDS Plugin](#graph-data-science-gds-plugin) section above. (Your schema and Cypher tools will still function normally).
+Full step-by-step coverage (Docker, Aura, MCP, auth, environment, and error messages) lives in **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**. Start with `php artisan neo4j-boost:doctor` after any `.env` change (`php artisan config:clear`).
+
+Quick hits:
+
+* **"Could not open input file: artisan"**: Open your Laravel application folder as the workspace, not the package directory. See [MCP configuration](docs/TROUBLESHOOTING.md#mcp-configuration).
+* **"There are no commands defined in the 'boost' namespace"**: Include `"env": { "APP_ENV": "local" }` in your MCP server entry.
+* **STDIO fails with "Neo4j password is required"**: Set `NEO4J_PASSWORD` in `.env`, then run `php artisan config:clear`. See [Authentication issues](docs/TROUBLESHOOTING.md#authentication-issues).
+* **APOC/meta errors**: Recreate local Neo4j with `php artisan neo4j-boost:start-neo4j --recreate`. See [Docker setup](docs/TROUBLESHOOTING.md#docker-setup).
+* **Docker: cannot connect to `bolt://localhost:7687`**: Use the Neo4j service hostname on the container network when Laravel is not on the host, then clear config cache.
+* **HTTP 404 "This server only handles requests to /mcp"**: Prefer Laravel Boost (`php artisan boost:mcp`). If connecting directly, ensure the URL ends with `/mcp` and HTTP transport is enabled.
+* **"Unknown function 'gds.version'"**: Install the GDS plugin. See [GDS Plugin](#graph-data-science-gds-plugin). Schema and Cypher tools still work without it.
+* **Aura connection failures**: Use the Aura console URI (`neo4j+s://...`) with driver transport. See [Neo4j Aura connectivity](docs/TROUBLESHOOTING.md#neo4j-aura-connectivity).
 
 ---
 
