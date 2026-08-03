@@ -4,6 +4,10 @@ This package provides a seamless Laravel integration for the [official Neo4j MCP
 
 **Requirements:** PHP 8.2+, Laravel 12 or 13.
 
+Architecture diagrams (components, MCP, Laravel Boost, request flow): [docs/architecture.md](docs/architecture.md).
+
+Tutorial: [What is Neo4j Boost?](docs/tutorials/what-is-neo4j-boost.md).
+
 Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ---
@@ -33,6 +37,8 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
   - [Common Issues & Troubleshooting](#common-issues--troubleshooting)
 - [Troubleshooting guide](docs/TROUBLESHOOTING.md)
 - [License](#license)
+
+Demo media for this README lives under [`docs/media/`](docs/media/README.md).
 
 ---
 
@@ -80,6 +86,8 @@ php artisan neo4j-boost:setup
 ```
 
 This command checks your connection, optionally installs the `neo4j-mcp` binary, and can spin up a local Neo4j Docker instance.
+
+![First-run interactive setup](docs/media/demos/01-interactive-setup.gif)
 
 ### 4. Start a Local Neo4j Instance (Optional)
 
@@ -130,6 +138,14 @@ php artisan neo4j-boost:cursor-config
 
 ```
 
+![Connect Laravel Boost in Cursor](docs/media/demos/03-cursor-mcp-tools.gif)
+
+![Inspect the graph schema from chat](docs/media/demos/04-get-schema-in-cursor.gif)
+
+![Read data with Cypher](docs/media/demos/05-read-cypher.gif)
+
+![Run a disposable write round-trip](docs/media/demos/06-write-cypher.gif)
+
 #### Claude Code
 
 Add the entry to your `claude_code_config.json` (or run `claude mcp add` and point it at the same server definition). Make sure to open your Laravel application folder as the workspace so `artisan` is reachable.
@@ -146,6 +162,10 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 
 ```
+
+![Export and query Laravel dependencies](docs/media/demos/07-container-dependency-tool.gif)
+
+![Visualize the container graph](docs/media/demos/08-container-graph-browser.gif)
 
 > **A heads-up for large codebases:** This export maps out all PSR-4 classes in the container. If your app has hundreds of services, it will take a little while and generate a large graph. This is completely normal!
 
@@ -295,6 +315,21 @@ Quick hits:
 * **HTTP 404 "This server only handles requests to /mcp"**: Prefer Laravel Boost (`php artisan boost:mcp`). If connecting directly, ensure the URL ends with `/mcp` and HTTP transport is enabled.
 * **"Unknown function 'gds.version'"**: Install the GDS plugin. See [GDS Plugin](#graph-data-science-gds-plugin). Schema and Cypher tools still work without it.
 * **Aura connection failures**: Use the Aura console URI (`neo4j+s://...`) with driver transport. See [Neo4j Aura connectivity](docs/TROUBLESHOOTING.md#neo4j-aura-connectivity).
+Run the readiness check first:
+
+```bash
+php artisan neo4j-boost:doctor
+```
+
+![Run the readiness doctor](docs/media/demos/02-readiness-doctor.gif)
+
+* **"Could not open input file: artisan"** — Ensure you have opened your actual Laravel application folder as the workspace, not the package directory itself.
+* **"There are no commands defined in the 'boost' namespace"** — Laravel Boost only registers its commands when your app is in a local environment. Make sure `"env": { "APP_ENV": "local" }` is included in your MCP server entry.
+* **STDIO fails with "Neo4j password is required"** — You need to set `NEO4J_PASSWORD` in your `.env` file, and then run `php artisan config:clear`.
+* **APOC/meta errors** — Your Neo4j instance might be missing the required plugins. Recreate it by running `php artisan neo4j-boost:start-neo4j --recreate`.
+* **Docker: cannot connect to `bolt://localhost:7687`** — Ensure `NEO4J_URI` is pointing to the Neo4j service hostname on your container network (for example, `neo4j://neo4j:password@neo4j-core1:7687`). If you use config caching, remember to clear it with `php artisan config:clear`.
+* **HTTP 404 "This server only handles requests to /mcp"** — Some MCP clients send GET requests, but the Neo4j MCP server strictly accepts POST requests on `/mcp`. The best fix is to use Laravel Boost (`php artisan boost:mcp`) so the client talks to one STDIO server, and this package handles talking to Neo4j internally. If you *must* connect a client directly, ensure the URL ends exactly with `/mcp` and that `NEO4J_TRANSPORT_MODE=http` is set on your server.
+* **"Unknown function 'gds.version'"** — The GDS plugin is missing. Please see the [GDS Plugin](#graph-data-science-gds-plugin) section above. (Your schema and Cypher tools will still function normally).
 
 ---
 
