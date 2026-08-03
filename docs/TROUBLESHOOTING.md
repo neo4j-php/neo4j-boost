@@ -2,7 +2,7 @@
 
 Step-by-step fixes for common installation and configuration issues. Start with [`php artisan neo4j-boost:doctor`](#run-the-doctor-first) when something looks wrong, then jump to the section that matches your setup.
 
-Related setup guides: [Installation & Setup](../README.md#installation--setup), [MCP Client Configuration](../README.md#mcp-client-configuration), [Transport Modes](../README.md#transport-modes), [Docker Compose (HTTP mode)](../README.md#using-docker-compose-http-mode).
+Related setup guides: [Installation](../README.md#installation), [Transport Modes](../README.md#transport-modes), [Docker Compose (HTTP mode)](../README.md#using-docker-compose-http-mode). MCP client setup lives in the README [5-minute Quick Start](../README.md#5-minute-quick-start).
 
 ---
 

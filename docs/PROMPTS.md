@@ -1,6 +1,6 @@
 # Copy-paste prompts for Neo4j Boost
 
-Ready-to-use prompts for common Neo4j Boost workflows. Paste them into your MCP-compatible client (Cursor, Claude Code, and others) after [installation](../README.md#installation--setup).
+Ready-to-use prompts for common Neo4j Boost workflows. Paste them into your MCP-compatible client (Cursor, Claude Code, and others) after [installation](../README.md#installation).
 
 Replace placeholders like `App\Services\FooService` or label names with values from your project.
 
