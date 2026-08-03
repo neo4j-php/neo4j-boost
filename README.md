@@ -33,6 +33,8 @@ Release notes: [CHANGELOG.md](CHANGELOG.md).
   - [Common Issues & Troubleshooting](#common-issues--troubleshooting)
 - [License](#license)
 
+Demo media for this README lives under [`docs/media/`](docs/media/README.md).
+
 ---
 
 ## Why Use It?
@@ -79,6 +81,8 @@ php artisan neo4j-boost:setup
 ```
 
 This command checks your connection, optionally installs the `neo4j-mcp` binary, and can spin up a local Neo4j Docker instance.
+
+![First-run interactive setup](docs/media/demos/01-interactive-setup.gif)
 
 ### 4. Start a Local Neo4j Instance (Optional)
 
@@ -127,6 +131,14 @@ php artisan neo4j-boost:cursor-config
 
 ```
 
+![Connect Laravel Boost in Cursor](docs/media/demos/03-cursor-mcp-tools.gif)
+
+![Inspect the graph schema from chat](docs/media/demos/04-get-schema-in-cursor.gif)
+
+![Read data with Cypher](docs/media/demos/05-read-cypher.gif)
+
+![Run a disposable write round-trip](docs/media/demos/06-write-cypher.gif)
+
 #### Claude Code
 
 Add the entry to your `claude_code_config.json` (or run `claude mcp add` and point it at the same server definition). Make sure to open your Laravel application folder as the workspace so `artisan` is reachable.
@@ -141,6 +153,10 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 
 ```
+
+![Export and query Laravel dependencies](docs/media/demos/07-container-dependency-tool.gif)
+
+![Visualize the container graph](docs/media/demos/08-container-graph-browser.gif)
 
 > **A heads-up for large codebases:** This export maps out all PSR-4 classes in the container. If your app has hundreds of services, it will take a little while and generate a large graph. This is completely normal!
 
@@ -273,6 +289,14 @@ This lets you configure options in `config/neo4j-boost.php` like `neo4j_mcp.tran
 If you're using `neo4j-boost:install-mcp`, the binary supports Linux (x86_64, arm64, i386), macOS (x86_64, Apple Silicon), and Windows (x86_64, arm64, i386). Windows uses `.zip` archives (requiring `ext-zip`), while Linux and macOS use `.tar.gz`. If auto-detection fails, you can manually override it by setting `NEO4J_MCP_PLATFORM_ASSET` in your `.env`.
 
 ### Common Issues & Troubleshooting
+
+Run the readiness check first:
+
+```bash
+php artisan neo4j-boost:doctor
+```
+
+![Run the readiness doctor](docs/media/demos/02-readiness-doctor.gif)
 
 * **"Could not open input file: artisan"** — Ensure you have opened your actual Laravel application folder as the workspace, not the package directory itself.
 * **"There are no commands defined in the 'boost' namespace"** — Laravel Boost only registers its commands when your app is in a local environment. Make sure `"env": { "APP_ENV": "local" }` is included in your MCP server entry.

@@ -31,3 +31,7 @@ storage/logs/*.log
 # Local usage / testing notes (do not commit)
 USAGE.local.md
 TESTING.local.md
+# Local Neo4j Boost runtime and recording masters
+/storage/app/neo4j-mcp/
+/docs/media/video/*
+!/docs/media/video/.gitkeep
