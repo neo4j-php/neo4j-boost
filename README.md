@@ -4,6 +4,8 @@ This package provides a seamless Laravel integration for the [official Neo4j MCP
 
 **Requirements:** PHP 8.2+, Laravel 12 or 13.
 
+Architecture diagrams (components, MCP, Laravel Boost, request flow): [docs/architecture.md](docs/architecture.md).
+
 Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ---
