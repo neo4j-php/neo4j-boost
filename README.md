@@ -6,6 +6,8 @@ This package provides a seamless Laravel integration for the [official Neo4j MCP
 
 Architecture diagrams (components, MCP, Laravel Boost, request flow): [docs/architecture.md](docs/architecture.md).
 
+Tutorial: [What is Neo4j Boost?](docs/tutorials/what-is-neo4j-boost.md).
+
 Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ---
