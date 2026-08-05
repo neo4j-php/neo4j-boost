@@ -28,8 +28,30 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertSame('Class', $match['identifier_kind']);
         $this->assertSame('GET', $match['methods']);
         $this->assertSame('orders.show', $match['name']);
+        $this->assertSame('orders.show', $match['route_name']);
         $this->assertSame('GET /orders/{id}', $match['key']);
         $this->assertStringContainsString(FakeOrdersController::class, $match['action']);
+    }
+
+    public function test_unnamed_routes_use_method_and_path_as_display_name(): void
+    {
+        /** @var Router $router */
+        $router = $this->app->make('router');
+        $router->get('/unnamed-photos', [FakeOrdersController::class, 'show']);
+
+        $rows = (new RouteHandlerExtractor)->extract($router);
+        $match = null;
+        foreach ($rows as $row) {
+            if ($row['uri'] === '/unnamed-photos') {
+                $match = $row;
+                break;
+            }
+        }
+
+        $this->assertNotNull($match);
+        $this->assertSame('', $match['route_name']);
+        $this->assertSame('GET /unnamed-photos', $match['key']);
+        $this->assertSame('GET /unnamed-photos', $match['name']);
     }
 
     public function test_skips_closure_routes_without_controller_identifier(): void
@@ -67,6 +89,8 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertNotNull($match);
         $this->assertSame(FakeCheckoutAction::class, $match['identifier']);
         $this->assertSame('POST', $match['methods']);
+        $this->assertSame('', $match['route_name']);
+        $this->assertSame('POST /checkout', $match['name']);
     }
 }
 

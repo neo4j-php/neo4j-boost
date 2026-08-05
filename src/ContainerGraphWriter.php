@@ -107,6 +107,7 @@ MERGE (r:Route {key: row.key})
 SET r.uri = row.uri,
     r.methods = row.methods,
     r.name = row.name,
+    r.route_name = row.route_name,
     r.action = row.action
 MERGE (id:Identifier {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
@@ -137,7 +138,7 @@ CYPHER;
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
-     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      */
     public function write(
         array $instanceRows,
@@ -258,12 +259,12 @@ CYPHER;
     }
 
     /**
-     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      */
     private function validateRouteRows(array $routeRows): void
     {
         foreach ($routeRows as $row) {
-            foreach (['key', 'uri', 'methods', 'name', 'action', 'identifier', 'identifier_kind'] as $key) {
+            foreach (['key', 'uri', 'methods', 'name', 'route_name', 'action', 'identifier', 'identifier_kind'] as $key) {
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Route row is missing string {$key}");
                 }
