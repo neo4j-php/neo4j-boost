@@ -9,6 +9,7 @@ use Neo4j\LaravelBoost\Support\Graph\DependencyAccessType;
 use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeConfidence;
 use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeProvenance;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
+use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 
 class ContainerGraphWriter
 {
@@ -50,14 +51,22 @@ UNWIND $rows AS row
 MERGE (:Instance {name: row.class})
 CYPHER;
 
-    private const CYPHER_RESOLVES_TO = <<<'CYPHER'
+    private const CYPHER_IDENTIFIED_AS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (dep:Dependency {key: row.dependency_key})
 SET dep.access = row.access
 MERGE (id:Identifier {name: row.identifier})
 SET id.kind = row.identifier_kind,
     id.reason = coalesce(row.reason, id.reason)
-MERGE (dep)-[r:RESOLVES_TO]->(id)
+MERGE (dep)-[:IDENTIFIED_AS]->(id)
+CYPHER;
+
+    private const CYPHER_IDENTIFIER_RESOLVES_TO = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (id:Identifier {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (i:Instance {name: row.instance})
+MERGE (id)-[r:RESOLVES_TO]->(i)
 SET r.lifetime = row.lifetime
 CYPHER;
 
@@ -92,6 +101,18 @@ SET r.needs = row.needs,
     r.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE r.reason END
 CYPHER;
 
+    private const CYPHER_ROUTES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (r:Route {key: row.key})
+SET r.uri = row.uri,
+    r.methods = row.methods,
+    r.name = row.name,
+    r.action = row.action
+MERGE (id:Identifier {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (r)-[:HANDLED_BY]->(id)
+CYPHER;
+
     public function __construct(
         private ContainerGraphConnection $connection,
     ) {}
@@ -102,20 +123,35 @@ CYPHER;
     }
 
     /**
+     * Ensure unique identity constraints for runtime graph nodes.
+     */
+    public function ensureConstraints(): void
+    {
+        foreach (RuntimeGraphModel::constraintStatements() as $statement) {
+            $this->connection->run($statement);
+        }
+    }
+
+    /**
      * @param  array<int, array{class: string}>  $instanceRows
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      */
     public function write(
         array $instanceRows,
         array $bindingRows,
         array $dependencyChainRows,
         array $contextualBindingRows = [],
+        array $routeRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
         $this->validateContextualBindingRows($contextualBindingRows);
+        $this->validateRouteRows($routeRows);
+
+        $this->ensureConstraints();
 
         if ($instanceRows !== []) {
             $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);
@@ -124,7 +160,7 @@ CYPHER;
             $this->connection->run(self::CYPHER_BINDINGS, ['rows' => $bindingRows]);
         }
         if ($dependencyChainRows !== []) {
-            $this->connection->run(self::CYPHER_RESOLVES_TO, ['rows' => $dependencyChainRows]);
+            $this->connection->run(self::CYPHER_IDENTIFIED_AS, ['rows' => $dependencyChainRows]);
 
             $instanceChains = array_values(array_filter(
                 $dependencyChainRows,
@@ -135,8 +171,17 @@ CYPHER;
                 $this->connection->run(self::CYPHER_INSTANCE_DEPENDS_ON, ['rows' => $instanceChains]);
             }
         }
+
+        $identifierResolveRows = $this->buildIdentifierResolveRows($instanceRows, $bindingRows, $dependencyChainRows);
+        if ($identifierResolveRows !== []) {
+            $this->connection->run(self::CYPHER_IDENTIFIER_RESOLVES_TO, ['rows' => $identifierResolveRows]);
+        }
+
         if ($contextualBindingRows !== []) {
             $this->connection->run(self::CYPHER_CONTEXTUAL_BINDS, ['rows' => $contextualBindingRows]);
+        }
+        if ($routeRows !== []) {
+            $this->connection->run(self::CYPHER_ROUTES, ['rows' => $routeRows]);
         }
     }
 
@@ -148,9 +193,11 @@ CYPHER;
         return [
             'instances' => self::CYPHER_INSTANCES,
             'bindings' => self::CYPHER_BINDINGS,
-            'resolves_to' => self::CYPHER_RESOLVES_TO,
+            'identified_as' => self::CYPHER_IDENTIFIED_AS,
+            'identifier_resolves_to' => self::CYPHER_IDENTIFIER_RESOLVES_TO,
             'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
+            'routes' => self::CYPHER_ROUTES,
         ];
     }
 
@@ -208,5 +255,89 @@ CYPHER;
                 }
             }
         }
+    }
+
+    /**
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     */
+    private function validateRouteRows(array $routeRows): void
+    {
+        foreach ($routeRows as $row) {
+            foreach (['key', 'uri', 'methods', 'name', 'action', 'identifier', 'identifier_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Route row is missing string {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{class: string}>  $instanceRows
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
+     * @return array<int, array{identifier: string, identifier_kind: string, instance: string, lifetime: string}>
+     */
+    private function buildIdentifierResolveRows(array $instanceRows, array $bindingRows, array $dependencyChainRows): array
+    {
+        $rows = [];
+        $seen = [];
+
+        $add = static function (string $identifier, string $identifierKind, string $instance, string $lifetime) use (&$rows, &$seen): void {
+            if ($identifier === '' || $instance === '') {
+                return;
+            }
+
+            $key = $identifier."\0".$instance;
+            if (isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $rows[] = [
+                'identifier' => $identifier,
+                'identifier_kind' => $identifierKind !== '' ? $identifierKind : 'Class',
+                'instance' => $instance,
+                'lifetime' => $lifetime,
+            ];
+        };
+
+        foreach ($instanceRows as $row) {
+            $class = (string) ($row['class'] ?? '');
+            $add($class, 'Class', $class, ResolvesToLifetime::Bind->value);
+        }
+
+        foreach ($bindingRows as $row) {
+            if (($row['concreteKind'] ?? '') !== 'Class') {
+                continue;
+            }
+
+            $lifetime = ! empty($row['shared'])
+                ? ResolvesToLifetime::Singleton->value
+                : ResolvesToLifetime::Bind->value;
+
+            $add(
+                (string) $row['abstract'],
+                (string) ($row['abstractKind'] ?? 'Class'),
+                (string) $row['concrete'],
+                $lifetime,
+            );
+            $add(
+                (string) $row['concrete'],
+                'Class',
+                (string) $row['concrete'],
+                $lifetime,
+            );
+        }
+
+        foreach ($dependencyChainRows as $row) {
+            $identifier = (string) ($row['identifier'] ?? '');
+            $kind = (string) ($row['identifier_kind'] ?? '');
+            $lifetime = (string) ($row['lifetime'] ?? ResolvesToLifetime::Bind->value);
+
+            if ($kind === 'Class' || class_exists($identifier)) {
+                $add($identifier, $kind !== '' ? $kind : 'Class', $identifier, $lifetime);
+            }
+        }
+
+        return $rows;
     }
 }
