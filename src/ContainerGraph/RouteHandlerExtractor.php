@@ -22,7 +22,7 @@ final class RouteHandlerExtractor
         $rows = [];
         $seen = [];
 
-        foreach ($router->getRoutes() as $route) {
+        foreach ($router->getRoutes()->getRoutes() as $route) {
             if (! $route instanceof Route) {
                 continue;
             }
