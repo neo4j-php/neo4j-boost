@@ -14,7 +14,7 @@ use Throwable;
 final class RouteHandlerExtractor
 {
     /**
-     * @return array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>
+     * @return array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>
      */
     public function extract(?Router $router = null): array
     {
@@ -49,7 +49,6 @@ final class RouteHandlerExtractor
                 'methods' => $methods,
                 // Browser captions :Route by `name`; fall back to method+path when unnamed.
                 'name' => $routeName !== '' ? $routeName : $key,
-                'route_name' => $routeName,
                 'action' => $this->actionLabel($route),
                 'identifier' => $identifier,
                 'identifier_kind' => $this->identifierKind($identifier),

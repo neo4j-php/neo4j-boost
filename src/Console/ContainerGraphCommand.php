@@ -434,7 +434,7 @@ class ContainerGraphCommand extends Command
     }
 
     /**
-     * @param  array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @return array<int, string>
      */
     private function classNamesFromRouteRows(array $routeRows): array
@@ -555,7 +555,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
-     * @param  array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,

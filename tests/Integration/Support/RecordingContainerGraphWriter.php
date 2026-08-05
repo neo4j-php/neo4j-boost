@@ -27,7 +27,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}> */
     public array $contextualBindingRows = [];
 
-    /** @var array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}> */
+    /** @var array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}> */
     public array $routeRows = [];
 
     public function connect(): void
@@ -40,7 +40,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string}>  $bindingRows
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
-     * @param  array<int, array{key: string, uri: string, methods: string, name: string, route_name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      */
     public function write(
         array $instanceRows,

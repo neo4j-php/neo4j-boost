@@ -28,7 +28,6 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertSame('Class', $match['identifier_kind']);
         $this->assertSame('GET', $match['methods']);
         $this->assertSame('orders.show', $match['name']);
-        $this->assertSame('orders.show', $match['route_name']);
         $this->assertSame('GET /orders/{id}', $match['key']);
         $this->assertStringContainsString(FakeOrdersController::class, $match['action']);
     }
@@ -49,7 +48,6 @@ class RouteHandlerExtractorTest extends TestCase
         }
 
         $this->assertNotNull($match);
-        $this->assertSame('', $match['route_name']);
         $this->assertSame('GET /unnamed-photos', $match['key']);
         $this->assertSame('GET /unnamed-photos', $match['name']);
     }
@@ -89,7 +87,6 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertNotNull($match);
         $this->assertSame(FakeCheckoutAction::class, $match['identifier']);
         $this->assertSame('POST', $match['methods']);
-        $this->assertSame('', $match['route_name']);
         $this->assertSame('POST /checkout', $match['name']);
     }
 }
