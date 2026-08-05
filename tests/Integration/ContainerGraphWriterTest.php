@@ -88,6 +88,8 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString(':Route', $template);
         $this->assertStringContainsString('HANDLED_BY', $template);
         $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString('REMOVE r.route_name', $template);
+        $this->assertStringNotContainsString('r.route_name = row.route_name', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

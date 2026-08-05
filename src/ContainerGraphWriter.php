@@ -108,6 +108,7 @@ SET r.uri = row.uri,
     r.methods = row.methods,
     r.name = row.name,
     r.action = row.action
+REMOVE r.route_name
 MERGE (id:Identifier {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (r)-[:HANDLED_BY]->(id)
