@@ -32,7 +32,7 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertStringContainsString(FakeOrdersController::class, $match['action']);
     }
 
-    public function test_unnamed_routes_use_method_and_path_as_display_name(): void
+    public function test_unnamed_routes_keep_empty_name_and_store_path_on_key(): void
     {
         /** @var Router $router */
         $router = $this->app->make('router');
@@ -49,7 +49,7 @@ class RouteHandlerExtractorTest extends TestCase
 
         $this->assertNotNull($match);
         $this->assertSame('GET /unnamed-photos', $match['key']);
-        $this->assertSame('GET /unnamed-photos', $match['name']);
+        $this->assertSame('', $match['name']);
     }
 
     public function test_skips_closure_routes_without_controller_identifier(): void
@@ -87,7 +87,8 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertNotNull($match);
         $this->assertSame(FakeCheckoutAction::class, $match['identifier']);
         $this->assertSame('POST', $match['methods']);
-        $this->assertSame('POST /checkout', $match['name']);
+        $this->assertSame('', $match['name']);
+        $this->assertSame('POST /checkout', $match['key']);
     }
 }
 

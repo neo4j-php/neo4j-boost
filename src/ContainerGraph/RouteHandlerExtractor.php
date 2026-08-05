@@ -41,14 +41,11 @@ final class RouteHandlerExtractor
             }
             $seen[$key] = true;
 
-            $routeName = (string) ($route->getName() ?? '');
-
             $rows[] = [
                 'key' => $key,
                 'uri' => $uri,
                 'methods' => $methods,
-                // Browser captions :Route by `name`; fall back to method+path when unnamed.
-                'name' => $routeName !== '' ? $routeName : $key,
+                'name' => (string) ($route->getName() ?? ''),
                 'action' => $this->actionLabel($route),
                 'identifier' => $identifier,
                 'identifier_kind' => $this->identifierKind($identifier),
