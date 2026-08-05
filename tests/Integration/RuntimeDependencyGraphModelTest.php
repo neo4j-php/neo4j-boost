@@ -7,6 +7,7 @@ use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PhotoController;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
+use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 
 /**
@@ -51,7 +52,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
     public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
     {
         $templates = (new ContainerGraphWriter(
-            new \Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection
+            new UnusedContainerGraphConnection
         ))->cypherTemplates();
 
         $this->assertArrayHasKey('routes', $templates);
