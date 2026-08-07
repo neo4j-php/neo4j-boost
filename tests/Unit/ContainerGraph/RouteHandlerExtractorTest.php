@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph;
 use Illuminate\Routing\Router;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Http\Controllers\AdminPanelController;
 
 class RouteHandlerExtractorTest extends TestCase
 {
@@ -89,6 +90,33 @@ class RouteHandlerExtractorTest extends TestCase
         $this->assertSame('POST', $match['methods']);
         $this->assertSame('', $match['name']);
         $this->assertSame('POST /checkout', $match['key']);
+    }
+
+    public function test_extracts_controller_routes_from_custom_route_file_group(): void
+    {
+        /** @var Router $router */
+        $router = $this->app->make('router');
+        $router->middleware('web')
+            ->prefix('admin')
+            ->group(__DIR__.'/Fixtures/routes/admin.php');
+
+        $rows = (new RouteHandlerExtractor)->extract($router);
+        $byUri = [];
+        foreach ($rows as $row) {
+            $byUri[$row['uri']] = $row;
+        }
+
+        $this->assertArrayHasKey('/admin/users-overview', $byUri);
+        $this->assertSame(AdminPanelController::class, $byUri['/admin/users-overview']['identifier']);
+        $this->assertSame('admin.users.overview', $byUri['/admin/users-overview']['name']);
+        $this->assertSame('GET /admin/users-overview', $byUri['/admin/users-overview']['key']);
+
+        $this->assertArrayHasKey('/admin/health-summary', $byUri);
+        $this->assertSame(AdminPanelController::class, $byUri['/admin/health-summary']['identifier']);
+        $this->assertSame('', $byUri['/admin/health-summary']['name']);
+        $this->assertSame('GET /admin/health-summary', $byUri['/admin/health-summary']['key']);
+
+        $this->assertArrayNotHasKey('/admin/ping', $byUri);
     }
 }
 
