@@ -19,12 +19,12 @@ final class GraphCompleteness
     public static function limitations(): array
     {
         return [
-            'Route and action-class resolution (e.g. container->make($controller)) is not modeled.',
             'Dynamic service location, facade, and helper calls without literal arguments are skipped.',
             'Static scan edges require NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS to be configured.',
             'Method injection entry points are detected via namespace and naming heuristics.',
             'Repeated direct instantiation of the same class may collapse to a single edge.',
             'config() and env() edges use literal keys only; confidence is medium.',
+            'Closure-based routes without a controller class are not exported as Route nodes.',
         ];
     }
 

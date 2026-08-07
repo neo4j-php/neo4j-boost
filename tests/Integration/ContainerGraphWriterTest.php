@@ -15,7 +15,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['bindings', 'contextual_binds', 'instance_depends_on', 'instances', 'resolves_to'], $keys);
+        $this->assertSame(['bindings', 'contextual_binds', 'identified_as', 'identifier_resolves_to', 'instance_depends_on', 'instances', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -58,15 +58,38 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('r.remarks = coalesce(row.remarks', $bindingsTemplate);
     }
 
-    public function test_resolves_to_cypher_sets_lifetime_and_identifier_kind(): void
+    public function test_identified_as_cypher_links_dependency_to_identifier(): void
     {
         $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $resolvesToTemplate = $writer->cypherTemplates()['resolves_to'];
+        $template = $writer->cypherTemplates()['identified_as'];
 
-        $this->assertStringContainsString('r.lifetime = row.lifetime', $resolvesToTemplate);
-        $this->assertStringContainsString('dep.access = row.access', $resolvesToTemplate);
-        $this->assertStringContainsString(':Identifier', $resolvesToTemplate);
-        $this->assertStringContainsString('RESOLVES_TO', $resolvesToTemplate);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('dep.access = row.access', $template);
+        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString(':Dependency', $template);
+    }
+
+    public function test_identifier_resolves_to_cypher_sets_lifetime(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['identifier_resolves_to'];
+
+        $this->assertStringContainsString('RESOLVES_TO', $template);
+        $this->assertStringContainsString('r.lifetime = row.lifetime', $template);
+        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString(':Instance', $template);
+    }
+
+    public function test_routes_cypher_uses_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['routes'];
+
+        $this->assertStringContainsString(':Route', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString('REMOVE r.route_name', $template);
+        $this->assertStringNotContainsString('r.route_name = row.route_name', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

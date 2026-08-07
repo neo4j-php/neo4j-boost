@@ -238,7 +238,8 @@ CYPHER,
     {
         $result = $this->connection->run(
             <<<'CYPHER'
-MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier)
+MATCH (i:Instance {name: $instance})-[d:DEPENDS_ON]->(dep:Dependency)-[:IDENTIFIED_AS]->(id:Identifier)
+OPTIONAL MATCH (id)-[r:RESOLVES_TO]->(:Instance)
 RETURN id.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
@@ -265,7 +266,8 @@ CYPHER,
     {
         $result = $this->connection->run(
             <<<'CYPHER'
-MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[r:RESOLVES_TO]->(id:Identifier {name: $identifier})
+MATCH (i:Instance)-[d:DEPENDS_ON]->(dep:Dependency)-[:IDENTIFIED_AS]->(id:Identifier {name: $identifier})
+OPTIONAL MATCH (id)-[r:RESOLVES_TO]->(:Instance)
 RETURN i.name AS name, id.kind AS kind, id.reason AS reason, dep.access AS access,
        r.lifetime AS lifetime, d.via AS via, d.file AS file, d.line AS line,
        d.type AS injection_type, d.method AS method, d.parameter AS parameter, d.helper AS helper,
