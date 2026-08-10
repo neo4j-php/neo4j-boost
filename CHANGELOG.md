@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Route middleware export** for `container:graph`: `(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)`, expanding middleware groups/aliases via Laravel's router.
 - Documentation media layout under `docs/media/` with README GIF embeds for Neo4j Boost workflow demonstrations.
 
 ## [1.0.1] - 2026-07-13
