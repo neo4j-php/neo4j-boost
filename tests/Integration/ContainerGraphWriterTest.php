@@ -15,7 +15,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['bindings', 'contextual_binds', 'identified_as', 'identifier_resolves_to', 'instance_depends_on', 'instances', 'routes'], $keys);
+        $this->assertSame(['bindings', 'contextual_binds', 'identified_as', 'identifier_resolves_to', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -90,6 +90,19 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString(':Identifier', $template);
         $this->assertStringContainsString('REMOVE r.route_name', $template);
         $this->assertStringNotContainsString('r.route_name = row.route_name', $template);
+    }
+
+    public function test_route_middleware_cypher_uses_middleware_and_identified_as(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['route_middleware'];
+
+        $this->assertStringContainsString(':Route', $template);
+        $this->assertStringContainsString(':Middleware', $template);
+        $this->assertStringContainsString('USES_MIDDLEWARE', $template);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('u.parameters = coalesce(row.parameters', $template);
+        $this->assertStringContainsString('order: row.order', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

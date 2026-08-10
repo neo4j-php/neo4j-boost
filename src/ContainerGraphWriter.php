@@ -114,6 +114,17 @@ SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (r)-[:HANDLED_BY]->(id)
 CYPHER;
 
+    private const CYPHER_ROUTE_MIDDLEWARE = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (r:Route {key: row.route_key})
+MERGE (m:Middleware {key: row.middleware_key})
+MERGE (id:Identifier {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (m)-[:IDENTIFIED_AS]->(id)
+MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
+SET u.parameters = coalesce(row.parameters, '')
+CYPHER;
+
     public function __construct(
         private ContainerGraphConnection $connection,
     ) {}
@@ -139,6 +150,7 @@ CYPHER;
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
      */
     public function write(
         array $instanceRows,
@@ -146,11 +158,13 @@ CYPHER;
         array $dependencyChainRows,
         array $contextualBindingRows = [],
         array $routeRows = [],
+        array $routeMiddlewareRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
         $this->validateContextualBindingRows($contextualBindingRows);
         $this->validateRouteRows($routeRows);
+        $this->validateRouteMiddlewareRows($routeMiddlewareRows);
 
         $this->ensureConstraints();
 
@@ -184,6 +198,9 @@ CYPHER;
         if ($routeRows !== []) {
             $this->connection->run(self::CYPHER_ROUTES, ['rows' => $routeRows]);
         }
+        if ($routeMiddlewareRows !== []) {
+            $this->connection->run(self::CYPHER_ROUTE_MIDDLEWARE, ['rows' => $routeMiddlewareRows]);
+        }
     }
 
     /**
@@ -199,6 +216,7 @@ CYPHER;
             'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
+            'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
         ];
     }
 
@@ -268,6 +286,24 @@ CYPHER;
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Route row is missing string {$key}");
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
+     */
+    private function validateRouteMiddlewareRows(array $routeMiddlewareRows): void
+    {
+        foreach ($routeMiddlewareRows as $row) {
+            foreach (['route_key', 'middleware_key', 'identifier', 'identifier_kind', 'parameters'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Route middleware row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('order', $row) || ! is_int($row['order'])) {
+                throw new \InvalidArgumentException('Route middleware row is missing integer order');
             }
         }
     }
