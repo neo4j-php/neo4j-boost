@@ -118,6 +118,7 @@ CYPHER;
 UNWIND $rows AS row
 MERGE (r:Route {key: row.route_key})
 MERGE (m:Middleware {key: row.middleware_key})
+SET m.name = row.middleware_key
 MERGE (id:Identifier {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (m)-[:IDENTIFIED_AS]->(id)

@@ -101,6 +101,7 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString(':Middleware', $template);
         $this->assertStringContainsString('USES_MIDDLEWARE', $template);
         $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('m.name = row.middleware_key', $template);
         $this->assertStringContainsString('u.parameters = coalesce(row.parameters', $template);
         $this->assertStringContainsString('order: row.order', $template);
     }
