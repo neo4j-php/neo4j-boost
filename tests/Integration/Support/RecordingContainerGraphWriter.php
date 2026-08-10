@@ -30,6 +30,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}> */
     public array $routeRows = [];
 
+    /** @var array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}> */
+    public array $routeMiddlewareRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -41,6 +44,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int}>  $dependencyChainRows
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
      */
     public function write(
         array $instanceRows,
@@ -48,12 +52,14 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $dependencyChainRows,
         array $contextualBindingRows = [],
         array $routeRows = [],
+        array $routeMiddlewareRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
         $this->dependencyChainRows = $dependencyChainRows;
         $this->contextualBindingRows = $contextualBindingRows;
         $this->routeRows = $routeRows;
+        $this->routeMiddlewareRows = $routeMiddlewareRows;
     }
 
     /**
@@ -170,6 +176,23 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             if ($row['key'] === $routeKey && $row['identifier'] === $identifier) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    public function hasRouteMiddleware(string $routeKey, string $middlewareKey, ?string $parameters = null): bool
+    {
+        foreach ($this->routeMiddlewareRows as $row) {
+            if ($row['route_key'] !== $routeKey || $row['middleware_key'] !== $middlewareKey) {
+                continue;
+            }
+
+            if ($parameters !== null && $row['parameters'] !== $parameters) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;
