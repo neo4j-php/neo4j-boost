@@ -60,13 +60,13 @@ flowchart TB
 
 **What this shows:** Setup and doctor manage the local `neo4j-mcp` binary, Neo4j Docker (optional), and Cursor MCP config. Cypher/schema tools go through `Neo4jMcpClientInterface` and the configured transport (`stdio`, `http`, or `driver`). The container-graph command and `get-class-dependency-graph` use Bolt directly via `Neo4jBoltClient`, not the Neo4j MCP binary.
 
-Related: [README – Artisan commands](../README.md#artisan-commands), [README – Configuration](../README.md#configuration).
+Related: [README – Artisan commands](../README.md#available-artisan-commands), [README – Transport modes](../README.md#transport-modes).
 
 ---
 
 ## 2. MCP Integration
 
-Cursor (or another MCP-compatible client) connects to Laravel Boost over **stdio**. Neo4j Boost tools then reach Neo4j using one of three package transports, selected by `NEO4J_MCP_TRANSPORT` (default: `stdio`).
+Cursor (or another MCP-compatible client) connects to Laravel Boost over **stdio**. Neo4j Boost tools then reach Neo4j using one of three package transports, selected by `NEO4J_MCP_TRANSPORT` (default: `driver`).
 
 ```mermaid
 flowchart LR
@@ -103,13 +103,13 @@ flowchart LR
 
 | Transport | How Neo4j tools run | Needs `neo4j-mcp` binary? |
 |-----------|---------------------|---------------------------|
-| `stdio` (default) | Package spawns local `neo4j-mcp` and speaks MCP over stdin/stdout | Yes |
+| `driver` (default) | In-process Bolt via `laudis/neo4j-php-client` | No |
+| `stdio` | Package spawns local `neo4j-mcp` and speaks MCP over stdin/stdout | Yes |
 | `http` | Package POSTs to `NEO4J_MCP_URL` (e.g. `http://localhost:8080/mcp`) | Separate HTTP MCP process |
-| `driver` | In-process Bolt via `laudis/neo4j-php-client` | No |
 
 `get-class-dependency-graph` always uses the container-graph Bolt path. Official Neo4j MCP tool names proxied by the other tools: `get-schema`, `read-cypher`, `write-cypher`, `list-gds-procedures`.
 
-Related: [README – Single MCP server with Laravel Boost](../README.md#single-mcp-server-with-laravel-boost), [README – Using with Cursor](../README.md#using-with-cursor).
+Related: [README – 5-minute Quick Start](../README.md#5-minute-quick-start), [README – Cursor](../README.md#cursor).
 
 ---
 
@@ -140,7 +140,7 @@ flowchart TB
 
 If Laravel Boost’s `ToolRegistry` were absent, `neo4j-boost:cursor-config` would fall back to an HTTP `neo4j-boost` URL entry. In normal installs this package **requires** `laravel/boost`, so the single-server `laravel-boost` path is the supported model.
 
-Related: [README – Single MCP server with Laravel Boost](../README.md#single-mcp-server-with-laravel-boost).
+Related: [README – 5-minute Quick Start](../README.md#5-minute-quick-start).
 
 ---
 
@@ -180,7 +180,7 @@ flowchart TB
 
 ## 5. Typical Request / Data Flow
 
-Example: the developer asks Cursor for the graph schema. Cursor calls `get-schema` on the Laravel Boost MCP server. With the default **stdio** transport, Neo4j Boost forwards that call to the local `neo4j-mcp` binary, which queries Neo4j and returns the result up the chain.
+Example: the developer asks Cursor for the graph schema. Cursor calls `get-schema` on the Laravel Boost MCP server. With the default **driver** transport, Neo4j Boost queries Neo4j over Bolt in-process (no `neo4j-mcp` binary). The sequence below shows the optional **stdio** path when `NEO4J_MCP_TRANSPORT=stdio`.
 
 ```mermaid
 sequenceDiagram
@@ -206,11 +206,11 @@ sequenceDiagram
   Cursor-->>User: Schema summary in chat
 ```
 
-**What this shows:** End-to-end path for a schema request on the default transport. For `http`, `Neo4jHttpClient` replaces the stdio client and POSTs to `/mcp`. For `driver`, `Neo4jDriverClient` talks to Neo4j over Bolt with no `neo4j-mcp` process. A `read-cypher` / `write-cypher` flow is the same shape with different tool names and arguments.
+**What this shows:** End-to-end path for a schema request on **stdio** transport. For `http`, `Neo4jHttpClient` replaces the stdio client and POSTs to `/mcp`. For `driver` (the default), `Neo4jDriverClient` talks to Neo4j over Bolt with no `neo4j-mcp` process. A `read-cypher` / `write-cypher` flow is the same shape with different tool names and arguments.
 
 `get-class-dependency-graph` skips `neo4j-mcp` and reads previously exported container-graph data from Neo4j over Bolt (`ClassDependencyGraphReader`). Export that data first with `php artisan container:graph`.
 
-Related: [README – Container Graph POC](../README.md#container-graph-poc-llm-debugging).
+Related: [README – Exploring Your Container Dependency Graph](../README.md#exploring-your-container-dependency-graph).
 
 ---
 

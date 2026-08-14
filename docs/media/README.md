@@ -317,10 +317,8 @@ Open `http://localhost:7474`, sign in as `neo4j` with the disposable demo
 password, and run:
 
 ```cypher
-MATCH p = (:Abstract {
-  name: 'Neo4j\\LaravelBoost\\ClassDependencyGraphReader'
-})-[:DEPENDS_ON*1..3]-(n)
-RETURN p
+MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+RETURN path
 LIMIT 50;
 ```
 
@@ -329,10 +327,9 @@ Stop when the graph visualization settles.
 
 **Expected on screen**
 
-- `ClassDependencyGraphReader`
-- `ContainerGraphConnection`
-- `Abstract` / `Class` nodes
-- `DEPENDS_ON` relationships
+- `:Route` nodes captioned by `key`
+- `:Middleware` nodes captioned by `name`
+- `USES_MIDDLEWARE` and `IDENTIFIED_AS` relationships
 
 **Jump cuts:** cut browser login and query execution/rendering delay. Do not show
 the password.
@@ -344,10 +341,10 @@ the password.
 ### Environment
 
 - [ ] `./docs/media/prepare-demo.sh check` passes
-- [ ] `.env` uses `NEO4J_MCP_TRANSPORT=stdio`
+- [ ] `.env` uses driver transport (omit `NEO4J_MCP_TRANSPORT` or set it to `driver`)
 - [ ] Demo password only; no real credentials visible
 - [ ] `neo4j-boost-local` is running with APOC
-- [ ] Official `neo4j-mcp` binary is installed
+- [ ] Official `neo4j-mcp` binary is installed only if recording STDIO-specific clips
 - [ ] `.cursor/mcp.json` contains one `laravel-boost` entry
 - [ ] `php artisan neo4j-boost:doctor --no-interaction` reports ready
 - [ ] Seed labels and relationship exist

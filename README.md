@@ -141,6 +141,22 @@ php artisan container:graph --print-cypher
 
 ```
 
+The export uses this runtime model:
+
+```text
+(:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(:Instance)
+  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Identifier)
+(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+```
+
+Bindings still also export `:Abstract` / `BINDS_TO`. Explore routes and middleware in Neo4j Browser with:
+
+```cypher
+MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+RETURN path
+LIMIT 50
+```
+
 ![Export and query Laravel dependencies](docs/media/demos/07-container-dependency-tool.gif)
 
 ![Visualize the container graph](docs/media/demos/08-container-graph-browser.gif)
@@ -173,7 +189,7 @@ Once exported, you can use the **get-class-dependency-graph** MCP tool to query 
 | `neo4j-boost:install-mcp` | Downloads and installs the official `neo4j-mcp` binary (only needed for STDIO). |
 | `neo4j-boost:doctor` | Diagnoses your transport, binary, password, and overall readiness. |
 | `neo4j-boost:test-stdio` | Runs a verbose end-to-end test for the STDIO handshake and tools. |
-| `container:graph` | Exports your Laravel container bindings directly into Neo4j (`--dry-run` and `--print-cypher` available). |
+| `container:graph` | Exports Laravel routes, middleware, and container wiring into Neo4j (`--dry-run` and `--print-cypher` available). |
 
 ---
 
