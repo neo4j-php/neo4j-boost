@@ -25,6 +25,7 @@ use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionTargetResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\RouteMiddlewareExtractor;
 use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\ResolutionCatalog\AppFacadeAccessorResolver;
@@ -81,6 +82,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(MethodInjectionTargetResolver::class);
         $this->app->singleton(MethodInjectionExtractor::class);
         $this->app->singleton(RouteHandlerExtractor::class);
+        $this->app->singleton(RouteMiddlewareExtractor::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
         $this->app->singleton(FacadeCatalogExporter::class);
         $this->app->singleton(FacadeAccessorParser::class);
