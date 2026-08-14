@@ -2,9 +2,9 @@
 
 ## Introduction
 
-Laravel’s service container records how abstractions bind to implementations and how classes receive constructor dependencies. That wiring is usually scattered across service providers and type-hints—hard to see as a whole when debugging “what injects into X?” or “what does this binding resolve to?”
+Laravel’s service container records how abstractions bind to implementations and how classes receive constructor dependencies. Route handlers and middleware sit on top of that wiring. The result is usually scattered across service providers, type-hints, and route files—hard to see as a whole when debugging “what injects into X?” or “which middleware runs on this route?”
 
-Neo4j Boost can **export** that container wiring into Neo4j as a graph, then let you explore it in Neo4j Browser or via the MCP tool `get-class-dependency-graph`.
+Neo4j Boost can **export** that runtime wiring into Neo4j as a graph, then let you explore it in Neo4j Browser or via the MCP tool `get-class-dependency-graph`.
 
 This is an **advanced** workflow. Complete [Getting Started](getting-started.md) (and ideally [Using Neo4j MCP Tools in Cursor](cursor-mcp-tools.md)) first so Neo4j is reachable and Cursor MCP works if you want the AI path.
 
@@ -33,38 +33,48 @@ NEO4J_PASSWORD=your-password
 
 `NEO4J_USERNAME` is accepted as a fallback for `NEO4J_USER`. If `NEO4J_URI` is empty, `NEO4J_DEFAULT_CONNECTION_DSN` may be used (full URL, optionally with embedded user/password). Inside Docker, prefer the Neo4j service hostname—not `localhost` from another container.
 
-Details: [README – Container Graph POC](../../README.md#container-graph-poc-llm-debugging).
+Details: [README – Exploring Your Container Dependency Graph](../../README.md#exploring-your-container-dependency-graph).
 
 ## What the Container Graph Represents
 
 `php artisan container:graph` snapshots:
 
-1. **Container bindings** from `app()->getBindings()` (abstract → concrete, plus `shared`)
-2. **Constructor dependencies** for concrete classes (typed constructor parameters)
-3. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+1. **Routes** from the live Laravel router (controller / invokable handlers; closures are skipped)
+2. **Route middleware** after groups and aliases are expanded (`Router::gatherRouteMiddleware()`)
+3. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+4. **Constructor and method-injection dependencies** for concrete classes
+5. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+6. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
-### Node labels
+### Runtime node labels
 
-| Labels | Meaning |
-|--------|---------|
-| `:Abstract` | Common entry label for binding keys and related nodes — start Browser queries with `MATCH (a:Abstract) …` |
-| `:Interface:Abstract` | Interface (or interface-like) binding key / dependency |
-| `:Class:Abstract` | Class node (binding key, concrete target, or discovered app class) |
-| `:AbstractType:Abstract` | Non-interface/non-class binding endpoints (for example closure/object descriptors); may include a `kind` property |
-| `:UnresolvedDependency:Abstract` | Placeholder for unresolved dependency names (`name`, `reason`) when such rows are written |
+| Label | Unique key | Meaning |
+|--------|------------|---------|
+| `:Route` | `key` (method + URI, e.g. `GET /api/contracts`) | HTTP route. `name` is Laravel’s route name (empty when unnamed). |
+| `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
+| `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
+| `:Dependency` | `key` | A dependency occurrence on an instance |
+| `:Identifier` | `name` | Class, interface, or alias used to resolve a handler, middleware, or dependency |
 
-### Relationships
+Bindings still also export `:Abstract` nodes with `BINDS_TO` (interface/class binding keys).
+
+### Runtime relationships
+
+```text
+(:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO {lifetime}]->(:Instance)
+  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Identifier)
+(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `BINDS_TO` | Container binding: abstract → concrete | `shared` (bool) |
-| `DEPENDS_ON` | Constructor dependency: class → dependency (class, interface, or unresolved node) | (none on the edge in the writer) |
-
-Patterns from the implementation / README:
-
-- `(:Interface:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is an interface
-- `(:Class:Abstract)-[:BINDS_TO {shared}]->(:Class:Abstract)` when the binding key is a class
-- `(:Class:Abstract)-[:DEPENDS_ON]->(:Class:Abstract|:Interface:Abstract|:UnresolvedDependency:Abstract)`
+| `HANDLED_BY` | Route action → controller/invokable identifier | — |
+| `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
+| `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
+| `RESOLVES_TO` | Identifier → instance | `lifetime` (`singleton` or `bind`) |
+| `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
+| `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
+| `CONTEXTUAL_BINDS` | Contextual `when/needs/give` | `needs`, `needs_kind`, `reason` |
 
 ## Export the Laravel Container Graph
 
@@ -75,10 +85,11 @@ php artisan container:graph
 ### What it does
 
 1. Extracts binding rows and concrete class names from the Laravel container.
-2. Scans production PSR-4 paths for additional project classes.
-3. Reflects constructors to build `DEPENDS_ON` edges (and unresolved rows when applicable).
-4. Prints a summary (binding count, classes inspected, dependency edges, unresolved count).
-5. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
+2. Extracts controller routes and expanded middleware from the live router.
+3. Scans production PSR-4 paths for additional project classes.
+4. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
+5. Prints a summary (bindings, instances, route handlers, route middleware links, static edges, unresolved count).
+6. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
 
 On success you see:
 
@@ -106,52 +117,48 @@ Writes use **`MERGE`**. Re-running the command does not duplicate the same nodes
 
 ![Exploring the exported Laravel container graph in Neo4j Browser](../media/demos/08-container-graph-browser.gif)
 
-Open Neo4j Browser (for local Docker Neo4j from setup: `http://localhost:7474`), sign in with your Neo4j user/password, then run queries from the [README examples](../../README.md#example-cypher-queries).
+Open Neo4j Browser (for local Docker Neo4j from setup: `http://localhost:7474`), sign in with your Neo4j user/password, then run:
 
-**Expand outward from binding keys:**
-
-```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..10]->(n)
-RETURN p
-LIMIT 200;
-```
-
-**Undirected neighborhood (no reverse edges in the model):**
+**Route, handler, dependencies, and middleware (graph view):**
 
 ```cypher
-MATCH p = (a:Abstract)-[:BINDS_TO|DEPENDS_ON*1..6]-(n)
-RETURN p
-LIMIT 200;
-```
-
-**List interface → class bindings:**
-
-```cypher
-MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
-RETURN i.name, c.name
+MATCH (r:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH deps = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+OPTIONAL MATCH mw = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+RETURN r, root, deps, mw
 LIMIT 25;
+```
+
+**Middleware pipeline as a graph (return paths, not scalar columns):**
+
+```cypher
+MATCH path = (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+RETURN path
+ORDER BY r.key, u.order
+LIMIT 50;
+```
+
+**Middleware names as a table:**
+
+```cypher
+MATCH (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+RETURN r.key AS route, u.order AS order, m.name AS middleware, u.parameters AS parameters
+ORDER BY route, order
+LIMIT 50;
 ```
 
 **Walk dependencies of one class** (replace the name with a class that exists in *your* export):
 
 ```cypher
-MATCH p = (:Class:Abstract {name: 'App\\Services\\FooService'})-[:DEPENDS_ON*1..4]->(d)
-RETURN p
-LIMIT 10;
-```
-
-**Unresolved constructor dependencies** (if any were exported):
-
-```cypher
-MATCH (c:Class:Abstract)-[:DEPENDS_ON]->(u:UnresolvedDependency:Abstract)
-RETURN c.name, u.name, u.reason
+MATCH (i:Instance {name: 'App\\Services\\FooService'})-[d:DEPENDS_ON]->(dep:Dependency)-[:IDENTIFIED_AS]->(id:Identifier)
+RETURN i.name, dep.key, id.name, d.type
 LIMIT 25;
 ```
 
 Tips:
 
-- Prefer `:Abstract` as the starting label when browsing bindings.
-- Switch Browser to graph view to see `BINDS_TO` / `DEPENDS_ON` paths visually.
+- Return **paths or nodes** (`RETURN path`) for the Graph tab. `RETURN r.key, m.name` is table-only.
+- Caption Route on `key`, Middleware on `name`, Identifier/Instance on `name`.
 - You can also run the same Cypher via MCP `read-cypher` (see [cursor-mcp-tools.md](cursor-mcp-tools.md)); for “what does class X depend on?” prefer `get-class-dependency-graph`.
 
 ## Query the Dependency Graph with MCP
@@ -210,41 +217,40 @@ Replace `App\Services\FooService` with a real FQCN from your application (or fro
 
 ## Practical Debugging Example
 
-Suppose your app binds an interface to a concrete class, and a service depends on that interface:
+Suppose a named API route uses `auth:api` and a permission alias, and the controller depends on a filesystem contract:
 
 ```text
-App\Contracts\PaymentGateway          (:Interface:Abstract)
-        │ BINDS_TO {shared: true/false}
+GET /api/contracts                         (:Route)
+        │ HANDLED_BY
         ▼
-App\Services\StripePaymentGateway     (:Class:Abstract)
+App\Http\Controllers\ContractController    (:Identifier) -[:RESOLVES_TO]-> (:Instance)
+        │ DEPENDS_ON → IDENTIFIED_AS
+        ▼
+Illuminate\Contracts\Filesystem\Filesystem (:Identifier)
 
-App\Services\CheckoutService          (:Class:Abstract)
-        │ DEPENDS_ON
+GET /api/contracts                         (:Route)
+        │ USES_MIDDLEWARE {order: 1, parameters: "api"}
         ▼
-App\Contracts\PaymentGateway          (:Interface:Abstract)
+auth                                       (:Middleware) -[:IDENTIFIED_AS]-> auth (:Identifier)
 ```
 
 How to investigate with this package:
 
 1. Run `php artisan container:graph` so those nodes/edges exist in Neo4j.
-2. In Browser, confirm the binding:
+2. In Browser, confirm the route and middleware (graph view):
 
    ```cypher
-   MATCH (i:Interface:Abstract)-[:BINDS_TO]->(c:Class:Abstract)
-   WHERE i.name CONTAINS 'Payment'
-   RETURN i.name, c.name, c
-   LIMIT 25;
+   MATCH path = (r:Route {key: 'GET /api/contracts'})-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+   RETURN path
    ```
 
-3. Ask Cursor (or call the tool) for the service:
+3. Ask Cursor (or call the tool) for the controller:
 
-   > Use `get-class-dependency-graph` for `App\Services\CheckoutService`, `direction` `outbound`, `include_bindings` true.
+   > Use `get-class-dependency-graph` for `App\Http\Controllers\ContractController`, `direction` `outbound`, `include_bindings` true.
 
-4. Read the structured `dependencies` (constructor chain) and any `binding` info. Follow `BINDS_TO` from the interface to see which implementation the container uses.
+4. Read the structured `dependencies` and follow `RESOLVES_TO` / `BINDS_TO` to see which implementation the container uses.
 
-The graph makes the indirection visible: **service → interface dependency → bound implementation**, instead of hunting only through providers and type-hints.
-
-(Use your real class names; the `PaymentGateway` / `CheckoutService` names above are illustrative of the **label and relationship pattern**, not fixtures shipped in the package.)
+(Use your real class and route keys; the names above are illustrative.)
 
 ## Cursor / AI-Assisted Workflow
 
@@ -260,10 +266,10 @@ Cursor
 
 Typical loop:
 
-1. Change bindings or constructors in Laravel.
+1. Change bindings, constructors, routes, or middleware in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Abstract` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 
@@ -271,13 +277,14 @@ Prerequisite: export must have run successfully for that class; otherwise the to
 
 | Symptom | What to do |
 |---------|------------|
-| `Failed to write container graph: …` / cannot connect | Check `NEO4J_URI` (or `NEO4J_DEFAULT_CONNECTION_DSN`), user, and password. In Docker, avoid `localhost` for the Neo4j host. See [README – Troubleshooting](../../README.md#troubleshooting) |
-| `get-class-dependency-graph` → `graph_export_required` / not found | Run `php artisan container:graph` in the same app; confirm the FQCN matches an exported `:Abstract {name}` |
+| `Failed to write container graph: …` / cannot connect | Check `NEO4J_URI` (or `NEO4J_DEFAULT_CONNECTION_DSN`), user, and password. In Docker, avoid `localhost` for the Neo4j host. See [README – Troubleshooting](../../README.md#common-issues--troubleshooting) |
+| `get-class-dependency-graph` → `graph_export_required` / not found | Run `php artisan container:graph` in the same app; confirm the FQCN matches an exported `:Instance {name}` or `:Identifier {name}` |
+| Blank Middleware captions in Browser | Nodes use `name` for captions; re-export with v1.1.0+ or caption Middleware on `key` |
 | Empty or thin graph | Confirm the app has container bindings and PSR-4 production classes; try `--dry-run` to inspect counts before writing |
 | Stale edges after refactor | Re-run `container:graph` (MERGE upserts). Old removed types may still remain until you clean the DB manually—there is no built-in “delete entire previous export” flag |
 | Wrong database / credentials after `.env` change | `php artisan config:clear` if you use config caching; re-publish config if you maintain a published `neo4j-boost.php` |
 
-More reference: [README – Container Graph POC](../../README.md#container-graph-poc-llm-debugging).
+More reference: [README – Exploring Your Container Dependency Graph](../../README.md#exploring-your-container-dependency-graph).
 
 ## What's Next?
 
@@ -288,4 +295,4 @@ Tutorial series:
 3. [Using Neo4j MCP Tools in Cursor](cursor-mcp-tools.md) — schema and Cypher tools
 4. **Debug Laravel DI with the Container Graph** (this page)
 
-Reference: [README – Container Graph POC](../../README.md#container-graph-poc-llm-debugging), [README – Using with Cursor](../../README.md#using-with-cursor)
+Reference: [README – Exploring Your Container Dependency Graph](../../README.md#exploring-your-container-dependency-graph), [README – Cursor](../../README.md#cursor)

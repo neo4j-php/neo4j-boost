@@ -8,9 +8,9 @@ By the end you will:
 
 1. Install the package with Composer
 2. Run interactive setup (`neo4j-boost:setup`)
-3. Confirm STDIO readiness with the doctor (`neo4j-boost:doctor`)
+3. Confirm readiness with the doctor (`neo4j-boost:doctor`)
 
-The default path uses **STDIO transport**: Laravel Boost’s MCP server talks to a local official `neo4j-mcp` binary, which connects to Neo4j.
+The default path uses **driver transport**: Neo4j tools run in PHP over Bolt via `laudis/neo4j-php-client`. No `neo4j-mcp` binary is required. You can switch to **stdio** (local official binary) or **http** later.
 
 If you only need the conceptual overview first, read [What is Neo4j Boost?](what-is-neo4j-boost.md).
 
@@ -32,7 +32,7 @@ Pulled in automatically when you require this package:
 For the **local** onboarding path in this tutorial (setup auto-starting Neo4j):
 
 - **Docker** available on your machine (`neo4j-boost:start-neo4j` uses the Docker CLI)
-- Network access to download the official Neo4j MCP binary from GitHub releases
+- Network access only if you later install the official Neo4j MCP binary (`neo4j-boost:install-mcp`)
 
 Optional:
 
@@ -50,7 +50,7 @@ composer require neo4j/laravel-boost
 
 This installs `neo4j/laravel-boost` and its Composer dependencies (including Laravel Boost). Laravel auto-discovers `Neo4j\LaravelBoost\Neo4jBoostServiceProvider`, which registers the Artisan commands used below.
 
-Before setup, set Neo4j credentials in your app `.env`. A password is required for STDIO readiness and for starting local Neo4j:
+Before setup, set Neo4j credentials in your app `.env`. A password is required for doctor checks and for starting local Neo4j:
 
 ```env
 NEO4J_URI=bolt://localhost:7687
@@ -62,13 +62,13 @@ How these variables are used:
 
 | Variable | Read by this package? | Role |
 |----------|----------------------|------|
-| `NEO4J_URI` | Yes | Passed to the `neo4j-mcp` STDIO subprocess; also used by Bolt/driver and container-graph config |
+| `NEO4J_URI` | Yes | Bolt URI for driver transport, container-graph export, and optional STDIO/HTTP MCP |
 | `NEO4J_USERNAME` | Yes | Same as above |
-| `NEO4J_PASSWORD` | Yes | Required for STDIO readiness, `start-neo4j`, and STDIO tool calls |
-| `NEO4J_MCP_TRANSPORT` | Yes | Selects package transport: `stdio` (default), `http`, or `driver` |
+| `NEO4J_PASSWORD` | Yes | Required for doctor, `start-neo4j`, and Neo4j tool calls |
+| `NEO4J_MCP_TRANSPORT` | Yes | Selects package transport: `driver` (default), `stdio`, or `http` |
 | `NEO4J_TRANSPORT_MODE` | **No** | Not read by `config/neo4j-boost.php`. Setup’s console reminder still prints it (and the README shows it in some STDIO examples); it is for the official Neo4j MCP binary / container, not for selecting this package’s transport |
 
-You normally do **not** need to set `NEO4J_MCP_TRANSPORT` for this tutorial—it defaults to `stdio`. Set it only if you switch to `http` or `driver` later. See [README – Configuration](../../README.md#configuration).
+You normally do **not** need to set `NEO4J_MCP_TRANSPORT` for this tutorial—it defaults to `driver`. Set it only if you switch to `stdio` or `http` later. See [README – Transport modes](../../README.md#transport-modes).
 
 Setup does **not** write these values into `.env`; you set them yourself.
 
@@ -105,7 +105,7 @@ It does **not** replace reading the README for advanced transports or full confi
 
    `Boost MCP -> STDIO -> neo4j-mcp binary`
 
-   It also prints an `.env` reminder that includes `NEO4J_TRANSPORT_MODE=stdio` plus `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`. For this package, keep `NEO4J_PASSWORD` (and usually URI/username) set as in the [Installation](#installation) section; package transport is selected with `NEO4J_MCP_TRANSPORT`, which already defaults to `stdio`.
+   It also prints an `.env` reminder that includes `NEO4J_TRANSPORT_MODE=stdio` plus `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD`. For this package, keep `NEO4J_PASSWORD` (and usually URI/username) set as in the [Installation](#installation) section; package transport is selected with `NEO4J_MCP_TRANSPORT`, which already defaults to `driver`.
 
 2. **Install the Neo4j MCP binary?**
 
@@ -234,7 +234,7 @@ When `NEO4J_MCP_TRANSPORT` is **not** `stdio`, doctor does **not** print `STDIO 
 | Neo4j MCP HTTP | `reachable` / `not reachable` |
 | Configured URL | HTTP MCP URL from config (default `http://localhost:8080/mcp`) |
 
-The non-stdio architecture line also describes an HTTP hop (`… -> HTTP -> neo4j-mcp -> Neo4j`), including when transport is `driver`. That UI path is shared for every non-`stdio` value today; `driver` mode itself runs tools in-process over Bolt and does not require the `neo4j-mcp` binary. Prefer STDIO for this tutorial. Details: [README – Configuration](../../README.md#configuration).
+The non-stdio architecture line also describes an HTTP hop (`… -> HTTP -> neo4j-mcp -> Neo4j`), including when transport is `driver`. That UI path is shared for every non-`stdio` value today; `driver` mode itself runs tools in-process over Bolt and does not require the `neo4j-mcp` binary. Driver is the default; use STDIO only if you install the `neo4j-mcp` binary. Details: [README – Configuration](../../README.md#transport-modes).
 
 ## Troubleshooting
 
@@ -246,9 +246,9 @@ Common issues for this onboarding path:
 | Doctor: Neo4j MCP binary missing | Re-run `php artisan neo4j-boost:setup` or `php artisan neo4j-boost:install-mcp` |
 | Setup could not auto-start Neo4j | Ensure Docker is running and password is set; run `php artisan neo4j-boost:start-neo4j` |
 | Existing container missing APOC settings | `php artisan neo4j-boost:start-neo4j --recreate` |
-| Cursor / `boost:mcp` JSON or “boost namespace” errors | Open the **Laravel app** folder as the Cursor workspace and ensure `.cursor/mcp.json` exists. Laravel Boost registers `boost:mcp` when `APP_ENV=local` **or** `APP_DEBUG=true`. In a normal app `.env` that already has `APP_ENV=local`, you usually need nothing extra. If Boost commands are missing, set `APP_ENV=local` in `.env`, or add `"env": { "APP_ENV": "local" }` under the `laravel-boost` entry in `.cursor/mcp.json` (see [README – Troubleshooting](../../README.md#troubleshooting)) |
+| Cursor / `boost:mcp` JSON or “boost namespace” errors | Open the **Laravel app** folder as the Cursor workspace and ensure `.cursor/mcp.json` exists. Laravel Boost registers `boost:mcp` when `APP_ENV=local` **or** `APP_DEBUG=true`. In a normal app `.env` that already has `APP_ENV=local`, you usually need nothing extra. If Boost commands are missing, set `APP_ENV=local` in `.env`, or add `"env": { "APP_ENV": "local" }` under the `laravel-boost` entry in `.cursor/mcp.json` (see [README – Troubleshooting](../../README.md#common-issues--troubleshooting)) |
 
-For the full list (HTTP MCP, Docker hostnames, GDS, and more), see [README – Troubleshooting](../../README.md#troubleshooting).
+For the full list (HTTP MCP, Docker hostnames, GDS, and more), see [README – Troubleshooting](../../README.md#common-issues--troubleshooting).
 
 Optional deeper STDIO check after doctor looks good:
 
@@ -263,4 +263,4 @@ php artisan neo4j-boost:test-stdio --tool=get-schema
 - Overview: [What is Neo4j Boost?](what-is-neo4j-boost.md)
 - Next: [Using Neo4j MCP Tools in Cursor](cursor-mcp-tools.md)
 - Then: [Debug Laravel DI with the Container Graph](container-graph.md)
-- README reference: [Using with Cursor](../../README.md#using-with-cursor), [Single MCP server with Laravel Boost](../../README.md#single-mcp-server-with-laravel-boost)
+- README reference: [Cursor](../../README.md#cursor), [5-minute Quick Start](../../README.md#5-minute-quick-start)

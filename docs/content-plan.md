@@ -75,7 +75,7 @@ Do **not** duplicate these as separate tutorials. Tutorials should link out and 
 | Installation & transports | README → Installation / Configuration | Documentation/reference | `NEO4J_MCP_TRANSPORT` (`stdio` / `http` / `driver`), env vars, Docker MCP example | All users | Copy env blocks and commands from README | P0 | **Exists** |
 | Artisan command list | README → Artisan commands | Documentation/reference | Full command table including setup, doctor, test-stdio, container:graph | All users | `php artisan …` reference | P0 | **Exists** |
 | Cursor MCP entry shape | README → Single MCP server / Using with Cursor | Documentation/reference | `laravel-boost` → `php artisan boost:mcp` | Cursor users | JSON snippet in README | P0 | **Exists** |
-| Container graph model & Cypher | README → Container Graph POC | Documentation/reference | Labels/relationships and example queries | Users exploring DI graphs | `MATCH (a:Abstract)-[:BINDS_TO\|DEPENDS_ON*…]` examples | P0 | **Exists** |
+| Container graph model & Cypher | README → Exploring Your Container Dependency Graph | Documentation/reference | Route / Middleware / Instance / Identifier labels and example queries | Users exploring DI graphs | `MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(:Middleware)…` | P0 | **Exists** |
 | Troubleshooting | README → Troubleshooting | Documentation/reference | APP_ENV / MCP JSON / APOC / GDS / Docker host pitfalls | Users hitting errors | Error → fix bullets | P0 | **Exists** |
 | Release notes | `CHANGELOG.md` | Documentation/reference | Version history | All users | Link from README | P0 | **Exists** |
 

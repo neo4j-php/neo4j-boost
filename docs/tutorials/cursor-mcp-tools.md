@@ -15,7 +15,7 @@ For package concepts, see [What is Neo4j Boost?](what-is-neo4j-boost.md). For in
 Complete [Getting Started with Neo4j Boost](getting-started.md) first (or equivalent setup), so that:
 
 - `neo4j/laravel-boost` is installed in a Laravel 12/13 app
-- STDIO (or another configured transport) is ready — typically `php artisan neo4j-boost:doctor` reports a healthy STDIO setup
+- Driver (or another configured transport) is ready — typically `php artisan neo4j-boost:doctor` reports a healthy setup
 - Neo4j is reachable with valid credentials (`NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`)
 
 You also need:
@@ -35,15 +35,15 @@ Cursor
         → Neo4j
 ```
 
-Transport is selected with **`NEO4J_MCP_TRANSPORT`** (default `stdio`):
+Transport is selected with **`NEO4J_MCP_TRANSPORT`** (default `driver`):
 
 | Value | What Neo4j Boost tools do |
 |-------|---------------------------|
-| `stdio` (default) | Spawn the local official `neo4j-mcp` binary and call tools over STDIO |
+| `driver` (default) | Run the same tool names in-process over Bolt (`laudis/neo4j-php-client`); no `neo4j-mcp` binary |
+| `stdio` | Spawn the local official `neo4j-mcp` binary and call tools over STDIO |
 | `http` | Call a Neo4j MCP HTTP endpoint (`NEO4J_MCP_URL`, default `http://localhost:8080/mcp`) |
-| `driver` | Run the same tool names in-process over Bolt (`laudis/neo4j-php-client`); no `neo4j-mcp` binary |
 
-Do not confuse this with **`NEO4J_TRANSPORT_MODE`**, which is used when configuring the **official Neo4j MCP binary/container**. This package’s Laravel config reads `NEO4J_MCP_TRANSPORT`, not `NEO4J_TRANSPORT_MODE`. See [README – Configuration](../../README.md#configuration).
+Do not confuse this with **`NEO4J_TRANSPORT_MODE`**, which is used when configuring the **official Neo4j MCP binary/container**. This package’s Laravel config reads `NEO4J_MCP_TRANSPORT`, not `NEO4J_TRANSPORT_MODE`. See [README – Transport modes](../../README.md#transport-modes).
 
 Cursor’s connection to `boost:mcp` is always a local stdio command in `.cursor/mcp.json`. The Neo4j hop behind it follows `NEO4J_MCP_TRANSPORT`.
 
@@ -97,11 +97,11 @@ Laravel Boost registers `boost:mcp` when **`APP_ENV=local`** or **`APP_DEBUG=tru
 }
 ```
 
-That `env` block is recommended in the README for this package’s own workbench/repo; it is optional when `.env` already enables Boost. See [README – Using with Cursor](../../README.md#using-with-cursor) and [Troubleshooting](../../README.md#troubleshooting).
+That `env` block is recommended in the README for this package’s own workbench/repo; it is optional when `.env` already enables Boost. See [README – Using with Cursor](../../README.md#cursor) and [Troubleshooting](../../README.md#common-issues--troubleshooting).
 
 ## Start / Reload MCP in Cursor
 
-From the [README – Using with Cursor](../../README.md#using-with-cursor) workflow:
+From the [README – Using with Cursor](../../README.md#cursor) workflow:
 
 1. Open the **Laravel application** directory as the Cursor workspace.
 2. Confirm `.cursor/mcp.json` exists (run `neo4j-boost:cursor-config` if needed).
@@ -218,11 +218,11 @@ Verified issues from the README and package behavior:
 | APOC / schema meta errors on local Docker Neo4j | `php artisan neo4j-boost:start-neo4j --recreate` |
 | GDS / `list-gds-procedures` errors | Install and allowlist GDS; other tools still work without GDS |
 
-Full reference: [README – Troubleshooting](../../README.md#troubleshooting).
+Full reference: [README – Troubleshooting](../../README.md#common-issues--troubleshooting).
 
 ## What's Next?
 
 - Previous: [Getting Started](getting-started.md)
 - Overview: [What is Neo4j Boost?](what-is-neo4j-boost.md)
 - Next: [Debug Laravel DI with the Container Graph](container-graph.md)
-- README: [Using with Cursor](../../README.md#using-with-cursor), [Single MCP server with Laravel Boost](../../README.md#single-mcp-server-with-laravel-boost), [Container Graph POC](../../README.md#container-graph-poc-llm-debugging)
+- README: [Cursor](../../README.md#cursor), [5-minute Quick Start](../../README.md#5-minute-quick-start), [Container graph](../../README.md#exploring-your-container-dependency-graph)

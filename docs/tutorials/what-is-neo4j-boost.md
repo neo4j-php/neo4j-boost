@@ -4,7 +4,7 @@
 
 **Neo4j Boost** (`neo4j/laravel-boost`) is a Laravel package that adds Neo4j tools to [Laravel Boost](https://github.com/laravel/boost)’s MCP server. AI coding assistants—such as Cursor—can then inspect a Neo4j schema, run Cypher, and explore Laravel dependency wiring while you work in the IDE.
 
-By default it talks to the [official Neo4j MCP server](https://github.com/neo4j/mcp/releases) over **stdio** (local `neo4j-mcp` binary). You can instead use **http** (a remote Neo4j MCP server) or **driver** (in-process Bolt via `laudis/neo4j-php-client`, without the MCP binary).
+By default it talks to Neo4j over **driver** transport (in-process Bolt via `laudis/neo4j-php-client`, without the MCP binary). You can instead use **stdio** (local [official Neo4j MCP server](https://github.com/neo4j/mcp/releases) binary) or **http** (a remote Neo4j MCP server).
 
 [MCP](#mcp) (Model Context Protocol) is a standard way for AI clients to discover and invoke tools. Neo4j Boost registers its tools on the same MCP session as Laravel Boost (`php artisan boost:mcp`).
 
@@ -31,7 +31,7 @@ Working with Neo4j from a Laravel app often means context-switching: Neo4j Brows
 - Neo4j tools are registered on Laravel Boost’s MCP server (`php artisan boost:mcp`), so you get Boost tools and Neo4j tools from **one** MCP entry
 - Interactive setup (`neo4j-boost:setup`), local Neo4j via Docker (`neo4j-boost:start-neo4j`), and diagnostics (`neo4j-boost:doctor`)
 - Optional export of Laravel container wiring into Neo4j (`container:graph`) for dependency debugging
-- Three transports: **stdio** (default local binary), **http** (remote MCP server), or **driver** (in-process Bolt via `laudis/neo4j-php-client`)
+- Three transports: **driver** (default, in-process Bolt), **stdio** (local `neo4j-mcp` binary), or **http** (remote MCP server)
 
 ## Neo4j + Laravel
 
@@ -45,16 +45,15 @@ php artisan neo4j-boost:setup
 php artisan neo4j-boost:start-neo4j   # local Neo4j for STDIO mode (Docker required)
 ```
 
-Configure Neo4j credentials in `.env` (STDIO mode example):
+Configure Neo4j credentials in `.env` (driver default):
 
 ```env
-NEO4J_MCP_TRANSPORT=stdio
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your-password
 ```
 
-`NEO4J_MCP_TRANSPORT` selects how this package runs Neo4j MCP tools (`stdio`, `http`, or `driver`). Defaults to `stdio`.
+`NEO4J_MCP_TRANSPORT` selects how this package runs Neo4j MCP tools (`driver`, `stdio`, or `http`). Defaults to `driver`.
 
 **What this package provides in Laravel:**
 
@@ -83,7 +82,7 @@ For full install steps and transport options, see the [README](../../README.md).
 }
 ```
 
-That is what `neo4j-boost:cursor-config` writes when Laravel Boost is present. If `boost:mcp` does not register (for example in this package’s own workbench), add `"env": { "APP_ENV": "local" }` to the server entry, or set `APP_ENV=local` in `.env`—see the [README](../../README.md#using-with-cursor).
+That is what `neo4j-boost:cursor-config` writes when Laravel Boost is present. If `boost:mcp` does not register (for example in this package’s own workbench), add `"env": { "APP_ENV": "local" }` to the server entry, or set `APP_ENV=local` in `.env`—see the [README](../../README.md#cursor).
 
 Neo4j Boost registers these tools on that server:
 
@@ -171,10 +170,9 @@ Reference (README):
 
 | Topic | Where to go |
 |-------|-------------|
-| Installation & transports | [README – Installation](../../README.md#installation) |
-| Single MCP server with Laravel Boost | [README – Single MCP server with Laravel Boost](../../README.md#single-mcp-server-with-laravel-boost) |
-| Using with Cursor | [README – Using with Cursor](../../README.md#using-with-cursor) |
-| Artisan commands & container graph | [README – Artisan commands](../../README.md#artisan-commands) / [Container Graph POC](../../README.md#container-graph-poc-llm-debugging) |
-| Configuration & troubleshooting | [README – Configuration](../../README.md#configuration) / [Troubleshooting](../../README.md#troubleshooting) |
+| Installation & transports | [README – Installation](../../README.md#installation) / [Transport modes](../../README.md#transport-modes) |
+| MCP client setup | [README – 5-minute Quick Start](../../README.md#5-minute-quick-start) / [Cursor](../../README.md#cursor) |
+| Artisan commands & container graph | [README – Artisan commands](../../README.md#available-artisan-commands) / [Container graph](../../README.md#exploring-your-container-dependency-graph) |
+| Troubleshooting | [README – Common issues](../../README.md#common-issues--troubleshooting) |
 
 Release history: [CHANGELOG.md](../../CHANGELOG.md).

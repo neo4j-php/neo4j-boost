@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-14
+
 ### Added
 
-- **Route middleware export** for `container:graph`: `(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)`, expanding middleware groups/aliases via Laravel's router.
-- Documentation media layout under `docs/media/` with README GIF embeds for Neo4j Boost workflow demonstrations.
+- **Runtime dependency graph** for `container:graph`: `(:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(:Instance)-[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Identifier)`.
+- **Route middleware export**: `(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)`, expanding middleware groups and aliases from the live Laravel router.
+- Tutorials, architecture diagrams, copy-paste prompt library, dedicated troubleshooting guide, and README GIF demos under `docs/`.
+
+### Changed
+
+- README onboarding now leads with Installation and a 5-minute Quick Start.
+- Boost guidelines and container-graph docs describe the runtime Route / Middleware / Identifier model (including `Middleware.name` for Neo4j Browser captions).
 
 ## [1.0.1] - 2026-07-13
 
@@ -62,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public semver release under `neo4j/laravel-boost` (previously `1.0.0` placeholder in `composer.json`).
 
+[1.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.0
 [1.0.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.1
 [1.0.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.0
 [0.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v0.1.0
