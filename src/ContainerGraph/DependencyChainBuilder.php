@@ -8,7 +8,7 @@ use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 
 /**
- * Builds Instance → Dependency → Identifier export rows (SOFT-58).
+ * Builds Instance → Dependency → Abstract export rows (SOFT-58).
  *
  * @phpstan-type DependencyChainRow array{
  *     instance: string,

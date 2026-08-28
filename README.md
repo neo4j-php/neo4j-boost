@@ -144,15 +144,15 @@ php artisan container:graph --print-cypher
 The export uses this runtime model:
 
 ```text
-(:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(:Instance)
-  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Identifier)
-(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+(:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(:Instance)
+  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)
+(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 ```
 
-Bindings still also export `:Abstract` / `BINDS_TO`. Explore routes and middleware in Neo4j Browser with:
+`:Abstract` is the container lookup key (same idea as `make($abstract)`), with secondary labels `Interface` / `Class` / `AbstractType`. Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
 
 ```cypher
-MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)
 RETURN path
 LIMIT 50
 ```

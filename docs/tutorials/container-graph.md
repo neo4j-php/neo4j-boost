@@ -54,16 +54,16 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Identifier` | `name` | Class, interface, or alias used to resolve a handler, middleware, or dependency |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
 
 Bindings still also export `:Abstract` nodes with `BINDS_TO` (interface/class binding keys).
 
 ### Runtime relationships
 
 ```text
-(:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO {lifetime}]->(:Instance)
-  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Identifier)
-(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+(:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+  -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)
+(:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 ```
 
 | Type | Meaning | Properties |
@@ -71,7 +71,7 @@ Bindings still also export `:Abstract` nodes with `BINDS_TO` (interface/class bi
 | `HANDLED_BY` | Route action → controller/invokable identifier | — |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
-| `RESOLVES_TO` | Identifier → instance | `lifetime` (`singleton` or `bind`) |
+| `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
 | `CONTEXTUAL_BINDS` | Contextual `when/needs/give` | `needs`, `needs_kind`, `reason` |
@@ -122,9 +122,9 @@ Open Neo4j Browser (for local Docker Neo4j from setup: `http://localhost:7474`),
 **Route, handler, dependencies, and middleware (graph view):**
 
 ```cypher
-MATCH (r:Route)-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(root:Instance)
+MATCH (r:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH deps = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
-OPTIONAL MATCH mw = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+OPTIONAL MATCH mw = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 RETURN r, root, deps, mw
 LIMIT 25;
 ```
@@ -132,7 +132,7 @@ LIMIT 25;
 **Middleware pipeline as a graph (return paths, not scalar columns):**
 
 ```cypher
-MATCH path = (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+MATCH path = (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)
 RETURN path
 ORDER BY r.key, u.order
 LIMIT 50;
@@ -141,7 +141,7 @@ LIMIT 50;
 **Middleware names as a table:**
 
 ```cypher
-MATCH (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+MATCH (r:Route)-[u:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)
 RETURN r.key AS route, u.order AS order, m.name AS middleware, u.parameters AS parameters
 ORDER BY route, order
 LIMIT 50;
@@ -150,15 +150,15 @@ LIMIT 50;
 **Walk dependencies of one class** (replace the name with a class that exists in *your* export):
 
 ```cypher
-MATCH (i:Instance {name: 'App\\Services\\FooService'})-[d:DEPENDS_ON]->(dep:Dependency)-[:IDENTIFIED_AS]->(id:Identifier)
-RETURN i.name, dep.key, id.name, d.type
+MATCH (i:Instance {name: 'App\\Services\\FooService'})-[d:DEPENDS_ON]->(dep:Dependency)-[:IDENTIFIED_AS]->(a:Abstract)
+RETURN i.name, dep.key, a.name, d.type
 LIMIT 25;
 ```
 
 Tips:
 
 - Return **paths or nodes** (`RETURN path`) for the Graph tab. `RETURN r.key, m.name` is table-only.
-- Caption Route on `key`, Middleware on `name`, Identifier/Instance on `name`.
+- Caption Route on `key`, Middleware on `name`, Abstract/Instance on `name`.
 - You can also run the same Cypher via MCP `read-cypher` (see [cursor-mcp-tools.md](cursor-mcp-tools.md)); for “what does class X depend on?” prefer `get-class-dependency-graph`.
 
 ## Query the Dependency Graph with MCP
@@ -223,15 +223,15 @@ Suppose a named API route uses `auth:api` and a permission alias, and the contro
 GET /api/contracts                         (:Route)
         │ HANDLED_BY
         ▼
-App\Http\Controllers\ContractController    (:Identifier) -[:RESOLVES_TO]-> (:Instance)
+App\Http\Controllers\ContractController    (:Abstract) -[:RESOLVES_TO]-> (:Instance)
         │ DEPENDS_ON → IDENTIFIED_AS
         ▼
-Illuminate\Contracts\Filesystem\Filesystem (:Identifier)
+Illuminate\Contracts\Filesystem\Filesystem (:Abstract)
 
 GET /api/contracts                         (:Route)
         │ USES_MIDDLEWARE {order: 1, parameters: "api"}
         ▼
-auth                                       (:Middleware) -[:IDENTIFIED_AS]-> auth (:Identifier)
+auth                                       (:Middleware) -[:IDENTIFIED_AS]-> auth (:Abstract)
 ```
 
 How to investigate with this package:
@@ -240,7 +240,7 @@ How to investigate with this package:
 2. In Browser, confirm the route and middleware (graph view):
 
    ```cypher
-   MATCH path = (r:Route {key: 'GET /api/contracts'})-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+   MATCH path = (r:Route {key: 'GET /api/contracts'})-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)
    RETURN path
    ```
 
@@ -278,7 +278,7 @@ Prerequisite: export must have run successfully for that class; otherwise the to
 | Symptom | What to do |
 |---------|------------|
 | `Failed to write container graph: …` / cannot connect | Check `NEO4J_URI` (or `NEO4J_DEFAULT_CONNECTION_DSN`), user, and password. In Docker, avoid `localhost` for the Neo4j host. See [README – Troubleshooting](../../README.md#common-issues--troubleshooting) |
-| `get-class-dependency-graph` → `graph_export_required` / not found | Run `php artisan container:graph` in the same app; confirm the FQCN matches an exported `:Instance {name}` or `:Identifier {name}` |
+| `get-class-dependency-graph` → `graph_export_required` / not found | Run `php artisan container:graph` in the same app; confirm the FQCN matches an exported `:Instance {name}` or `:Abstract {name}` |
 | Blank Middleware captions in Browser | Nodes use `name` for captions; re-export with v1.1.0+ or caption Middleware on `key` |
 | Empty or thin graph | Confirm the app has container bindings and PSR-4 production classes; try `--dry-run` to inspect counts before writing |
 | Stale edges after refactor | Re-run `container:graph` (MERGE upserts). Old removed types may still remain until you clean the DB manually—there is no built-in “delete entire previous export” flag |

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Unified graph lookup names onto `:Abstract` (removed separate `:Identifier`). Routes, middleware, and dependencies now hook into the same container abstract nodes as `BINDS_TO`, so the graph stays continuously traversable.
 ## [1.1.0] - 2026-08-14
 
 ### Added

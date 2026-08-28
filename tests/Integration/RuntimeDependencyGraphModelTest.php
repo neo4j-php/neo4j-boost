@@ -13,8 +13,8 @@ use Neo4j\LaravelBoost\Tests\TestCase;
 
 /**
  * Acceptance coverage for the runtime dependency graph model:
- * Route -> Identifier -> Instance -> Dependency -> Identifier
- * Route -> Middleware -> Identifier.
+ * Route -> Abstract -> Instance -> Dependency -> Abstract
+ * Route -> Middleware -> Abstract.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -77,15 +77,18 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('routes', $templates);
         $this->assertArrayHasKey('route_middleware', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
-        $this->assertArrayHasKey('identifier_resolves_to', $templates);
+        $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
         $this->assertStringContainsString('USES_MIDDLEWARE', $templates['route_middleware']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
-        $this->assertStringContainsString('RESOLVES_TO', $templates['identifier_resolves_to']);
+        $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
+        $this->assertStringContainsString(':Abstract', $templates['routes']);
+        $this->assertStringNotContainsString(':Identifier', $templates['routes']);
 
         $traversal = RuntimeGraphModel::routeTraversalCypher();
         $this->assertStringContainsString('DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*', $traversal);
         $this->assertStringContainsString('USES_MIDDLEWARE', $traversal);
+        $this->assertStringContainsString(':Abstract', $traversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void

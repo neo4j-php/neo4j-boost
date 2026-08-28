@@ -8,7 +8,7 @@ use Illuminate\Routing\Router;
 
 /**
  * Discovers middleware attached to exportable controller routes and maps each
- * entry to a Middleware node identified by a container Identifier.
+ * entry to a Middleware node identified by a container Abstract.
  *
  * Uses {@see Router::gatherRouteMiddleware()} so middleware groups and aliases
  * are expanded the same way Laravel dispatches the route.
