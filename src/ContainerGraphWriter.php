@@ -15,29 +15,19 @@ class ContainerGraphWriter
 {
     private const CYPHER_BINDINGS = <<<'CYPHER'
 UNWIND $rows AS row
-FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.abstract})
-)
-FOREACH (_ IN CASE WHEN row.abstractKind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.abstract})
-)
-FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' AND row.abstractKind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (a:AbstractType:Abstract {name: row.abstract})
-  SET a.kind = row.abstractKind
-)
-FOREACH (_ IN CASE WHEN row.concreteKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.concrete})
-)
-FOREACH (_ IN CASE WHEN row.concreteKind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.concrete})
-)
-FOREACH (_ IN CASE WHEN row.concreteKind <> 'Interface' AND row.concreteKind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (c:AbstractType:Abstract {name: row.concrete})
-  SET c.kind = row.concreteKind
-)
-WITH row
-MATCH (a:Abstract {name: row.abstract})
-MATCH (c:Abstract {name: row.concrete})
+MERGE (a:Abstract {name: row.abstract})
+SET a.kind = row.abstractKind
+REMOVE a:Interface, a:Class, a:AbstractType
+FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END | SET a:Interface)
+FOREACH (_ IN CASE WHEN row.abstractKind = 'Class' THEN [1] ELSE [] END | SET a:Class)
+FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' AND row.abstractKind <> 'Class' THEN [1] ELSE [] END | SET a:AbstractType)
+WITH row, a
+MERGE (c:Abstract {name: row.concrete})
+SET c.kind = row.concreteKind
+REMOVE c:Interface, c:Class, c:AbstractType
+FOREACH (_ IN CASE WHEN row.concreteKind = 'Interface' THEN [1] ELSE [] END | SET c:Interface)
+FOREACH (_ IN CASE WHEN row.concreteKind = 'Class' THEN [1] ELSE [] END | SET c:Class)
+FOREACH (_ IN CASE WHEN row.concreteKind <> 'Interface' AND row.concreteKind <> 'Class' THEN [1] ELSE [] END | SET c:AbstractType)
 MERGE (a)-[r:BINDS_TO]->(c)
 SET r.type = row.type,
     r.source = row.source,
@@ -55,36 +45,24 @@ CYPHER;
 UNWIND $rows AS row
 MERGE (dep:Dependency {key: row.dependency_key})
 SET dep.access = row.access
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (:AbstractType:Abstract {name: row.identifier})
-)
-WITH row, dep
-MATCH (id:Abstract {name: row.identifier})
+MERGE (id:Abstract {name: row.identifier})
 SET id.kind = row.identifier_kind,
     id.reason = coalesce(row.reason, id.reason)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (dep)-[:IDENTIFIED_AS]->(id)
 CYPHER;
 
     private const CYPHER_ABSTRACT_RESOLVES_TO = <<<'CYPHER'
 UNWIND $rows AS row
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (:AbstractType:Abstract {name: row.identifier})
-)
-WITH row
-MATCH (id:Abstract {name: row.identifier})
+MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (i:Instance {name: row.instance})
 MERGE (id)-[r:RESOLVES_TO]->(i)
 SET r.lifetime = row.lifetime
@@ -112,19 +90,13 @@ CYPHER;
     private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (i:Instance {name: row.when})
-FOREACH (_ IN CASE WHEN row.give_kind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.give})
-)
-FOREACH (_ IN CASE WHEN row.give_kind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.give})
-)
-FOREACH (_ IN CASE WHEN row.give_kind <> 'Interface' AND row.give_kind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (:AbstractType:Abstract {name: row.give})
-)
-WITH row, i
-MATCH (g:Abstract {name: row.give})
+MERGE (g:Abstract {name: row.give})
 SET g.kind = row.give_kind,
     g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
+REMOVE g:Interface, g:Class, g:AbstractType
+FOREACH (_ IN CASE WHEN row.give_kind = 'Interface' THEN [1] ELSE [] END | SET g:Interface)
+FOREACH (_ IN CASE WHEN row.give_kind = 'Class' THEN [1] ELSE [] END | SET g:Class)
+FOREACH (_ IN CASE WHEN row.give_kind <> 'Interface' AND row.give_kind <> 'Class' THEN [1] ELSE [] END | SET g:AbstractType)
 MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
 SET r.needs = row.needs,
     r.needs_kind = row.needs_kind,
@@ -139,18 +111,12 @@ SET r.uri = row.uri,
     r.name = row.name,
     r.action = row.action
 REMOVE r.route_name
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (:AbstractType:Abstract {name: row.identifier})
-)
-WITH row, r
-MATCH (id:Abstract {name: row.identifier})
+MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (r)-[:HANDLED_BY]->(id)
 CYPHER;
 
@@ -159,18 +125,12 @@ UNWIND $rows AS row
 MERGE (r:Route {key: row.route_key})
 MERGE (m:Middleware {key: row.middleware_key})
 SET m.name = row.middleware_key
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (:Interface:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
-  MERGE (:Class:Abstract {name: row.identifier})
-)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (:AbstractType:Abstract {name: row.identifier})
-)
-WITH row, r, m
-MATCH (id:Abstract {name: row.identifier})
+MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (m)-[:IDENTIFIED_AS]->(id)
 MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
