@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-28
+
 ### Changed
 
-- Unified graph lookup names onto `:Abstract` (removed separate `:Identifier`). Routes, middleware, and dependencies now hook into the same container abstract nodes as `BINDS_TO`, so the graph stays continuously traversable.
+- Unified graph lookup names onto `:Abstract` (removed separate `:Identifier`). Routes, middleware, and dependencies now hook into the same container abstract nodes as `BINDS_TO`, so the graph stays continuously traversable. Re-running `container:graph` drops legacy `:Identifier` nodes.
+
 ## [1.1.0] - 2026-08-14
 
 ### Added
@@ -73,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public semver release under `neo4j/laravel-boost` (previously `1.0.0` placeholder in `composer.json`).
 
+[1.1.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.1
 [1.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.0
 [1.0.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.1
 [1.0.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.0
