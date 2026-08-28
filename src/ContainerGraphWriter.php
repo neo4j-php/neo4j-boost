@@ -55,15 +55,35 @@ CYPHER;
 UNWIND $rows AS row
 MERGE (dep:Dependency {key: row.dependency_key})
 SET dep.access = row.access
-MERGE (id:Identifier {name: row.identifier})
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (:AbstractType:Abstract {name: row.identifier})
+)
+WITH row, dep
+MATCH (id:Abstract {name: row.identifier})
 SET id.kind = row.identifier_kind,
     id.reason = coalesce(row.reason, id.reason)
 MERGE (dep)-[:IDENTIFIED_AS]->(id)
 CYPHER;
 
-    private const CYPHER_IDENTIFIER_RESOLVES_TO = <<<'CYPHER'
+    private const CYPHER_ABSTRACT_RESOLVES_TO = <<<'CYPHER'
 UNWIND $rows AS row
-MERGE (id:Identifier {name: row.identifier})
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (:AbstractType:Abstract {name: row.identifier})
+)
+WITH row
+MATCH (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (i:Instance {name: row.instance})
 MERGE (id)-[r:RESOLVES_TO]->(i)
@@ -92,7 +112,17 @@ CYPHER;
     private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (i:Instance {name: row.when})
-MERGE (g:Identifier {name: row.give})
+FOREACH (_ IN CASE WHEN row.give_kind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.give})
+)
+FOREACH (_ IN CASE WHEN row.give_kind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.give})
+)
+FOREACH (_ IN CASE WHEN row.give_kind <> 'Interface' AND row.give_kind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (:AbstractType:Abstract {name: row.give})
+)
+WITH row, i
+MATCH (g:Abstract {name: row.give})
 SET g.kind = row.give_kind,
     g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
 MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
@@ -109,7 +139,17 @@ SET r.uri = row.uri,
     r.name = row.name,
     r.action = row.action
 REMOVE r.route_name
-MERGE (id:Identifier {name: row.identifier})
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (:AbstractType:Abstract {name: row.identifier})
+)
+WITH row, r
+MATCH (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (r)-[:HANDLED_BY]->(id)
 CYPHER;
@@ -119,11 +159,26 @@ UNWIND $rows AS row
 MERGE (r:Route {key: row.route_key})
 MERGE (m:Middleware {key: row.middleware_key})
 SET m.name = row.middleware_key
-MERGE (id:Identifier {name: row.identifier})
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END |
+  MERGE (:Interface:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END |
+  MERGE (:Class:Abstract {name: row.identifier})
+)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END |
+  MERGE (:AbstractType:Abstract {name: row.identifier})
+)
+WITH row, r, m
+MATCH (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (m)-[:IDENTIFIED_AS]->(id)
 MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
+CYPHER;
+
+    private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
+MATCH (n:Identifier)
+DETACH DELETE n
 CYPHER;
 
     public function __construct(
@@ -168,6 +223,7 @@ CYPHER;
         $this->validateRouteMiddlewareRows($routeMiddlewareRows);
 
         $this->ensureConstraints();
+        $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
 
         if ($instanceRows !== []) {
             $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);
@@ -188,9 +244,9 @@ CYPHER;
             }
         }
 
-        $identifierResolveRows = $this->buildIdentifierResolveRows($instanceRows, $bindingRows, $dependencyChainRows);
-        if ($identifierResolveRows !== []) {
-            $this->connection->run(self::CYPHER_IDENTIFIER_RESOLVES_TO, ['rows' => $identifierResolveRows]);
+        $abstractResolveRows = $this->buildAbstractResolveRows($instanceRows, $bindingRows, $dependencyChainRows);
+        if ($abstractResolveRows !== []) {
+            $this->connection->run(self::CYPHER_ABSTRACT_RESOLVES_TO, ['rows' => $abstractResolveRows]);
         }
 
         if ($contextualBindingRows !== []) {
@@ -213,7 +269,7 @@ CYPHER;
             'instances' => self::CYPHER_INSTANCES,
             'bindings' => self::CYPHER_BINDINGS,
             'identified_as' => self::CYPHER_IDENTIFIED_AS,
-            'identifier_resolves_to' => self::CYPHER_IDENTIFIER_RESOLVES_TO,
+            'abstract_resolves_to' => self::CYPHER_ABSTRACT_RESOLVES_TO,
             'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
@@ -315,7 +371,7 @@ CYPHER;
      * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string}>  $dependencyChainRows
      * @return array<int, array{identifier: string, identifier_kind: string, instance: string, lifetime: string}>
      */
-    private function buildIdentifierResolveRows(array $instanceRows, array $bindingRows, array $dependencyChainRows): array
+    private function buildAbstractResolveRows(array $instanceRows, array $bindingRows, array $dependencyChainRows): array
     {
         $rows = [];
         $seen = [];

@@ -15,8 +15,9 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
-        $this->assertStringContainsString(':Identifier', implode("\n", $statements));
+        $this->assertStringContainsString(':Abstract', implode("\n", $statements));
         $this->assertStringContainsString(':Middleware', implode("\n", $statements));
+        $this->assertStringNotContainsString(':Identifier', implode("\n", $statements));
         $this->assertTrue(array_reduce(
             $statements,
             static fn (bool $carry, string $cypher): bool => $carry && str_contains($cypher, 'IF NOT EXISTS'),
@@ -36,6 +37,8 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':Route', $cypher);
         $this->assertStringContainsString(':Instance', $cypher);
         $this->assertStringContainsString(':Middleware', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+        $this->assertStringNotContainsString(':Identifier', $cypher);
     }
 
     public function test_relationship_constants_match_acceptance_model(): void
@@ -46,5 +49,6 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('IDENTIFIED_AS', RuntimeGraphModel::REL_IDENTIFIED_AS);
         $this->assertSame('USES_MIDDLEWARE', RuntimeGraphModel::REL_USES_MIDDLEWARE);
         $this->assertSame('Middleware', RuntimeGraphModel::LABEL_MIDDLEWARE);
+        $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }

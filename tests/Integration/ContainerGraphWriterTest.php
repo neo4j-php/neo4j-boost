@@ -15,7 +15,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['bindings', 'contextual_binds', 'identified_as', 'identifier_resolves_to', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -58,26 +58,28 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('r.remarks = coalesce(row.remarks', $bindingsTemplate);
     }
 
-    public function test_identified_as_cypher_links_dependency_to_identifier(): void
+    public function test_identified_as_cypher_links_dependency_to_abstract(): void
     {
         $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
         $template = $writer->cypherTemplates()['identified_as'];
 
         $this->assertStringContainsString('IDENTIFIED_AS', $template);
         $this->assertStringContainsString('dep.access = row.access', $template);
-        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString(':Abstract', $template);
         $this->assertStringContainsString(':Dependency', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
     }
 
-    public function test_identifier_resolves_to_cypher_sets_lifetime(): void
+    public function test_abstract_resolves_to_cypher_sets_lifetime(): void
     {
         $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['identifier_resolves_to'];
+        $template = $writer->cypherTemplates()['abstract_resolves_to'];
 
         $this->assertStringContainsString('RESOLVES_TO', $template);
         $this->assertStringContainsString('r.lifetime = row.lifetime', $template);
-        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString(':Abstract', $template);
         $this->assertStringContainsString(':Instance', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
     }
 
     public function test_routes_cypher_uses_handled_by(): void
@@ -87,9 +89,10 @@ class ContainerGraphWriterTest extends TestCase
 
         $this->assertStringContainsString(':Route', $template);
         $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString(':Identifier', $template);
+        $this->assertStringContainsString(':Abstract', $template);
         $this->assertStringContainsString('REMOVE r.route_name', $template);
         $this->assertStringNotContainsString('r.route_name = row.route_name', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
     }
 
     public function test_route_middleware_cypher_uses_middleware_and_identified_as(): void
@@ -101,7 +104,9 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString(':Middleware', $template);
         $this->assertStringContainsString('USES_MIDDLEWARE', $template);
         $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString(':Abstract', $template);
         $this->assertStringContainsString('m.name = row.middleware_key', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
         $this->assertStringContainsString('u.parameters = coalesce(row.parameters', $template);
         $this->assertStringContainsString('order: row.order', $template);
     }
@@ -115,7 +120,8 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('r.needs = row.needs', $contextualTemplate);
         $this->assertStringContainsString('r.needs_kind = row.needs_kind', $contextualTemplate);
         $this->assertStringContainsString(':Instance', $contextualTemplate);
-        $this->assertStringContainsString(':Identifier', $contextualTemplate);
+        $this->assertStringContainsString(':Abstract', $contextualTemplate);
+        $this->assertStringNotContainsString(':Identifier', $contextualTemplate);
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void

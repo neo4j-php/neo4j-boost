@@ -9,7 +9,7 @@ use Throwable;
 
 /**
  * Discovers application routes and maps each controller/invokable action
- * to a container Identifier for HANDLED_BY edges.
+ * to a container Abstract for HANDLED_BY edges.
  */
 final class RouteHandlerExtractor
 {
@@ -86,7 +86,7 @@ final class RouteHandlerExtractor
             return $actionMethod;
         }
 
-        // Closures / non-class actions are skipped for Identifier resolution.
+        // Closures / non-class actions are skipped for Abstract resolution.
         return null;
     }
 

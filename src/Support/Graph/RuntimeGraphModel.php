@@ -5,9 +5,12 @@ namespace Neo4j\LaravelBoost\Support\Graph;
 /**
  * Canonical runtime dependency graph labels, keys, and relationship types.
  *
- * Route -[:HANDLED_BY]-> Identifier -[:RESOLVES_TO]-> Instance
- *   -[:DEPENDS_ON]-> Dependency -[:IDENTIFIED_AS]-> Identifier
- * Route -[:USES_MIDDLEWARE]-> Middleware -[:IDENTIFIED_AS]-> Identifier
+ * Route -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
+ *   -[:DEPENDS_ON]-> Dependency -[:IDENTIFIED_AS]-> Abstract
+ * Route -[:USES_MIDDLEWARE]-> Middleware -[:IDENTIFIED_AS]-> Abstract
+ *
+ * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)),
+ * with secondary labels Interface, Class, or AbstractType.
  */
 final class RuntimeGraphModel
 {
@@ -17,7 +20,7 @@ final class RuntimeGraphModel
 
     public const LABEL_DEPENDENCY = 'Dependency';
 
-    public const LABEL_IDENTIFIER = 'Identifier';
+    public const LABEL_ABSTRACT = 'Abstract';
 
     public const LABEL_MIDDLEWARE = 'Middleware';
 
@@ -34,7 +37,7 @@ final class RuntimeGraphModel
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
 
-    /** Unique property on Instance / Identifier nodes. */
+    /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
     /** Unique property on Dependency / Middleware nodes. */
@@ -54,7 +57,7 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT route_key IF NOT EXISTS FOR (n:Route) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
-            'CREATE CONSTRAINT identifier_name IF NOT EXISTS FOR (n:Identifier) REQUIRE n.name IS UNIQUE',
+            'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT middleware_key IF NOT EXISTS FOR (n:Middleware) REQUIRE n.key IS UNIQUE',
         ];
     }
@@ -65,9 +68,9 @@ final class RuntimeGraphModel
     public static function routeTraversalCypher(): string
     {
         return <<<'CYPHER'
-MATCH (r:Route {key: $routeKey})-[:HANDLED_BY]->(:Identifier)-[:RESOLVES_TO]->(root:Instance)
+MATCH (r:Route {key: $routeKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
-OPTIONAL MATCH mwPath = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Identifier)
+OPTIONAL MATCH mwPath = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 RETURN r AS route, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT mwPath) AS middlewarePaths
 CYPHER;
     }

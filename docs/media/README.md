@@ -317,7 +317,7 @@ Open `http://localhost:7474`, sign in as `neo4j` with the disposable demo
 password, and run:
 
 ```cypher
-MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(id:Identifier)
+MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)
 RETURN path
 LIMIT 50;
 ```
@@ -328,7 +328,7 @@ Stop when the graph visualization settles.
 **Expected on screen**
 
 - `:Route` nodes captioned by `key`
-- `:Middleware` nodes captioned by `name`
+- `:Middleware` / `:Abstract` nodes captioned by `name`
 - `USES_MIDDLEWARE` and `IDENTIFIED_AS` relationships
 
 **Jump cuts:** cut browser login and query execution/rendering delay. Do not show
