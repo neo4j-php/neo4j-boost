@@ -56,7 +56,7 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Dependency` | `key` | A dependency occurrence on an instance |
 | `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
 
-Bindings still also export `:Abstract` nodes with `BINDS_TO` (interface/class binding keys).
+Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interface` / `Class` / `AbstractType`).
 
 ### Runtime relationships
 
