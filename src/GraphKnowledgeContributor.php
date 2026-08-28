@@ -23,43 +23,43 @@ class GraphKnowledgeContributor
     public const RELATIONSHIP_BINDS_TO = 'BINDS_TO';
 
     private const CYPHER_DEPENDS_ON = <<<'CYPHER'
-MERGE (c:Class:Abstract {name: $from})
+MERGE (c:Abstract {name: $from})
+SET c.kind = 'Class'
+REMOVE c:Interface, c:AbstractType
+SET c:Class
+WITH c
 FOREACH (_ IN CASE WHEN $toKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Interface:Abstract {name: $to})
+  MERGE (d:Abstract {name: $to})
+  SET d.kind = 'Interface'
+  REMOVE d:Class, d:AbstractType
+  SET d:Interface
   MERGE (c)-[r:DEPENDS_ON]->(d)
   SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
 )
 FOREACH (_ IN CASE WHEN $toKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Class:Abstract {name: $to})
+  MERGE (d:Abstract {name: $to})
+  SET d.kind = 'Class'
+  REMOVE d:Interface, d:AbstractType
+  SET d:Class
   MERGE (c)-[r:DEPENDS_ON]->(d)
   SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
 )
 CYPHER;
 
     private const CYPHER_BINDS_TO = <<<'CYPHER'
-FOREACH (_ IN CASE WHEN $fromKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (a:Interface:Abstract {name: $from})
-)
-FOREACH (_ IN CASE WHEN $fromKind = 'Class' THEN [1] ELSE [] END |
-  MERGE (a:Class:Abstract {name: $from})
-)
-FOREACH (_ IN CASE WHEN $fromKind <> 'Interface' AND $fromKind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (a:AbstractType:Abstract {name: $from})
-  SET a.kind = $fromKind
-)
-FOREACH (_ IN CASE WHEN $toKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (c:Interface:Abstract {name: $to})
-)
-FOREACH (_ IN CASE WHEN $toKind = 'Class' THEN [1] ELSE [] END |
-  MERGE (c:Class:Abstract {name: $to})
-)
-FOREACH (_ IN CASE WHEN $toKind <> 'Interface' AND $toKind <> 'Class' THEN [1] ELSE [] END |
-  MERGE (c:AbstractType:Abstract {name: $to})
-  SET c.kind = $toKind
-)
-WITH 1 AS _
-MATCH (a:Abstract {name: $from})
-MATCH (c:Abstract {name: $to})
+MERGE (a:Abstract {name: $from})
+SET a.kind = $fromKind
+REMOVE a:Interface, a:Class, a:AbstractType
+FOREACH (_ IN CASE WHEN $fromKind = 'Interface' THEN [1] ELSE [] END | SET a:Interface)
+FOREACH (_ IN CASE WHEN $fromKind = 'Class' THEN [1] ELSE [] END | SET a:Class)
+FOREACH (_ IN CASE WHEN $fromKind <> 'Interface' AND $fromKind <> 'Class' THEN [1] ELSE [] END | SET a:AbstractType)
+WITH a
+MERGE (c:Abstract {name: $to})
+SET c.kind = $toKind
+REMOVE c:Interface, c:Class, c:AbstractType
+FOREACH (_ IN CASE WHEN $toKind = 'Interface' THEN [1] ELSE [] END | SET c:Interface)
+FOREACH (_ IN CASE WHEN $toKind = 'Class' THEN [1] ELSE [] END | SET c:Class)
+FOREACH (_ IN CASE WHEN $toKind <> 'Interface' AND $toKind <> 'Class' THEN [1] ELSE [] END | SET c:AbstractType)
 MERGE (a)-[r:BINDS_TO]->(c)
 SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
 CYPHER;

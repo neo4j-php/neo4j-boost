@@ -24,8 +24,11 @@ class ContainerGraphWriterTest extends TestCase
         $bindingsTemplate = $writer->cypherTemplates()['bindings'];
 
         $this->assertStringContainsString('row.concreteKind', $bindingsTemplate);
-        $this->assertStringContainsString('AbstractType:Abstract', $bindingsTemplate);
+        $this->assertStringContainsString('MERGE (a:Abstract {name: row.abstract})', $bindingsTemplate);
+        $this->assertStringContainsString('MERGE (c:Abstract {name: row.concrete})', $bindingsTemplate);
+        $this->assertStringContainsString('SET a:AbstractType', $bindingsTemplate);
         $this->assertStringContainsString('r.type = row.type', $bindingsTemplate);
+        $this->assertStringNotContainsString('MERGE (:Interface:Abstract', $bindingsTemplate);
     }
 
     public function test_instance_depends_on_cypher_sets_metadata_on_edges(): void
@@ -65,9 +68,10 @@ class ContainerGraphWriterTest extends TestCase
 
         $this->assertStringContainsString('IDENTIFIED_AS', $template);
         $this->assertStringContainsString('dep.access = row.access', $template);
-        $this->assertStringContainsString(':Abstract', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
         $this->assertStringContainsString(':Dependency', $template);
         $this->assertStringNotContainsString(':Identifier', $template);
+        $this->assertStringNotContainsString('MERGE (:Interface:Abstract', $template);
     }
 
     public function test_abstract_resolves_to_cypher_sets_lifetime(): void
