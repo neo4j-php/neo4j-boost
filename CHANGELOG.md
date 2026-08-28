@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-29
+
+### Fixed
+
+- Merge `:Abstract` nodes on `name` alone before applying `Interface` / `Class` / `AbstractType` labels, so shared lookup keys (for example `auth`) no longer trip Neo4j’s unique `Abstract.name` constraint during `container:graph`.
+
 ## [1.1.1] - 2026-08-28
 
 ### Changed
@@ -76,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public semver release under `neo4j/laravel-boost` (previously `1.0.0` placeholder in `composer.json`).
 
+[1.1.2]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.2
 [1.1.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.1
 [1.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.0
 [1.0.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.0.1
