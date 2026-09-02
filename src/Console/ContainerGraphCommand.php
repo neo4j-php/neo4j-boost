@@ -7,6 +7,7 @@ use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
+use Neo4j\LaravelBoost\ContainerGraph\EventListenerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
@@ -46,6 +47,7 @@ class ContainerGraphCommand extends Command
         private ParameterDependencyResolver $parameterDependencyResolver,
         private RouteHandlerExtractor $routeHandlerExtractor,
         private RouteMiddlewareExtractor $routeMiddlewareExtractor,
+        private EventListenerExtractor $eventListenerExtractor,
     ) {
         parent::__construct();
     }
@@ -57,6 +59,7 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists($concreteClasses, $this->extractCustomClassNames());
         $routeRows = $this->routeHandlerExtractor->extract();
         $routeMiddlewareRows = $this->routeMiddlewareExtractor->extract();
+        $eventRows = $this->eventListenerExtractor->extract();
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -64,6 +67,10 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteMiddlewareRows($routeMiddlewareRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromEventRows($eventRows),
         );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
@@ -107,6 +114,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Dependency chains: '.count($dependencyChainRows));
         $this->line('- Route handlers: '.count($routeRows));
         $this->line('- Route middleware links: '.count($routeMiddlewareRows));
+        $this->line('- Event listeners: '.count($eventRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -116,7 +124,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows);
         }
 
         if ($this->option('dry-run')) {
@@ -127,7 +135,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -476,6 +484,23 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
+     * @return array<int, string>
+     */
+    private function classNamesFromEventRows(array $eventRows): array
+    {
+        $classes = [];
+
+        foreach ($eventRows as $row) {
+            if (($row['identifier_kind'] ?? '') === 'Class' && class_exists($row['identifier'])) {
+                $classes[] = $row['identifier'];
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -582,6 +607,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -591,6 +617,7 @@ class ContainerGraphCommand extends Command
         array $contextualBindingRows = [],
         array $routeRows = [],
         array $routeMiddlewareRows = [],
+        array $eventRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -607,6 +634,7 @@ class ContainerGraphCommand extends Command
         $this->line('- contextual_bindings: '.json_encode(array_slice($contextualBindingRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- routes: '.json_encode(array_slice($routeRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- route_middleware: '.json_encode(array_slice($routeMiddlewareRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- events: '.json_encode(array_slice($eventRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

@@ -8,6 +8,7 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Route -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *   -[:DEPENDS_ON]-> Dependency -[:IDENTIFIED_AS]-> Abstract
  * Route -[:USES_MIDDLEWARE]-> Middleware -[:IDENTIFIED_AS]-> Abstract
+ * Event -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)),
  * with secondary labels Interface, Class, or AbstractType.
@@ -15,6 +16,8 @@ namespace Neo4j\LaravelBoost\Support\Graph;
 final class RuntimeGraphModel
 {
     public const LABEL_ROUTE = 'Route';
+
+    public const LABEL_EVENT = 'Event';
 
     public const LABEL_INSTANCE = 'Instance';
 
@@ -37,6 +40,9 @@ final class RuntimeGraphModel
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
 
+    /** Unique property on Event nodes (registered event name / FQCN). */
+    public const EVENT_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -55,6 +61,7 @@ final class RuntimeGraphModel
     {
         return [
             'CREATE CONSTRAINT route_key IF NOT EXISTS FOR (n:Route) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT event_key IF NOT EXISTS FOR (n:Event) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -72,6 +79,18 @@ MATCH (r:Route {key: $routeKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(roo
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 OPTIONAL MATCH mwPath = (r)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 RETURN r AS route, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT mwPath) AS middlewarePaths
+CYPHER;
+    }
+
+    /**
+     * Recursive path from an Event through resolved listener dependency chains.
+     */
+    public static function eventTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (e:Event {key: $eventKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN e AS event, root AS rootInstance, collect(DISTINCT path) AS paths
 CYPHER;
     }
 }

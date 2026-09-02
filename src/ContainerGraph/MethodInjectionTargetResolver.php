@@ -38,11 +38,13 @@ final class MethodInjectionTargetResolver
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
         }
 
-        if ($this->isJob($class)) {
+        // Listeners that implement ShouldQueue must still be treated as listeners
+        // so the event payload parameter is skipped during method-injection export.
+        if ($this->isListener($class)) {
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
         }
 
-        if ($this->isListener($class)) {
+        if ($this->isJob($class)) {
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
         }
 

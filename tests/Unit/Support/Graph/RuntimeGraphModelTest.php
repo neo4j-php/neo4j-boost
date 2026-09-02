@@ -11,8 +11,9 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(5, $statements);
+        $this->assertCount(6, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
+        $this->assertStringContainsString(':Event', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
         $this->assertStringContainsString(':Abstract', implode("\n", $statements));
@@ -41,6 +42,17 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringNotContainsString(':Identifier', $cypher);
     }
 
+    public function test_event_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::eventTraversalCypher();
+
+        $this->assertStringContainsString(':Event', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
+        $this->assertStringContainsString('DEPENDS_ON', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+    }
+
     public function test_relationship_constants_match_acceptance_model(): void
     {
         $this->assertSame('HANDLED_BY', RuntimeGraphModel::REL_HANDLED_BY);
@@ -49,6 +61,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('IDENTIFIED_AS', RuntimeGraphModel::REL_IDENTIFIED_AS);
         $this->assertSame('USES_MIDDLEWARE', RuntimeGraphModel::REL_USES_MIDDLEWARE);
         $this->assertSame('Middleware', RuntimeGraphModel::LABEL_MIDDLEWARE);
+        $this->assertSame('Event', RuntimeGraphModel::LABEL_EVENT);
         $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }
