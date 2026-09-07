@@ -103,7 +103,7 @@ final class MethodInjectionTargetResolver
 
     private function isJob(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class)) {
+        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class)) {
             return false;
         }
 
@@ -120,10 +120,17 @@ final class MethodInjectionTargetResolver
 
     public function isListener(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class) || $this->isController($class) || $this->isJob($class)) {
+        if ($this->isConsoleCommand($class) || $this->isController($class)) {
             return false;
         }
 
+        // Naming/namespace wins over ShouldQueue so queued listeners stay listeners
+        // and MethodInjectionExtractor can skip the event payload parameter.
+        return $this->looksLikeListener($class);
+    }
+
+    private function looksLikeListener(ReflectionClass $class): bool
+    {
         if (str_ends_with($class->getShortName(), 'Listener')) {
             return true;
         }
