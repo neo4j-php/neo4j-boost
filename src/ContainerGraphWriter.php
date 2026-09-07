@@ -150,6 +150,36 @@ MERGE (e)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 CYPHER;
 
+    private const CYPHER_QUEUE_CONNECTIONS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (q:QueueConnection {key: row.key})
+SET q.driver = row.driver,
+    q.default_queue = row.default_queue,
+    q.is_default = row.is_default
+CYPHER;
+
+    private const CYPHER_JOBS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (j:Job {key: row.key})
+SET j.name = row.name,
+    j.should_queue = row.should_queue,
+    j.connection = row.connection,
+    j.queue = row.queue,
+    j.unique = row.unique
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
+MERGE (j)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH j, row
+WHERE row.connection <> ''
+MERGE (q:QueueConnection {key: row.connection})
+MERGE (j)-[:USES_CONNECTION]->(q)
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -182,6 +212,8 @@ CYPHER;
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      */
     public function write(
         array $instanceRows,
@@ -191,6 +223,8 @@ CYPHER;
         array $routeRows = [],
         array $routeMiddlewareRows = [],
         array $eventRows = [],
+        array $jobRows = [],
+        array $queueConnectionRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -198,6 +232,8 @@ CYPHER;
         $this->validateRouteRows($routeRows);
         $this->validateRouteMiddlewareRows($routeMiddlewareRows);
         $this->validateEventRows($eventRows);
+        $this->validateJobRows($jobRows);
+        $this->validateQueueConnectionRows($queueConnectionRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -238,6 +274,12 @@ CYPHER;
         if ($eventRows !== []) {
             $this->connection->run(self::CYPHER_EVENTS, ['rows' => $eventRows]);
         }
+        if ($queueConnectionRows !== []) {
+            $this->connection->run(self::CYPHER_QUEUE_CONNECTIONS, ['rows' => $queueConnectionRows]);
+        }
+        if ($jobRows !== []) {
+            $this->connection->run(self::CYPHER_JOBS, ['rows' => $jobRows]);
+        }
     }
 
     /**
@@ -255,6 +297,8 @@ CYPHER;
             'routes' => self::CYPHER_ROUTES,
             'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
             'events' => self::CYPHER_EVENTS,
+            'jobs' => self::CYPHER_JOBS,
+            'queue_connections' => self::CYPHER_QUEUE_CONNECTIONS,
         ];
     }
 
@@ -356,6 +400,44 @@ CYPHER;
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Event row is missing string {$key}");
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     */
+    private function validateJobRows(array $jobRows): void
+    {
+        foreach ($jobRows as $row) {
+            foreach (['key', 'name', 'action', 'identifier', 'identifier_kind', 'connection', 'queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Job row is missing string {$key}");
+                }
+            }
+
+            foreach (['should_queue', 'unique'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Job row is missing boolean {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
+     */
+    private function validateQueueConnectionRows(array $queueConnectionRows): void
+    {
+        foreach ($queueConnectionRows as $row) {
+            foreach (['key', 'driver', 'default_queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Queue connection row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Queue connection row is missing boolean is_default');
             }
         }
     }

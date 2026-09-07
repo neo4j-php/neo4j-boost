@@ -45,7 +45,11 @@ final class MethodInjectionTargetResolver
         }
 
         if ($this->isJob($class)) {
-            return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
+            if ($this->hasPublicMethod($class, 'handle')) {
+                return ['handle'];
+            }
+
+            return $this->hasPublicMethod($class, '__invoke') ? ['__invoke'] : [];
         }
 
         return [];
@@ -101,7 +105,7 @@ final class MethodInjectionTargetResolver
             && $this->hasPublicMethod($class, 'handle');
     }
 
-    private function isJob(ReflectionClass $class): bool
+    public function isJob(ReflectionClass $class): bool
     {
         if ($this->isConsoleCommand($class) || $this->looksLikeListener($class)) {
             return false;

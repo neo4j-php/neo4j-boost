@@ -8,6 +8,8 @@ use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\ContainerGraph\EventListenerExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\JobHandlerExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\QueueConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
@@ -48,6 +50,8 @@ class ContainerGraphCommand extends Command
         private RouteHandlerExtractor $routeHandlerExtractor,
         private RouteMiddlewareExtractor $routeMiddlewareExtractor,
         private EventListenerExtractor $eventListenerExtractor,
+        private JobHandlerExtractor $jobHandlerExtractor,
+        private QueueConnectionExtractor $queueConnectionExtractor,
     ) {
         parent::__construct();
     }
@@ -60,6 +64,8 @@ class ContainerGraphCommand extends Command
         $routeRows = $this->routeHandlerExtractor->extract();
         $routeMiddlewareRows = $this->routeMiddlewareExtractor->extract();
         $eventRows = $this->eventListenerExtractor->extract();
+        $queueConnectionRows = $this->queueConnectionExtractor->extract();
+        $jobRows = $this->jobHandlerExtractor->extract($concreteClasses);
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -71,6 +77,10 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromEventRows($eventRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromJobRows($jobRows),
         );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
@@ -115,6 +125,8 @@ class ContainerGraphCommand extends Command
         $this->line('- Route handlers: '.count($routeRows));
         $this->line('- Route middleware links: '.count($routeMiddlewareRows));
         $this->line('- Event listeners: '.count($eventRows));
+        $this->line('- Jobs: '.count($jobRows));
+        $this->line('- Queue connections: '.count($queueConnectionRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -124,7 +136,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows);
         }
 
         if ($this->option('dry-run')) {
@@ -135,7 +147,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -501,6 +513,23 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     * @return array<int, string>
+     */
+    private function classNamesFromJobRows(array $jobRows): array
+    {
+        $classes = [];
+
+        foreach ($jobRows as $row) {
+            if (($row['identifier_kind'] ?? '') === 'Class' && class_exists($row['identifier'])) {
+                $classes[] = $row['identifier'];
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -608,6 +637,8 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -618,6 +649,8 @@ class ContainerGraphCommand extends Command
         array $routeRows = [],
         array $routeMiddlewareRows = [],
         array $eventRows = [],
+        array $jobRows = [],
+        array $queueConnectionRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -635,6 +668,8 @@ class ContainerGraphCommand extends Command
         $this->line('- routes: '.json_encode(array_slice($routeRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- route_middleware: '.json_encode(array_slice($routeMiddlewareRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- events: '.json_encode(array_slice($eventRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- jobs: '.json_encode(array_slice($jobRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- queue_connections: '.json_encode(array_slice($queueConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

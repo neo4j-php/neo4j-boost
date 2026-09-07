@@ -15,7 +15,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'queue_connections', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -126,6 +126,29 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('e.name = row.name', $template);
         $this->assertStringContainsString('h.action = row.action', $template);
         $this->assertStringNotContainsString(':Identifier', $template);
+    }
+
+    public function test_jobs_cypher_uses_handled_by_and_optional_connection(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['jobs'];
+
+        $this->assertStringContainsString(':Job', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('USES_CONNECTION', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
+    }
+
+    public function test_queue_connections_cypher_sets_driver_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['queue_connections'];
+
+        $this->assertStringContainsString(':QueueConnection', $template);
+        $this->assertStringContainsString('q.driver = row.driver', $template);
+        $this->assertStringContainsString('q.is_default = row.is_default', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void
