@@ -11,11 +11,12 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(8, $statements);
+        $this->assertCount(9, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Event', implode("\n", $statements));
         $this->assertStringContainsString(':Job', implode("\n", $statements));
         $this->assertStringContainsString(':QueueConnection', implode("\n", $statements));
+        $this->assertStringContainsString(':ScheduledTask', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
         $this->assertStringContainsString(':Abstract', implode("\n", $statements));
@@ -67,6 +68,17 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':Abstract', $cypher);
     }
 
+    public function test_scheduled_task_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::scheduledTaskTraversalCypher();
+
+        $this->assertStringContainsString(':ScheduledTask', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
+        $this->assertStringContainsString('DEPENDS_ON', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+    }
+
     public function test_relationship_constants_match_acceptance_model(): void
     {
         $this->assertSame('HANDLED_BY', RuntimeGraphModel::REL_HANDLED_BY);
@@ -79,6 +91,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('Event', RuntimeGraphModel::LABEL_EVENT);
         $this->assertSame('Job', RuntimeGraphModel::LABEL_JOB);
         $this->assertSame('QueueConnection', RuntimeGraphModel::LABEL_QUEUE_CONNECTION);
+        $this->assertSame('ScheduledTask', RuntimeGraphModel::LABEL_SCHEDULED_TASK);
         $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }

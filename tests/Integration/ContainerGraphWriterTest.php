@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'queue_connections', 'route_middleware', 'routes'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -184,6 +184,20 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString(':QueueConnection', $template);
         $this->assertStringContainsString('q.driver = row.driver', $template);
         $this->assertStringContainsString('q.is_default = row.is_default', $template);
+    }
+
+    public function test_scheduled_tasks_cypher_merges_task_and_optional_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['scheduled_tasks'];
+
+        $this->assertStringContainsString('MERGE (t:ScheduledTask {key: row.key})', $template);
+        $this->assertStringContainsString('t.expression = row.expression', $template);
+        $this->assertStringContainsString('t.kind = row.kind', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringContainsString(':Abstract', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

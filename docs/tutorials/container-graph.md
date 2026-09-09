@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Laravel’s service container records how abstractions bind to implementations and how classes receive constructor dependencies. Route handlers and middleware sit on top of that wiring. The result is usually scattered across service providers, type-hints, and route files—hard to see as a whole when debugging “what injects into X?” or “which middleware runs on this route?”
+Laravel’s service container records how abstractions bind to implementations and how classes receive constructor dependencies. Route handlers, middleware, events, jobs, queue connections, and scheduled (cron) tasks sit on top of that wiring. The result is usually scattered across service providers, type-hints, route files, and the console kernel—hard to see as a whole when debugging “what injects into X?” or “which middleware runs on this route?” or “what does this cron job call?”
 
 Neo4j Boost can **export** that runtime wiring into Neo4j as a graph, then let you explore it in Neo4j Browser or via the MCP tool `get-class-dependency-graph`.
 
@@ -41,10 +41,13 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 
 1. **Routes** from the live Laravel router (controller / invokable handlers; closures are skipped)
 2. **Route middleware** after groups and aliases are expanded (`Router::gatherRouteMiddleware()`)
-3. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-4. **Constructor and method-injection dependencies** for concrete classes
-5. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-6. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+3. **Event listeners** from the live dispatcher (class-based listeners; closures/wildcards skipped)
+4. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
+5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
+6. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+7. **Constructor and method-injection dependencies** for concrete classes
+8. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+9. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -54,10 +57,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. |
 | `:Job` | `key` (job FQCN) | Discovered job class. `should_queue`, optional `connection` / `queue`, `unique`. |
 | `:QueueConnection` | `key` (connection name) | From `config/queue.php`. `driver`, `default_queue`, `is_default`. |
+| `:ScheduledTask` | `key` (stable hash of expression + target) | Cron / scheduler entry. `expression`, `kind` (`command`/`job`/`callback`/`exec`), flags, optional `description`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interface` / `Class` / `AbstractType`).
 
@@ -70,11 +74,12 @@ Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interf
 (:Event)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 (:Job)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 (:Job)-[:USES_CONNECTION]->(:QueueConnection)   # when the job declares a default connection
+(:ScheduledTask)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, or Job → handler class | `action` on Event/Job edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, or ScheduledTask → command/job/callable class | `action` on Event/Job/ScheduledTask edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job → configured queue connection | — |
 | `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
@@ -93,10 +98,11 @@ php artisan container:graph
 
 1. Extracts binding rows and concrete class names from the Laravel container.
 2. Extracts controller routes and expanded middleware from the live router.
-3. Scans production PSR-4 paths for additional project classes.
-4. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
-5. Prints a summary (bindings, instances, route handlers, route middleware links, static edges, unresolved count).
-6. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
+3. Extracts event listeners, jobs, queue connections, and scheduled tasks.
+4. Scans production PSR-4 paths for additional project classes.
+5. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
+6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, static edges, unresolved count).
+7. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
 
 On success you see:
 

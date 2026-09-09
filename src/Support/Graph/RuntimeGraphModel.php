@@ -11,6 +11,7 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Event -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * Job -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * Job -[:USES_CONNECTION]-> QueueConnection
+ * ScheduledTask -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)),
  * with secondary labels Interface, Class, or AbstractType.
@@ -24,6 +25,8 @@ final class RuntimeGraphModel
     public const LABEL_JOB = 'Job';
 
     public const LABEL_QUEUE_CONNECTION = 'QueueConnection';
+
+    public const LABEL_SCHEDULED_TASK = 'ScheduledTask';
 
     public const LABEL_INSTANCE = 'Instance';
 
@@ -57,6 +60,9 @@ final class RuntimeGraphModel
     /** Unique property on QueueConnection nodes (connection name). */
     public const QUEUE_CONNECTION_KEY = 'key';
 
+    /** Unique property on ScheduledTask nodes. */
+    public const SCHEDULED_TASK_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -78,6 +84,7 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT event_key IF NOT EXISTS FOR (n:Event) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT job_key IF NOT EXISTS FOR (n:Job) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT queue_connection_key IF NOT EXISTS FOR (n:QueueConnection) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT scheduled_task_key IF NOT EXISTS FOR (n:ScheduledTask) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -120,6 +127,18 @@ MATCH (j:Job {key: $jobKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:In
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 OPTIONAL MATCH conn = (j)-[:USES_CONNECTION]->(:QueueConnection)
 RETURN j AS job, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT conn) AS connections
+CYPHER;
+    }
+
+    /**
+     * Recursive path from a ScheduledTask through its handler dependency chain.
+     */
+    public static function scheduledTaskTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (t:ScheduledTask {key: $taskKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN t AS scheduledTask, root AS rootInstance, collect(DISTINCT path) AS paths
 CYPHER;
     }
 }
