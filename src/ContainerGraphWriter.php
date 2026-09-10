@@ -175,6 +175,9 @@ FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_ki
 MERGE (j)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 WITH j, row
+OPTIONAL MATCH (j)-[old:USES_CONNECTION]->()
+DELETE old
+WITH j, row
 WHERE row.connection <> ''
 MERGE (q:QueueConnection {key: row.connection})
 MERGE (j)-[:USES_CONNECTION]->(q)
