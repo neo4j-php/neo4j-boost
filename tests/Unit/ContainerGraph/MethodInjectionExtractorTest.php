@@ -18,6 +18,7 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\PodcastParser;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\TokenVerifier;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\MethodInjectionQueuedListener;
 
 class MethodInjectionExtractorTest extends TestCase
 {
@@ -64,6 +65,19 @@ class MethodInjectionExtractorTest extends TestCase
         $this->assertNotNull($listenerLogger);
         $this->assertSame('handle', $listenerLogger['method']);
         $this->assertSame('logger', $listenerLogger['parameter']);
+    }
+
+    public function test_queued_listener_skips_event_payload_parameter(): void
+    {
+        $extractor = new MethodInjectionExtractor(
+            new MethodInjectionTargetResolver,
+            new ParameterDependencyResolver,
+        );
+
+        [$rows] = $extractor->extract([MethodInjectionQueuedListener::class]);
+
+        $this->assertNull($this->findRow($rows, MethodInjectionQueuedListener::class, OrderShipped::class));
+        $this->assertSame([], $rows);
     }
 
     /**

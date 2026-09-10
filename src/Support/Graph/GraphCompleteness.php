@@ -25,6 +25,7 @@ final class GraphCompleteness
             'Repeated direct instantiation of the same class may collapse to a single edge.',
             'config() and env() edges use literal keys only; confidence is medium.',
             'Closure-based routes without a controller class are not exported as Route nodes.',
+            'Closure and wildcard event listeners are not exported as Event HANDLED_BY edges.',
         ];
     }
 

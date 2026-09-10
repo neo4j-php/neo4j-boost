@@ -33,6 +33,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}> */
     public array $routeMiddlewareRows = [];
 
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}> */
+    public array $eventRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -45,6 +48,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      */
     public function write(
         array $instanceRows,
@@ -53,6 +57,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $contextualBindingRows = [],
         array $routeRows = [],
         array $routeMiddlewareRows = [],
+        array $eventRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -60,6 +65,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->contextualBindingRows = $contextualBindingRows;
         $this->routeRows = $routeRows;
         $this->routeMiddlewareRows = $routeMiddlewareRows;
+        $this->eventRows = $eventRows;
     }
 
     /**
@@ -193,6 +199,17 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    public function hasEventHandledBy(string $eventKey, string $identifier): bool
+    {
+        foreach ($this->eventRows as $row) {
+            if ($row['key'] === $eventKey && $row['identifier'] === $identifier) {
+                return true;
+            }
         }
 
         return false;

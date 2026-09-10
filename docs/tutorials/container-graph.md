@@ -51,10 +51,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | Label | Unique key | Meaning |
 |--------|------------|---------|
 | `:Route` | `key` (method + URI, e.g. `GET /api/contracts`) | HTTP route. `name` is Laravel’s route name (empty when unnamed). |
+| `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interface` / `Class` / `AbstractType`).
 
@@ -64,11 +65,12 @@ Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interf
 (:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
   -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)
 (:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
+(:Event)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable identifier | — |
+| `HANDLED_BY` | Route action → controller/invokable, or Event → listener class | — |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |

@@ -40,6 +40,14 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass(new ReflectionClass(Fixtures\Middleware\MethodInjectionMiddleware::class)));
     }
 
+    public function test_queued_listener_is_classified_as_listener_not_job(): void
+    {
+        $queuedListener = new ReflectionClass(Fixtures\MethodInjectionQueuedListener::class);
+
+        $this->assertTrue($this->resolver->isListener($queuedListener));
+        $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
+    }
+
     public function test_unrelated_service_has_no_target_methods(): void
     {
         $this->assertSame([], $this->resolver->methodsForClass(new ReflectionClass(\stdClass::class)));
@@ -52,6 +60,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Routing\Controller;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 
 final class MethodInjectionPostController extends Controller
 {
@@ -82,6 +91,11 @@ final class MethodInjectionJob implements ShouldQueue
 final class MethodInjectionListener
 {
     public function handle(object $event): void {}
+}
+
+final class MethodInjectionQueuedListener implements ShouldQueue
+{
+    public function handle(OrderShipped $event): void {}
 }
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Middleware;
