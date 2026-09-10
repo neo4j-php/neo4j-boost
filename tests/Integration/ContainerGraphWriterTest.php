@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 
@@ -15,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'queue_connections', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -126,6 +127,63 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('e.name = row.name', $template);
         $this->assertStringContainsString('h.action = row.action', $template);
         $this->assertStringNotContainsString(':Identifier', $template);
+    }
+
+    public function test_jobs_cypher_uses_handled_by_and_optional_connection(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['jobs'];
+
+        $this->assertStringContainsString(':Job', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('USES_CONNECTION', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (j)-[old:USES_CONNECTION]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
+    }
+
+    public function test_job_uses_connection_edges_are_replaced_on_rerun(): void
+    {
+        $connection = new TrackingContainerGraphConnection;
+        $writer = new ContainerGraphWriter($connection);
+
+        $jobRow = static fn (string $queueConnection): array => [
+            'key' => 'App\\Jobs\\ExampleJob',
+            'name' => 'ExampleJob',
+            'action' => 'App\\Jobs\\ExampleJob@handle',
+            'identifier' => 'App\\Jobs\\ExampleJob',
+            'identifier_kind' => 'Class',
+            'should_queue' => true,
+            'connection' => $queueConnection,
+            'queue' => 'default',
+            'unique' => false,
+        ];
+
+        $queueRows = [
+            ['key' => 'redis', 'driver' => 'redis', 'default_queue' => 'default', 'is_default' => false],
+            ['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false],
+        ];
+
+        $writer->write([], [], [], [], [], [], [], [$jobRow('redis')], $queueRows);
+        $this->assertSame(['redis'], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
+
+        $writer->write([], [], [], [], [], [], [], [$jobRow('sqs')], $queueRows);
+        $this->assertSame(['sqs'], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
+
+        $writer->write([], [], [], [], [], [], [], [$jobRow('')], $queueRows);
+        $this->assertSame([], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
+    }
+
+    public function test_queue_connections_cypher_sets_driver_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['queue_connections'];
+
+        $this->assertStringContainsString(':QueueConnection', $template);
+        $this->assertStringContainsString('q.driver = row.driver', $template);
+        $this->assertStringContainsString('q.is_default = row.is_default', $template);
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

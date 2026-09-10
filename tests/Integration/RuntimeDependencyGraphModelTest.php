@@ -7,6 +7,7 @@ use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PhotoController;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Listeners\OrderShippedListener;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\VerifyJsonApi;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
@@ -18,7 +19,9 @@ use Neo4j\LaravelBoost\Tests\TestCase;
  * Acceptance coverage for the runtime dependency graph model:
  * Route -> Abstract -> Instance -> Dependency -> Abstract
  * Route -> Middleware -> Abstract
- * Event -> Abstract -> Instance.
+ * Event -> Abstract -> Instance
+ * Job -> Abstract -> Instance
+ * Job -> QueueConnection.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -100,6 +103,30 @@ class RuntimeDependencyGraphModelTest extends TestCase
         ));
     }
 
+    public function test_exports_job_handled_by_and_queue_connections(): void
+    {
+        $this->app->bind(ProcessInvoiceJob::class, ProcessInvoiceJob::class);
+        config([
+            'queue.default' => 'sync',
+            'queue.connections' => [
+                'sync' => ['driver' => 'sync'],
+                'redis' => ['driver' => 'redis', 'queue' => 'default'],
+            ],
+        ]);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Jobs:')
+            ->expectsOutputToContain('Queue connections:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasJobHandledBy(ProcessInvoiceJob::class, ProcessInvoiceJob::class));
+        $this->assertTrue($this->graph->hasInstanceNode(ProcessInvoiceJob::class));
+        $this->assertTrue($this->graph->hasDependsOnEdge(ProcessInvoiceJob::class, Logger::class));
+        $this->assertTrue($this->graph->hasQueueConnection('sync'));
+        $this->assertTrue($this->graph->hasQueueConnection('redis'));
+    }
+
     public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
     {
         $templates = (new ContainerGraphWriter(
@@ -109,11 +136,15 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('routes', $templates);
         $this->assertArrayHasKey('route_middleware', $templates);
         $this->assertArrayHasKey('events', $templates);
+        $this->assertArrayHasKey('jobs', $templates);
+        $this->assertArrayHasKey('queue_connections', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
         $this->assertStringContainsString('HANDLED_BY', $templates['events']);
         $this->assertStringContainsString(':Event', $templates['events']);
+        $this->assertStringContainsString('HANDLED_BY', $templates['jobs']);
+        $this->assertStringContainsString(':Job', $templates['jobs']);
         $this->assertStringContainsString('USES_MIDDLEWARE', $templates['route_middleware']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
         $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
@@ -128,6 +159,11 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $eventTraversal = RuntimeGraphModel::eventTraversalCypher();
         $this->assertStringContainsString(':Event', $eventTraversal);
         $this->assertStringContainsString('HANDLED_BY', $eventTraversal);
+
+        $jobTraversal = RuntimeGraphModel::jobTraversalCypher();
+        $this->assertStringContainsString(':Job', $jobTraversal);
+        $this->assertStringContainsString('HANDLED_BY', $jobTraversal);
+        $this->assertStringContainsString('USES_CONNECTION', $jobTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -138,11 +174,15 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Route handlers:')
             ->expectsOutputToContain('Route middleware links:')
             ->expectsOutputToContain('Event listeners:')
+            ->expectsOutputToContain('Jobs:')
+            ->expectsOutputToContain('Queue connections:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
         $this->assertSame([], $this->graph->routeRows);
         $this->assertSame([], $this->graph->routeMiddlewareRows);
         $this->assertSame([], $this->graph->eventRows);
+        $this->assertSame([], $this->graph->jobRows);
+        $this->assertSame([], $this->graph->queueConnectionRows);
     }
 }

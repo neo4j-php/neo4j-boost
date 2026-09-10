@@ -52,10 +52,12 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 |--------|------------|---------|
 | `:Route` | `key` (method + URI, e.g. `GET /api/contracts`) | HTTP route. `name` is Laravel’s route name (empty when unnamed). |
 | `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. |
+| `:Job` | `key` (job FQCN) | Discovered job class. `should_queue`, optional `connection` / `queue`, `unique`. |
+| `:QueueConnection` | `key` (connection name) | From `config/queue.php`. `driver`, `default_queue`, `is_default`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interface` / `Class` / `AbstractType`).
 
@@ -66,12 +68,15 @@ Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interf
   -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)
 (:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 (:Event)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:Job)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:Job)-[:USES_CONNECTION]->(:QueueConnection)   # when the job declares a default connection
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, or Event → listener class | — |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, or Job → handler class | `action` on Event/Job edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
+| `USES_CONNECTION` | Job → configured queue connection | — |
 | `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |

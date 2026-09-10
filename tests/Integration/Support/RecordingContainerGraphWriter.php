@@ -36,6 +36,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}> */
     public array $eventRows = [];
 
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}> */
+    public array $jobRows = [];
+
+    /** @var array<int, array{key: string, driver: string, default_queue: string, is_default: bool}> */
+    public array $queueConnectionRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -49,6 +55,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
      * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      */
     public function write(
         array $instanceRows,
@@ -58,6 +66,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $routeRows = [],
         array $routeMiddlewareRows = [],
         array $eventRows = [],
+        array $jobRows = [],
+        array $queueConnectionRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -66,6 +76,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->routeRows = $routeRows;
         $this->routeMiddlewareRows = $routeMiddlewareRows;
         $this->eventRows = $eventRows;
+        $this->jobRows = $jobRows;
+        $this->queueConnectionRows = $queueConnectionRows;
     }
 
     /**
@@ -208,6 +220,28 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     {
         foreach ($this->eventRows as $row) {
             if ($row['key'] === $eventKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasJobHandledBy(string $jobKey, string $identifier): bool
+    {
+        foreach ($this->jobRows as $row) {
+            if ($row['key'] === $jobKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasQueueConnection(string $key): bool
+    {
+        foreach ($this->queueConnectionRows as $row) {
+            if ($row['key'] === $key) {
                 return true;
             }
         }
