@@ -27,7 +27,11 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('row.concreteKind', $bindingsTemplate);
         $this->assertStringContainsString('MERGE (a:Abstract {name: row.abstract})', $bindingsTemplate);
         $this->assertStringContainsString('MERGE (c:Abstract {name: row.concrete})', $bindingsTemplate);
-        $this->assertStringContainsString('SET a:AbstractType', $bindingsTemplate);
+        $this->assertStringContainsString('SET a.kind = row.abstractKind', $bindingsTemplate);
+        $this->assertStringContainsString('SET c.kind = row.concreteKind', $bindingsTemplate);
+        $this->assertStringNotContainsString('SET a:Class', $bindingsTemplate);
+        $this->assertStringNotContainsString('SET a:Interface', $bindingsTemplate);
+        $this->assertStringNotContainsString('SET a:AbstractType', $bindingsTemplate);
         $this->assertStringContainsString('r.type = row.type', $bindingsTemplate);
         $this->assertStringNotContainsString('MERGE (:Interface:Abstract', $bindingsTemplate);
     }
@@ -198,6 +202,20 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('HANDLED_BY', $template);
         $this->assertStringContainsString('h.action = row.action', $template);
         $this->assertStringContainsString(':Abstract', $template);
+        $this->assertStringNotContainsString('SET id:Class', $template);
+        $this->assertStringNotContainsString('SET id:Interface', $template);
+        $this->assertStringNotContainsString('SET id:AbstractType', $template);
+    }
+
+    public function test_write_strips_legacy_abstract_secondary_labels(): void
+    {
+        $connection = new TrackingContainerGraphConnection;
+        $writer = new ContainerGraphWriter($connection);
+
+        $writer->write([], [], []);
+
+        $this->assertTrue($connection->ranStatementMatching('REMOVE a:Interface, a:Class, a:AbstractType'));
+        $this->assertTrue($connection->ranStatementMatching('MATCH (a:Abstract)'));
     }
 
     public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void

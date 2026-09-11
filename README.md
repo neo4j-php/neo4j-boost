@@ -149,7 +149,7 @@ The export uses this runtime model:
 (:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
 ```
 
-`:Abstract` is the container lookup key (same idea as `make($abstract)`), with secondary labels `Interface` / `Class` / `AbstractType`. Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
+`:Abstract` is the container lookup key (same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
 
 ```cypher
 MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:Abstract)

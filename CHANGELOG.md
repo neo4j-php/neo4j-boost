@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Stop applying secondary `:Class` / `:Interface` / `:AbstractType` labels on `:Abstract` nodes; kind remains on the `kind` property. Re-running `container:graph` strips legacy secondary labels from existing Abstract nodes.
+
 ## [1.1.2] - 2026-08-29
 
 ### Fixed

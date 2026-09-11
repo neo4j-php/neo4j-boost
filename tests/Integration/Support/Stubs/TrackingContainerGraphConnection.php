@@ -14,10 +14,15 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
     /** @var array<string, list<string>> job key => connected queue connection keys */
     private array $usesConnections = [];
 
+    /** @var list<string> */
+    private array $statements = [];
+
     public function connect(): void {}
 
     public function run(string $statement, array $parameters = []): SummarizedResult
     {
+        $this->statements[] = $statement;
+
         if (str_contains($statement, ':Job') && isset($parameters['rows']) && is_array($parameters['rows'])) {
             $this->applyJobUsesConnectionSemantics($statement, $parameters['rows']);
         }
@@ -25,6 +30,17 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
         $summary = null;
 
         return new SummarizedResult($summary, [], []);
+    }
+
+    public function ranStatementMatching(string $needle): bool
+    {
+        foreach ($this->statements as $statement) {
+            if (str_contains($statement, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
