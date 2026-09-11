@@ -9,6 +9,7 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use ReflectionClass;
+use ReflectionFunction;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 use Throwable;
 
@@ -17,8 +18,13 @@ use Throwable;
  * resolvable command, job, and callable targets to container Abstracts for
  * HANDLED_BY edges.
  *
- * Closure callbacks and unresolved shell/exec targets are still exported as
+ * Closures and unresolved shell/exec targets are still exported as
  * ScheduledTask nodes, but without a HANDLED_BY identifier.
+ *
+ * Schedule::job() always wraps a Closure that binds `$job`; that binding is
+ * preferred over description()/name() so human labels and displayName() do not
+ * break HANDLED_BY resolution. call()->name(SomeClass::class) uses the real
+ * callable for HANDLED_BY — the name is display-only.
  */
 final class ScheduledTaskExtractor
 {
@@ -95,8 +101,17 @@ final class ScheduledTaskExtractor
         $description = is_string($event->description ?? null) ? (string) $event->description : '';
         $command = is_string($event->command) ? (string) $event->command : '';
         $summary = (string) $event->getSummaryForDisplay();
-        $kind = $this->resolveKind($event, $description, $command);
-        [$identifier, $action] = $this->resolveHandler($event, $kind, $description, $command);
+
+        if ($event instanceof CallbackEvent) {
+            [$identifier, $action, $kind] = $this->resolveCallbackEvent($event);
+        } elseif ($command !== '' && ! str_contains($command, 'artisan')) {
+            $identifier = '';
+            $action = '';
+            $kind = 'exec';
+        } else {
+            $kind = 'command';
+            [$identifier, $action] = $this->resolveArtisanHandler($command);
+        }
 
         $name = $this->displayName($description, $summary, $identifier, $kind);
         $key = $this->taskKey($expression, $summary, $description, $command, $identifier);
@@ -119,65 +134,71 @@ final class ScheduledTaskExtractor
         ];
     }
 
-    private function resolveKind(Event $event, string $description, string $command): string
-    {
-        if ($event instanceof CallbackEvent) {
-            if ($description !== '' && (class_exists($description) || interface_exists($description))) {
-                return 'job';
-            }
-
-            return 'callback';
-        }
-
-        if ($command !== '' && ! str_contains($command, 'artisan')) {
-            return 'exec';
-        }
-
-        return 'command';
-    }
-
     /**
-     * @return array{0: string, 1: string}
+     * @return array{0: string, 1: string, 2: string}
      */
-    private function resolveHandler(Event $event, string $kind, string $description, string $command): array
-    {
-        if ($kind === 'job' && $description !== '') {
-            $method = $this->resolveClassHandlerMethod($description);
-
-            return [$description, $description.'@'.$method];
-        }
-
-        if ($event instanceof CallbackEvent) {
-            return $this->resolveCallbackHandler($event);
-        }
-
-        if ($kind === 'command' && $command !== '') {
-            $commandClass = $this->resolveArtisanCommandClass($command);
-            if ($commandClass !== null) {
-                $method = $this->resolveClassHandlerMethod($commandClass);
-
-                return [$commandClass, $commandClass.'@'.$method];
-            }
-        }
-
-        return ['', ''];
-    }
-
-    /**
-     * @return array{0: string, 1: string}
-     */
-    private function resolveCallbackHandler(CallbackEvent $event): array
+    private function resolveCallbackEvent(CallbackEvent $event): array
     {
         try {
             $callback = (new ReflectionClass($event))->getProperty('callback')->getValue($event);
         } catch (Throwable) {
-            return ['', ''];
+            return ['', '', 'callback'];
         }
 
         if ($callback instanceof Closure) {
-            return ['', ''];
+            $jobHandler = $this->resolveScheduledJobFromClosure($callback);
+            if ($jobHandler !== null) {
+                return [$jobHandler[0], $jobHandler[1], 'job'];
+            }
+
+            return ['', '', 'callback'];
         }
 
+        [$identifier, $action] = $this->resolveCallableHandler($callback);
+
+        return [$identifier, $action, 'callback'];
+    }
+
+    /**
+     * Laravel Schedule::job() wraps dispatch in a Closure that binds `$job`.
+     *
+     * @return null|array{0: string, 1: string}
+     */
+    private function resolveScheduledJobFromClosure(Closure $callback): ?array
+    {
+        try {
+            $vars = (new ReflectionFunction($callback))->getStaticVariables();
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! array_key_exists('job', $vars)) {
+            return null;
+        }
+
+        $job = $vars['job'];
+
+        if (is_string($job) && $job !== '' && (class_exists($job) || interface_exists($job))) {
+            $method = $this->resolveClassHandlerMethod($job);
+
+            return [$job, $job.'@'.$method];
+        }
+
+        if (is_object($job)) {
+            $class = $job::class;
+            $method = $this->resolveClassHandlerMethod($class);
+
+            return [$class, $class.'@'.$method];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function resolveCallableHandler(mixed $callback): array
+    {
         if (is_string($callback) && $callback !== '') {
             if (str_contains($callback, '@')) {
                 [$class, $method] = explode('@', $callback, 2);
@@ -212,6 +233,25 @@ final class ScheduledTaskExtractor
         }
 
         return ['', ''];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function resolveArtisanHandler(string $command): array
+    {
+        if ($command === '') {
+            return ['', ''];
+        }
+
+        $commandClass = $this->resolveArtisanCommandClass($command);
+        if ($commandClass === null) {
+            return ['', ''];
+        }
+
+        $method = $this->resolveClassHandlerMethod($commandClass);
+
+        return [$commandClass, $commandClass.'@'.$method];
     }
 
     private function resolveArtisanCommandClass(string $command): ?string

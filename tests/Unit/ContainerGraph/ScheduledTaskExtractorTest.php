@@ -8,6 +8,7 @@ use Neo4j\LaravelBoost\ContainerGraph\ScheduledTaskExtractor;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Commands\SyncReportsCommand;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\NamedDisplayInvoiceJob;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\ScheduledCallbackTarget;
 
 class ScheduledTaskExtractorTest extends TestCase
@@ -49,6 +50,60 @@ class ScheduledTaskExtractorTest extends TestCase
         $this->assertTrue($match['on_one_server']);
         $this->assertSame(ProcessInvoiceJob::class.'@handle', $match['action']);
         $this->assertSame('ProcessInvoiceJob', $match['name']);
+    }
+
+    public function test_extracts_scheduled_job_after_human_name_override(): void
+    {
+        /** @var Schedule $schedule */
+        $schedule = $this->app->make(Schedule::class);
+        $schedule->job(ProcessInvoiceJob::class)->name('Process invoices')->hourly();
+
+        $match = $this->findByIdentifier(
+            (new ScheduledTaskExtractor)->extract($schedule),
+            ProcessInvoiceJob::class,
+        );
+
+        $this->assertNotNull($match);
+        $this->assertSame('job', $match['kind']);
+        $this->assertSame('Process invoices', $match['name']);
+        $this->assertSame('Process invoices', $match['description']);
+        $this->assertSame(ProcessInvoiceJob::class.'@handle', $match['action']);
+    }
+
+    public function test_extracts_scheduled_job_instance_with_custom_display_name(): void
+    {
+        /** @var Schedule $schedule */
+        $schedule = $this->app->make(Schedule::class);
+        $schedule->job(new NamedDisplayInvoiceJob)->daily();
+
+        $match = $this->findByIdentifier(
+            (new ScheduledTaskExtractor)->extract($schedule),
+            NamedDisplayInvoiceJob::class,
+        );
+
+        $this->assertNotNull($match);
+        $this->assertSame('job', $match['kind']);
+        $this->assertSame('Custom invoice run', $match['name']);
+        $this->assertSame('Custom invoice run', $match['description']);
+        $this->assertSame(NamedDisplayInvoiceJob::class.'@handle', $match['action']);
+    }
+
+    public function test_call_name_class_string_does_not_override_callable_handler(): void
+    {
+        /** @var Schedule $schedule */
+        $schedule = $this->app->make(Schedule::class);
+        $schedule->call([ScheduledCallbackTarget::class, 'run'])
+            ->name(ProcessInvoiceJob::class)
+            ->everyFiveMinutes();
+
+        $rows = (new ScheduledTaskExtractor)->extract($schedule);
+        $match = $this->findByIdentifier($rows, ScheduledCallbackTarget::class);
+
+        $this->assertNotNull($match);
+        $this->assertSame('callback', $match['kind']);
+        $this->assertSame(ScheduledCallbackTarget::class.'@run', $match['action']);
+        $this->assertSame('ProcessInvoiceJob', $match['name']);
+        $this->assertNull($this->findByIdentifier($rows, ProcessInvoiceJob::class));
     }
 
     public function test_extracts_array_callable_callback(): void
