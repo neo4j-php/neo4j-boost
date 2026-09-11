@@ -14,6 +14,7 @@ use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\QueueConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteMiddlewareExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\ScheduledTaskExtractor;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
@@ -52,6 +53,7 @@ class ContainerGraphCommand extends Command
         private EventListenerExtractor $eventListenerExtractor,
         private JobHandlerExtractor $jobHandlerExtractor,
         private QueueConnectionExtractor $queueConnectionExtractor,
+        private ScheduledTaskExtractor $scheduledTaskExtractor,
     ) {
         parent::__construct();
     }
@@ -66,6 +68,7 @@ class ContainerGraphCommand extends Command
         $eventRows = $this->eventListenerExtractor->extract();
         $queueConnectionRows = $this->queueConnectionExtractor->extract();
         $jobRows = $this->jobHandlerExtractor->extract($concreteClasses);
+        $scheduledTaskRows = $this->scheduledTaskExtractor->extract();
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -81,6 +84,10 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromJobRows($jobRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromScheduledTaskRows($scheduledTaskRows),
         );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
@@ -127,6 +134,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Event listeners: '.count($eventRows));
         $this->line('- Jobs: '.count($jobRows));
         $this->line('- Queue connections: '.count($queueConnectionRows));
+        $this->line('- Scheduled tasks: '.count($scheduledTaskRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -136,7 +144,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows);
         }
 
         if ($this->option('dry-run')) {
@@ -147,7 +155,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -530,6 +538,23 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     * @return array<int, string>
+     */
+    private function classNamesFromScheduledTaskRows(array $scheduledTaskRows): array
+    {
+        $classes = [];
+
+        foreach ($scheduledTaskRows as $row) {
+            if (($row['identifier_kind'] ?? '') === 'Class' && class_exists($row['identifier'])) {
+                $classes[] = $row['identifier'];
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -639,6 +664,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -651,6 +677,7 @@ class ContainerGraphCommand extends Command
         array $eventRows = [],
         array $jobRows = [],
         array $queueConnectionRows = [],
+        array $scheduledTaskRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -670,6 +697,7 @@ class ContainerGraphCommand extends Command
         $this->line('- events: '.json_encode(array_slice($eventRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- jobs: '.json_encode(array_slice($jobRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- queue_connections: '.json_encode(array_slice($queueConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- scheduled_tasks: '.json_encode(array_slice($scheduledTaskRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

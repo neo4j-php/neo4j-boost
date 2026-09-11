@@ -29,6 +29,7 @@ use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\QueueConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteMiddlewareExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\ScheduledTaskExtractor;
 use Neo4j\LaravelBoost\Contracts\BoltExecutorInterface;
 use Neo4j\LaravelBoost\Contracts\Neo4jMcpClientInterface;
 use Neo4j\LaravelBoost\ResolutionCatalog\AppFacadeAccessorResolver;
@@ -89,6 +90,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(EventListenerExtractor::class);
         $this->app->singleton(JobHandlerExtractor::class);
         $this->app->singleton(QueueConnectionExtractor::class);
+        $this->app->singleton(ScheduledTaskExtractor::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
         $this->app->singleton(FacadeCatalogExporter::class);
         $this->app->singleton(FacadeAccessorParser::class);

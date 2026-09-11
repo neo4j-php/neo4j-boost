@@ -42,6 +42,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, driver: string, default_queue: string, is_default: bool}> */
     public array $queueConnectionRows = [];
 
+    /** @var array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}> */
+    public array $scheduledTaskRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -57,6 +60,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
      */
     public function write(
         array $instanceRows,
@@ -68,6 +72,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $eventRows = [],
         array $jobRows = [],
         array $queueConnectionRows = [],
+        array $scheduledTaskRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -78,6 +83,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->eventRows = $eventRows;
         $this->jobRows = $jobRows;
         $this->queueConnectionRows = $queueConnectionRows;
+        $this->scheduledTaskRows = $scheduledTaskRows;
     }
 
     /**
@@ -244,6 +250,23 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             if ($row['key'] === $key) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    public function hasScheduledTaskHandledBy(string $identifier, ?string $kind = null): bool
+    {
+        foreach ($this->scheduledTaskRows as $row) {
+            if ($row['identifier'] !== $identifier) {
+                continue;
+            }
+
+            if ($kind !== null && $row['kind'] !== $kind) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

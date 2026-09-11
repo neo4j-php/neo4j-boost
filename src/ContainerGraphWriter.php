@@ -183,6 +183,31 @@ MERGE (q:QueueConnection {key: row.connection})
 MERGE (j)-[:USES_CONNECTION]->(q)
 CYPHER;
 
+    private const CYPHER_SCHEDULED_TASKS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (t:ScheduledTask {key: row.key})
+SET t.name = row.name,
+    t.expression = row.expression,
+    t.command = row.command,
+    t.description = row.description,
+    t.timezone = row.timezone,
+    t.kind = row.kind,
+    t.without_overlapping = row.without_overlapping,
+    t.on_one_server = row.on_one_server,
+    t.run_in_background = row.run_in_background,
+    t.even_in_maintenance_mode = row.even_in_maintenance_mode
+WITH t, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+REMOVE id:Interface, id:Class, id:AbstractType
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
+FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
+FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
+MERGE (t)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -217,6 +242,7 @@ CYPHER;
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
      */
     public function write(
         array $instanceRows,
@@ -228,6 +254,7 @@ CYPHER;
         array $eventRows = [],
         array $jobRows = [],
         array $queueConnectionRows = [],
+        array $scheduledTaskRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -237,6 +264,7 @@ CYPHER;
         $this->validateEventRows($eventRows);
         $this->validateJobRows($jobRows);
         $this->validateQueueConnectionRows($queueConnectionRows);
+        $this->validateScheduledTaskRows($scheduledTaskRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -283,6 +311,9 @@ CYPHER;
         if ($jobRows !== []) {
             $this->connection->run(self::CYPHER_JOBS, ['rows' => $jobRows]);
         }
+        if ($scheduledTaskRows !== []) {
+            $this->connection->run(self::CYPHER_SCHEDULED_TASKS, ['rows' => $scheduledTaskRows]);
+        }
     }
 
     /**
@@ -302,6 +333,7 @@ CYPHER;
             'events' => self::CYPHER_EVENTS,
             'jobs' => self::CYPHER_JOBS,
             'queue_connections' => self::CYPHER_QUEUE_CONNECTIONS,
+            'scheduled_tasks' => self::CYPHER_SCHEDULED_TASKS,
         ];
     }
 
@@ -441,6 +473,26 @@ CYPHER;
 
             if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
                 throw new \InvalidArgumentException('Queue connection row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     */
+    private function validateScheduledTaskRows(array $scheduledTaskRows): void
+    {
+        foreach ($scheduledTaskRows as $row) {
+            foreach (['key', 'name', 'expression', 'command', 'description', 'timezone', 'kind', 'action', 'identifier', 'identifier_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Scheduled task row is missing string {$key}");
+                }
+            }
+
+            foreach (['without_overlapping', 'on_one_server', 'run_in_background', 'even_in_maintenance_mode'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Scheduled task row is missing boolean {$key}");
+                }
             }
         }
     }
