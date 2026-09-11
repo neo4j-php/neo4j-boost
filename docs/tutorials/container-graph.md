@@ -61,9 +61,9 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, dependencies, and bindings. Secondary labels: `Interface`, `Class`, `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
-Bindings use `BINDS_TO` between `:Abstract` nodes (with secondary labels `Interface` / `Class` / `AbstractType`).
+Bindings use `BINDS_TO` between `:Abstract` nodes.
 
 ### Runtime relationships
 

@@ -13,8 +13,8 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Job -[:USES_CONNECTION]-> QueueConnection
  * ScheduledTask -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *
- * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)),
- * with secondary labels Interface, Class, or AbstractType.
+ * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
+ * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
  */
 final class RuntimeGraphModel
 {

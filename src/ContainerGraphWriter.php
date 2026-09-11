@@ -17,17 +17,9 @@ class ContainerGraphWriter
 UNWIND $rows AS row
 MERGE (a:Abstract {name: row.abstract})
 SET a.kind = row.abstractKind
-REMOVE a:Interface, a:Class, a:AbstractType
-FOREACH (_ IN CASE WHEN row.abstractKind = 'Interface' THEN [1] ELSE [] END | SET a:Interface)
-FOREACH (_ IN CASE WHEN row.abstractKind = 'Class' THEN [1] ELSE [] END | SET a:Class)
-FOREACH (_ IN CASE WHEN row.abstractKind <> 'Interface' AND row.abstractKind <> 'Class' THEN [1] ELSE [] END | SET a:AbstractType)
 WITH row, a
 MERGE (c:Abstract {name: row.concrete})
 SET c.kind = row.concreteKind
-REMOVE c:Interface, c:Class, c:AbstractType
-FOREACH (_ IN CASE WHEN row.concreteKind = 'Interface' THEN [1] ELSE [] END | SET c:Interface)
-FOREACH (_ IN CASE WHEN row.concreteKind = 'Class' THEN [1] ELSE [] END | SET c:Class)
-FOREACH (_ IN CASE WHEN row.concreteKind <> 'Interface' AND row.concreteKind <> 'Class' THEN [1] ELSE [] END | SET c:AbstractType)
 MERGE (a)-[r:BINDS_TO]->(c)
 SET r.type = row.type,
     r.source = row.source,
@@ -48,10 +40,6 @@ SET dep.access = row.access
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = row.identifier_kind,
     id.reason = coalesce(row.reason, id.reason)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (dep)-[:IDENTIFIED_AS]->(id)
 CYPHER;
 
@@ -59,10 +47,6 @@ CYPHER;
 UNWIND $rows AS row
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (i:Instance {name: row.instance})
 MERGE (id)-[r:RESOLVES_TO]->(i)
 SET r.lifetime = row.lifetime
@@ -93,10 +77,6 @@ MERGE (i:Instance {name: row.when})
 MERGE (g:Abstract {name: row.give})
 SET g.kind = row.give_kind,
     g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
-REMOVE g:Interface, g:Class, g:AbstractType
-FOREACH (_ IN CASE WHEN row.give_kind = 'Interface' THEN [1] ELSE [] END | SET g:Interface)
-FOREACH (_ IN CASE WHEN row.give_kind = 'Class' THEN [1] ELSE [] END | SET g:Class)
-FOREACH (_ IN CASE WHEN row.give_kind <> 'Interface' AND row.give_kind <> 'Class' THEN [1] ELSE [] END | SET g:AbstractType)
 MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
 SET r.needs = row.needs,
     r.needs_kind = row.needs_kind,
@@ -113,10 +93,6 @@ SET r.uri = row.uri,
 REMOVE r.route_name
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (r)-[:HANDLED_BY]->(id)
 CYPHER;
 
@@ -127,10 +103,6 @@ MERGE (m:Middleware {key: row.middleware_key})
 SET m.name = row.middleware_key
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (m)-[:IDENTIFIED_AS]->(id)
 MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
@@ -142,10 +114,6 @@ MERGE (e:Event {key: row.key})
 SET e.name = row.name
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (e)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 CYPHER;
@@ -168,10 +136,6 @@ SET j.name = row.name,
     j.unique = row.unique
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (j)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 WITH j, row
@@ -200,10 +164,6 @@ WITH t, row
 WHERE row.identifier <> ''
 MERGE (id:Abstract {name: row.identifier})
 SET id.kind = coalesce(row.identifier_kind, id.kind)
-REMOVE id:Interface, id:Class, id:AbstractType
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Interface' THEN [1] ELSE [] END | SET id:Interface)
-FOREACH (_ IN CASE WHEN row.identifier_kind = 'Class' THEN [1] ELSE [] END | SET id:Class)
-FOREACH (_ IN CASE WHEN row.identifier_kind <> 'Interface' AND row.identifier_kind <> 'Class' THEN [1] ELSE [] END | SET id:AbstractType)
 MERGE (t)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 CYPHER;
@@ -211,6 +171,11 @@ CYPHER;
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
+CYPHER;
+
+    private const CYPHER_DROP_LEGACY_ABSTRACT_SECONDARY_LABELS = <<<'CYPHER'
+MATCH (a:Abstract)
+REMOVE a:Interface, a:Class, a:AbstractType
 CYPHER;
 
     public function __construct(
@@ -268,6 +233,7 @@ CYPHER;
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
+        $this->connection->run(self::CYPHER_DROP_LEGACY_ABSTRACT_SECONDARY_LABELS);
 
         if ($instanceRows !== []) {
             $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);

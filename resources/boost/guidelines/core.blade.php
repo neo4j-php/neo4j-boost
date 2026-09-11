@@ -55,7 +55,7 @@ php artisan container:graph --dry-run
 php artisan container:graph --print-cypher
 ```
 
-Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Runtime resolution uses `(:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(:Instance)-[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)`, `(:Route)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)`, `(:Event)-[:HANDLED_BY]->(:Abstract)`, `(:Job)-[:HANDLED_BY]->(:Abstract)`, `(:Job)-[:USES_CONNECTION]->(:QueueConnection)`, and `(:ScheduledTask)-[:HANDLED_BY]->(:Abstract)`. All lookup names use `:Abstract` (with `Interface`/`Class`/`AbstractType`); bindings use `BINDS_TO`. Explore with:
+Env vars for direct Neo4j connection: set `NEO4J_URI` (and user/password), or set only `NEO4J_DEFAULT_CONNECTION_DSN` (e.g. `neo4j://user:pass@neo4j-core1:7687` in Docker) so the same DSN as the app can be reused. Runtime resolution uses `(:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(:Instance)-[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)`, `(:Route)-[:USES_MIDDLEWARE]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)`, `(:Event)-[:HANDLED_BY]->(:Abstract)`, `(:Job)-[:HANDLED_BY]->(:Abstract)`, `(:Job)-[:USES_CONNECTION]->(:QueueConnection)`, and `(:ScheduledTask)-[:HANDLED_BY]->(:Abstract)`. All lookup names use `:Abstract` with a `kind` property (`Class`/`Interface`/`AbstractType`); bindings use `BINDS_TO`. Explore with:
 
 ```cypher
 MATCH (r:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
