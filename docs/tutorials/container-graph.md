@@ -57,7 +57,7 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. |
 | `:Job` | `key` (job FQCN) | Discovered job class. `should_queue`, optional `connection` / `queue`, `unique`. |
 | `:QueueConnection` | `key` (connection name) | From `config/queue.php`. `driver`, `default_queue`, `is_default`. |
-| `:ScheduledTask` | `key` (stable hash of expression + target) | Cron / scheduler entry. `expression`, `kind` (`command`/`job`/`callback`/`exec`), flags, optional `description`. |
+| `:ScheduledTask` | `key` (stable hash of expression + kind + command + handler identifier; excludes display names) | Cron / scheduler entry. `expression`, `kind` (`command`/`job`/`callback`/`exec`), flags, optional `description`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |

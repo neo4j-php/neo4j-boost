@@ -88,6 +88,53 @@ class ScheduledTaskExtractorTest extends TestCase
         $this->assertSame(NamedDisplayInvoiceJob::class.'@handle', $match['action']);
     }
 
+    public function test_task_key_stable_across_display_name_overrides(): void
+    {
+        /** @var Schedule $unnamed */
+        $unnamed = $this->app->make(Schedule::class);
+        $unnamed->job(ProcessInvoiceJob::class)->hourly();
+        $withoutName = $this->findByIdentifier(
+            (new ScheduledTaskExtractor)->extract($unnamed),
+            ProcessInvoiceJob::class,
+        );
+
+        $this->app->forgetInstance(Schedule::class);
+
+        /** @var Schedule $named */
+        $named = $this->app->make(Schedule::class);
+        $named->job(ProcessInvoiceJob::class)->name('Process invoices')->hourly();
+        $withName = $this->findByIdentifier(
+            (new ScheduledTaskExtractor)->extract($named),
+            ProcessInvoiceJob::class,
+        );
+
+        $this->assertNotNull($withoutName);
+        $this->assertNotNull($withName);
+        $this->assertSame($withoutName['key'], $withName['key']);
+        $this->assertSame('Process invoices', $withName['name']);
+    }
+
+    public function test_call_closure_binding_only_job_is_not_treated_as_scheduled_job(): void
+    {
+        $job = ProcessInvoiceJob::class;
+
+        /** @var Schedule $schedule */
+        $schedule = $this->app->make(Schedule::class);
+        $schedule->call(function () use ($job): void {
+            // Intentionally binds only $job — not Schedule::job()'s queue/connection.
+            unset($job);
+        })->daily();
+
+        $rows = (new ScheduledTaskExtractor)->extract($schedule);
+
+        $this->assertNull($this->findByIdentifier($rows, ProcessInvoiceJob::class));
+        $closures = array_values(array_filter(
+            $rows,
+            static fn (array $row): bool => $row['kind'] === 'callback' && $row['identifier'] === '',
+        ));
+        $this->assertNotEmpty($closures);
+    }
+
     public function test_call_name_class_string_does_not_override_callable_handler(): void
     {
         /** @var Schedule $schedule */

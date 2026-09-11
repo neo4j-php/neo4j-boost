@@ -21,10 +21,11 @@ use Throwable;
  * Closures and unresolved shell/exec targets are still exported as
  * ScheduledTask nodes, but without a HANDLED_BY identifier.
  *
- * Schedule::job() always wraps a Closure that binds `$job`; that binding is
- * preferred over description()/name() so human labels and displayName() do not
- * break HANDLED_BY resolution. call()->name(SomeClass::class) uses the real
- * callable for HANDLED_BY — the name is display-only.
+ * Schedule::job() always wraps a Closure that binds `$job`, `$queue`, and
+ * `$connection`; that binding is preferred over description()/name() so human
+ * labels and displayName() do not break HANDLED_BY resolution.
+ * call()->name(SomeClass::class) uses the real callable for HANDLED_BY — the
+ * name is display-only.
  */
 final class ScheduledTaskExtractor
 {
@@ -113,14 +114,15 @@ final class ScheduledTaskExtractor
             [$identifier, $action] = $this->resolveArtisanHandler($command);
         }
 
+        $normalizedCommand = $command !== '' ? Event::normalizeCommand($command) : '';
         $name = $this->displayName($description, $summary, $identifier, $kind);
-        $key = $this->taskKey($expression, $summary, $description, $command, $identifier);
+        $key = $this->taskKey($expression, $kind, $normalizedCommand, $identifier);
 
         return [
             'key' => $key,
             'name' => $name,
             'expression' => $expression,
-            'command' => $command !== '' ? Event::normalizeCommand($command) : $summary,
+            'command' => $normalizedCommand !== '' ? $normalizedCommand : $summary,
             'description' => $description,
             'timezone' => $this->timezoneString($event->timezone),
             'kind' => $kind,
@@ -140,6 +142,8 @@ final class ScheduledTaskExtractor
     private function resolveCallbackEvent(CallbackEvent $event): array
     {
         try {
+            // CallbackEvent::$callback is protected with no public getter; reflection
+            // tracks Laravel internals and may need updates if the framework changes.
             $callback = (new ReflectionClass($event))->getProperty('callback')->getValue($event);
         } catch (Throwable) {
             return ['', '', 'callback'];
@@ -160,7 +164,9 @@ final class ScheduledTaskExtractor
     }
 
     /**
-     * Laravel Schedule::job() wraps dispatch in a Closure that binds `$job`.
+     * Laravel Schedule::job() wraps dispatch in a Closure that binds
+     * `$job`, `$queue`, and `$connection`. Require all three so a plain
+     * call(fn () use ($job) => …) is not misclassified as a scheduled job.
      *
      * @return null|array{0: string, 1: string}
      */
@@ -172,7 +178,10 @@ final class ScheduledTaskExtractor
             return null;
         }
 
-        if (! array_key_exists('job', $vars)) {
+        if (! array_key_exists('job', $vars)
+            || ! array_key_exists('queue', $vars)
+            || ! array_key_exists('connection', $vars)
+        ) {
             return null;
         }
 
@@ -335,14 +344,17 @@ final class ScheduledTaskExtractor
         return $kind;
     }
 
+    /**
+     * Identity omits display labels (description / summary / ->name()) so
+     * renaming a task does not orphan ScheduledTask nodes on re-export.
+     */
     private function taskKey(
         string $expression,
-        string $summary,
-        string $description,
-        string $command,
+        string $kind,
+        string $normalizedCommand,
         string $identifier,
     ): string {
-        $payload = $expression."\0".$summary."\0".$description."\0".$command."\0".$identifier;
+        $payload = $expression."\0".$kind."\0".$normalizedCommand."\0".$identifier;
 
         return hash('sha1', $payload);
     }
