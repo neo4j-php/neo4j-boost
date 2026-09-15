@@ -88,6 +88,8 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
 | `CONTEXTUAL_BINDS` | Contextual `when/needs/give` | `needs`, `needs_kind`, `reason` |
 
+![Container graph runtime model](../media/container-graph-structure.png)
+
 ## Export the Laravel Container Graph
 
 ```bash
@@ -279,10 +281,10 @@ Cursor
 
 Typical loop:
 
-1. Change bindings, constructors, routes, or middleware in Laravel.
+1. Change bindings, constructors, routes, middleware, events, jobs, or schedule entries in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Instance` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:ScheduledTask` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 

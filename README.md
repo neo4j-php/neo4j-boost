@@ -147,6 +147,10 @@ The export uses this runtime model:
 (:Route)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(:Instance)
   -[:DEPENDS_ON]->(:Dependency)-[:IDENTIFIED_AS]->(:Abstract)
 (:Route)-[:USES_MIDDLEWARE {order,parameters}]->(:Middleware)-[:IDENTIFIED_AS]->(:Abstract)
+(:Event)-[:HANDLED_BY]->(:Abstract)
+(:Job)-[:HANDLED_BY]->(:Abstract)
+(:Job)-[:USES_CONNECTION]->(:QueueConnection)
+(:ScheduledTask)-[:HANDLED_BY]->(:Abstract)
 ```
 
 `:Abstract` is the container lookup key (same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
@@ -156,6 +160,23 @@ MATCH path = (r:Route)-[:USES_MIDDLEWARE]->(m:Middleware)-[:IDENTIFIED_AS]->(a:A
 RETURN path
 LIMIT 50
 ```
+
+```cypher
+MATCH (j:Job)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH conn = (j)-[:USES_CONNECTION]->(:QueueConnection)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN j, root, conn, path
+LIMIT 50
+```
+
+```cypher
+MATCH (t:ScheduledTask)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN t, root, path
+LIMIT 50
+```
+
+![Container graph runtime model](docs/media/container-graph-structure.png)
 
 ![Export and query Laravel dependencies](docs/media/demos/07-container-dependency-tool.gif)
 
@@ -189,7 +210,7 @@ Once exported, you can use the **get-class-dependency-graph** MCP tool to query 
 | `neo4j-boost:install-mcp` | Downloads and installs the official `neo4j-mcp` binary (only needed for STDIO). |
 | `neo4j-boost:doctor` | Diagnoses your transport, binary, password, and overall readiness. |
 | `neo4j-boost:test-stdio` | Runs a verbose end-to-end test for the STDIO handshake and tools. |
-| `container:graph` | Exports Laravel routes, middleware, and container wiring into Neo4j (`--dry-run` and `--print-cypher` available). |
+| `container:graph` | Exports Laravel routes, middleware, events, jobs, queue connections, scheduled tasks, and container wiring into Neo4j (`--dry-run` and `--print-cypher` available). |
 
 ---
 
