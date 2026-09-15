@@ -3,7 +3,8 @@
 namespace Neo4j\LaravelBoost\StaticAnalysis;
 
 /**
- * A service-locator dependency discovered in PHP source (app / resolve / App::make / Application::make / $app->make).
+ * A service-locator dependency discovered in PHP source
+ * (app / resolve / App::make / Application::make / $app->make / typed container ->make).
  */
 final readonly class ServiceLocationEdge
 {

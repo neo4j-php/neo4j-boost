@@ -25,11 +25,17 @@ final class ServiceLocationCallDetector
 
     public const UNRESOLVED_REASON = 'dynamic service locator argument';
 
-    /** @var list<string> */
-    private const APPLICATION_CLASS_NAMES = [
-        'Application',
-        'Illuminate\\Foundation\\Application',
+    /**
+     * Types that expose make() / makeWith() as container lookups.
+     *
+     * @var list<string>
+     */
+    private const CONTAINER_CLASS_NAMES = [
+        'Illuminate\\Contracts\\Container\\Container',
+        'Illuminate\\Container\\Container',
         'Illuminate\\Contracts\\Foundation\\Application',
+        'Illuminate\\Foundation\\Application',
+        'Application',
     ];
 
     /**
@@ -77,7 +83,7 @@ final class ServiceLocationCallDetector
             return ['via' => 'App::'.$method, 'args' => $node->args];
         }
 
-        if ($this->isApplicationClassName($className)) {
+        if ($this->isContainerClassName($className)) {
             return ['via' => 'Application::'.$method, 'args' => $node->args];
         }
 
@@ -85,9 +91,10 @@ final class ServiceLocationCallDetector
     }
 
     /**
+     * @param  null|string  $receiverTypeFqcn  Declared type of the receiver when known (PhpParser path).
      * @return array{via: string, args: array<int, Node\Arg>}|null
      */
-    public function matchMethodCall(MethodCall $node): ?array
+    public function matchMethodCall(MethodCall $node, ?string $receiverTypeFqcn = null): ?array
     {
         if (! $node->name instanceof Identifier) {
             return null;
@@ -98,7 +105,7 @@ final class ServiceLocationCallDetector
             return null;
         }
 
-        $receiverVia = $this->methodReceiverVia($node->var);
+        $receiverVia = $this->methodReceiverVia($node->var, $receiverTypeFqcn);
         if ($receiverVia === null) {
             return null;
         }
@@ -120,12 +127,12 @@ final class ServiceLocationCallDetector
             return null;
         }
 
-        $receiverVia = $this->methodReceiverVia($node->var);
-        if ($receiverVia === null && ! $this->isApplicationReceiver($node->var, $scope)) {
+        $nameVia = $this->methodReceiverVia($node->var, null);
+        if ($nameVia === null && ! $this->isContainerReceiver($node->var, $scope)) {
             return null;
         }
 
-        $via = ($receiverVia ?? '$app').'->'.$method;
+        $via = ($nameVia ?? $this->receiverLabel($node->var) ?? '$app').'->'.$method;
 
         return ['via' => $via, 'args' => $node->args];
     }
@@ -175,6 +182,30 @@ final class ServiceLocationCallDetector
         ];
     }
 
+    public function isContainerClassName(string $className): bool
+    {
+        $className = ltrim($className, '\\');
+
+        foreach (self::CONTAINER_CLASS_NAMES as $containerClass) {
+            if ($className === $containerClass) {
+                return true;
+            }
+        }
+
+        foreach ([
+            'Illuminate\\Contracts\\Container\\Container',
+            'Illuminate\\Container\\Container',
+            'Illuminate\\Contracts\\Foundation\\Application',
+            'Illuminate\\Foundation\\Application',
+        ] as $containerClass) {
+            if (is_a($className, $containerClass, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function resolveClassName(Name $name, Scope $scope): string
     {
         if ($name->isFullyQualified()) {
@@ -182,19 +213,6 @@ final class ServiceLocationCallDetector
         }
 
         return ltrim($scope->resolveName($name), '\\');
-    }
-
-    private function isApplicationClassName(string $className): bool
-    {
-        $className = ltrim($className, '\\');
-
-        foreach (self::APPLICATION_CLASS_NAMES as $applicationClass) {
-            if (is_a($className, $applicationClass, true)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function unresolvedClassName(Node $class): ?string
@@ -206,34 +224,60 @@ final class ServiceLocationCallDetector
         return ltrim($class->toString(), '\\');
     }
 
-    private function methodReceiverVia(Expr $receiver): ?string
+    /**
+     * Match `$app` / `$this->app` by name (legacy), or any `$var` / `$this->prop`
+     * whose declared type is Application/Container.
+     */
+    private function methodReceiverVia(Expr $receiver, ?string $receiverTypeFqcn): ?string
     {
-        if ($receiver instanceof Variable && is_string($receiver->name) && $receiver->name === 'app') {
-            return '$app';
+        $label = $this->receiverLabel($receiver);
+        if ($label === null) {
+            return null;
+        }
+
+        $isLegacyAppName = $label === '$app' || $label === '$this->app';
+        if ($isLegacyAppName) {
+            return $label;
+        }
+
+        if ($receiverTypeFqcn !== null && $this->isContainerClassName($receiverTypeFqcn)) {
+            return $label;
+        }
+
+        return null;
+    }
+
+    private function receiverLabel(Expr $receiver): ?string
+    {
+        if ($receiver instanceof Variable && is_string($receiver->name)) {
+            return '$'.$receiver->name;
         }
 
         if ($receiver instanceof PropertyFetch
             && $receiver->var instanceof Variable
             && is_string($receiver->var->name)
             && $receiver->var->name === 'this'
-            && $receiver->name instanceof Identifier
-            && $receiver->name->toString() === 'app') {
-            return '$this->app';
+            && $receiver->name instanceof Identifier) {
+            return '$this->'.$receiver->name->toString();
         }
 
         return null;
     }
 
-    private function isApplicationReceiver(Expr $receiver, Scope $scope): bool
+    private function isContainerReceiver(Expr $receiver, Scope $scope): bool
     {
-        if ($this->methodReceiverVia($receiver) !== null) {
+        if ($this->methodReceiverVia($receiver, null) !== null) {
             return true;
         }
 
         $type = $scope->getType($receiver);
 
-        foreach (self::APPLICATION_CLASS_NAMES as $applicationClass) {
-            if ((new ObjectType($applicationClass))->isSuperTypeOf($type)->yes()) {
+        foreach (self::CONTAINER_CLASS_NAMES as $containerClass) {
+            if ($containerClass === 'Application') {
+                continue;
+            }
+
+            if ((new ObjectType($containerClass))->isSuperTypeOf($type)->yes()) {
                 return true;
             }
         }

@@ -20,6 +20,7 @@ final class GraphCompleteness
     {
         return [
             'Dynamic service location, facade, and helper calls without literal arguments are skipped.',
+            'Service-location make()/makeWith() on receivers that are neither named app nor declared as Application/Container are not exported.',
             'Static scan edges require NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS to be configured.',
             'Method injection entry points are detected via namespace and naming heuristics.',
             'Repeated direct instantiation of the same class may collapse to a single edge.',
