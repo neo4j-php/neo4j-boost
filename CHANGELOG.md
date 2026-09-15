@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [1.2.0] - 2026-09-15
 
-- Detect `make()` / `makeWith()` service-location edges on Application/Container-typed receivers with any name (for example `$cte` / `$this->cte`), not only `$app` / `$this->app`.
+### Added
+
+- **Event listeners** in `container:graph`: `(:Event)-[:HANDLED_BY]->(:Abstract)` from the live dispatcher (class-based listeners; closures and wildcards skipped). (#54)
+- **Jobs and queue connections**: `(:Job)-[:HANDLED_BY]->(:Abstract)` from scanned job classes, plus optional `(:Job)-[:USES_CONNECTION]->(:QueueConnection)` from `config/queue.php`. Re-export replaces stale `USES_CONNECTION` edges when a job’s connection changes or is cleared. (#55)
+- **Scheduled (cron) tasks**: `(:ScheduledTask)-[:HANDLED_BY]->(:Abstract)` from the live `Schedule`. `Schedule::job()` handlers resolve from the bound Closure `$job` so `name()` / `displayName()` overrides do not break `HANDLED_BY`; `call()->name(SomeClass::class)` keeps the real callable as the handler. (#56)
 
 ### Changed
 
-- Stop applying secondary `:Class` / `:Interface` / `:AbstractType` labels on `:Abstract` nodes; kind remains on the `kind` property. Re-running `container:graph` strips legacy secondary labels from existing Abstract nodes.
+- Stop applying secondary `:Class` / `:Interface` / `:AbstractType` labels on `:Abstract` nodes; kind remains on the `kind` property. Re-running `container:graph` strips legacy secondary labels from existing Abstract nodes. (#57)
+
+### Fixed
+
+- Detect `make()` / `makeWith()` service-location edges on Application/Container-typed receivers with any name (for example `$cte` / `$this->cte`), not only `$app` / `$this->app`. (#59)
 
 ## [1.1.2] - 2026-08-29
 
@@ -90,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public semver release under `neo4j/laravel-boost` (previously `1.0.0` placeholder in `composer.json`).
 
+[1.2.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.2.0
 [1.1.2]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.2
 [1.1.1]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.1
 [1.1.0]: https://github.com/neo4j-php/neo4j-boost/releases/tag/v1.1.0
