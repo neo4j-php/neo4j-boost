@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Detect `make()` / `makeWith()` service-location edges on Application/Container-typed receivers with any name (for example `$cte` / `$this->cte`), not only `$app` / `$this->app`.
+
 ### Changed
 
 - Stop applying secondary `:Class` / `:Interface` / `:AbstractType` labels on `:Abstract` nodes; kind remains on the `kind` property. Re-running `container:graph` strips legacy secondary labels from existing Abstract nodes.

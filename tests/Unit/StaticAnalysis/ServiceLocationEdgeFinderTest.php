@@ -57,6 +57,81 @@ class ServiceLocationEdgeFinderTest extends TestCase
         ], $vias);
     }
 
+    public function test_finds_make_on_renamed_application_and_container_receivers(): void
+    {
+        $source = <<<'PHP'
+<?php
+
+namespace Demo;
+
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Foundation\Application;
+
+final class ClockifyController
+{
+    public function __construct(
+        private readonly Application $cte,
+        private readonly Container $container,
+    ) {}
+
+    public function run(Application $application): void
+    {
+        $this->cte->make(Foo::class);
+        $this->container->makeWith(Foo::class, []);
+        $application->make(Foo::class);
+    }
+}
+
+final class Foo {}
+PHP;
+
+        $edges = $this->app->make(ServiceLocationEdgeFinder::class)->scanSource($source);
+
+        $this->assertCount(3, $edges);
+
+        $vias = array_map(static fn ($edge): string => $edge->via, $edges);
+        sort($vias);
+
+        $this->assertSame([
+            '$application->make',
+            '$this->container->makeWith',
+            '$this->cte->make',
+        ], $vias);
+
+        foreach ($edges as $edge) {
+            $this->assertSame('Demo\\Foo', $edge->dependency);
+            $this->assertTrue($edge->resolved);
+        }
+    }
+
+    public function test_ignores_make_on_non_container_typed_receiver(): void
+    {
+        $source = <<<'PHP'
+<?php
+
+namespace Demo;
+
+final class Worker
+{
+    public function run(Collection $items): void
+    {
+        $items->make(Foo::class);
+    }
+}
+
+final class Collection
+{
+    public function make(string $abstract): void {}
+}
+
+final class Foo {}
+PHP;
+
+        $edges = $this->app->make(ServiceLocationEdgeFinder::class)->scanSource($source);
+
+        $this->assertSame([], $edges);
+    }
+
     public function test_finds_application_static_make_call(): void
     {
         $source = <<<'PHP'
