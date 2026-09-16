@@ -210,6 +210,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('routes', $templates);
         $this->assertArrayHasKey('route_middleware', $templates);
         $this->assertArrayHasKey('events', $templates);
+        $this->assertArrayHasKey('events_clear_handled_by', $templates);
         $this->assertArrayHasKey('jobs', $templates);
         $this->assertArrayHasKey('queue_connections', $templates);
         $this->assertArrayHasKey('scheduled_tasks', $templates);

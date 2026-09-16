@@ -7,7 +7,7 @@ use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 
 /**
  * Records replaceable relationship edges by applying Cypher semantics from the
- * statement text (Job USES_CONNECTION, AuthGuard USES_PROVIDER).
+ * statement text (Job USES_CONNECTION, AuthGuard USES_PROVIDER, Event HANDLED_BY).
  */
 final class TrackingContainerGraphConnection extends ContainerGraphConnection
 {
@@ -16,6 +16,9 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
 
     /** @var array<string, list<string>> auth guard key => provider keys */
     private array $usesProviders = [];
+
+    /** @var array<string, list<string>> event key => listener abstract names */
+    private array $handledBy = [];
 
     /** @var list<string> */
     private array $statements = [];
@@ -33,6 +36,10 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
 
             if (str_contains($statement, ':AuthGuard')) {
                 $this->applyAuthGuardUsesProviderSemantics($statement, $parameters['rows']);
+            }
+
+            if (str_contains($statement, ':Event')) {
+                $this->applyEventHandledBySemantics($statement, $parameters['rows']);
             }
         }
 
@@ -66,6 +73,17 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
     public function usesProvidersFor(string $guardKey): array
     {
         return $this->usesProviders[$guardKey] ?? [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function handledByFor(string $eventKey): array
+    {
+        $listeners = $this->handledBy[$eventKey] ?? [];
+        sort($listeners);
+
+        return $listeners;
     }
 
     /**
@@ -140,6 +158,48 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
                 $existing[] = $provider;
             }
             $this->usesProviders[$guardKey] = $existing;
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     */
+    private function applyEventHandledBySemantics(string $statement, array $rows): void
+    {
+        $clearsHandledBy = str_contains($statement, '[old:HANDLED_BY]')
+            && str_contains($statement, 'DELETE old');
+
+        if ($clearsHandledBy) {
+            foreach ($rows as $row) {
+                if (! is_array($row) || ! isset($row['key']) || ! is_string($row['key'])) {
+                    continue;
+                }
+
+                unset($this->handledBy[$row['key']]);
+            }
+
+            return;
+        }
+
+        if (! str_contains($statement, 'HANDLED_BY')) {
+            return;
+        }
+
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! isset($row['key']) || ! is_string($row['key'])) {
+                continue;
+            }
+
+            $identifier = is_string($row['identifier'] ?? null) ? $row['identifier'] : '';
+            if ($identifier === '') {
+                continue;
+            }
+
+            $existing = $this->handledBy[$row['key']] ?? [];
+            if (! in_array($identifier, $existing, true)) {
+                $existing[] = $identifier;
+            }
+            $this->handledBy[$row['key']] = $existing;
         }
     }
 }

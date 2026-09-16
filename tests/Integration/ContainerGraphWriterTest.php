@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -124,6 +124,7 @@ class ContainerGraphWriterTest extends TestCase
     {
         $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
         $template = $writer->cypherTemplates()['events'];
+        $clearTemplate = $writer->cypherTemplates()['events_clear_handled_by'];
 
         $this->assertStringContainsString(':Event', $template);
         $this->assertStringContainsString('HANDLED_BY', $template);
@@ -131,6 +132,49 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('e.name = row.name', $template);
         $this->assertStringContainsString('h.action = row.action', $template);
         $this->assertStringNotContainsString(':Identifier', $template);
+
+        $this->assertStringContainsString('OPTIONAL MATCH (e)-[old:HANDLED_BY]->()', $clearTemplate);
+        $this->assertStringContainsString('DELETE old', $clearTemplate);
+        $this->assertStringContainsString('WITH DISTINCT row.key AS eventKey', $clearTemplate);
+    }
+
+    public function test_event_handled_by_edges_are_replaced_on_rerun(): void
+    {
+        $connection = new TrackingContainerGraphConnection;
+        $writer = new ContainerGraphWriter($connection);
+
+        $eventRow = static fn (string $identifier): array => [
+            'key' => 'App\\Events\\OrderShipped',
+            'name' => 'OrderShipped',
+            'action' => $identifier.'@handle',
+            'identifier' => $identifier,
+            'identifier_kind' => 'Class',
+        ];
+
+        $writer->write([], [], [], [], [], [], [
+            $eventRow('App\\Listeners\\SendEmail'),
+            $eventRow('App\\Listeners\\NotifySlack'),
+        ]);
+        $this->assertSame(
+            ['App\\Listeners\\NotifySlack', 'App\\Listeners\\SendEmail'],
+            $connection->handledByFor('App\\Events\\OrderShipped'),
+        );
+
+        $writer->write([], [], [], [], [], [], [
+            $eventRow('App\\Listeners\\NotifySlack'),
+        ]);
+        $this->assertSame(
+            ['App\\Listeners\\NotifySlack'],
+            $connection->handledByFor('App\\Events\\OrderShipped'),
+        );
+
+        $writer->write([], [], [], [], [], [], [
+            $eventRow('App\\Listeners\\WriteAuditLog'),
+        ]);
+        $this->assertSame(
+            ['App\\Listeners\\WriteAuditLog'],
+            $connection->handledByFor('App\\Events\\OrderShipped'),
+        );
     }
 
     public function test_jobs_cypher_uses_handled_by_and_optional_connection(): void

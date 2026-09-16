@@ -108,6 +108,14 @@ MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
 CYPHER;
 
+    private const CYPHER_EVENTS_CLEAR_HANDLED_BY = <<<'CYPHER'
+UNWIND $rows AS row
+WITH DISTINCT row.key AS eventKey
+MATCH (e:Event {key: eventKey})
+OPTIONAL MATCH (e)-[old:HANDLED_BY]->()
+DELETE old
+CYPHER;
+
     private const CYPHER_EVENTS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (e:Event {key: row.key})
@@ -323,6 +331,8 @@ CYPHER;
             $this->connection->run(self::CYPHER_ROUTE_MIDDLEWARE, ['rows' => $routeMiddlewareRows]);
         }
         if ($eventRows !== []) {
+            // Clear first so removed listeners do not linger; Events may have many HANDLED_BY edges.
+            $this->connection->run(self::CYPHER_EVENTS_CLEAR_HANDLED_BY, ['rows' => $eventRows]);
             $this->connection->run(self::CYPHER_EVENTS, ['rows' => $eventRows]);
         }
         if ($queueConnectionRows !== []) {
@@ -359,6 +369,7 @@ CYPHER;
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
             'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
+            'events_clear_handled_by' => self::CYPHER_EVENTS_CLEAR_HANDLED_BY,
             'events' => self::CYPHER_EVENTS,
             'jobs' => self::CYPHER_JOBS,
             'queue_connections' => self::CYPHER_QUEUE_CONNECTIONS,
