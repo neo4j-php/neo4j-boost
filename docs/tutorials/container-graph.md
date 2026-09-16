@@ -44,10 +44,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 3. **Event listeners** from the live dispatcher (class-based listeners; closures/wildcards skipped)
 4. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
 5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
-6. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-7. **Constructor and method-injection dependencies** for concrete classes
-8. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-9. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
+7. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+8. **Constructor and method-injection dependencies** for concrete classes
+9. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+10. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -58,10 +59,13 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Job` | `key` (job FQCN) | Discovered job class. `should_queue`, optional `connection` / `queue`, `unique`. |
 | `:QueueConnection` | `key` (connection name) | From `config/queue.php`. `driver`, `default_queue`, `is_default`. |
 | `:ScheduledTask` | `key` (stable hash of expression + kind + command + handler identifier; excludes display names) | Cron / scheduler entry. `expression`, `kind` (`command`/`job`/`callback`/`exec`), flags, optional `description`. |
+| `:AuthGuard` | `key` (guard name) | From `config/auth.php` guards. `driver`, `is_default`. |
+| `:AuthProvider` | `key` (provider name) | User provider. `driver`, optional `table` (database driver). |
+| `:PasswordBroker` | `key` (broker name) | Password reset broker. `table`, `expire`, `throttle`, `is_default`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -75,6 +79,9 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:Job)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 (:Job)-[:USES_CONNECTION]->(:QueueConnection)   # when the job declares a default connection
 (:ScheduledTask)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)
+(:AuthProvider)-[:USES_MODEL]->(:Abstract)      # eloquent providers with a model class
+(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)
 ```
 
 | Type | Meaning | Properties |
@@ -82,6 +89,8 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 | `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, or ScheduledTask → command/job/callable class | `action` on Event/Job/ScheduledTask edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job → configured queue connection | — |
+| `USES_PROVIDER` | AuthGuard or PasswordBroker → AuthProvider | — |
+| `USES_MODEL` | AuthProvider → eloquent user model Abstract | — |
 | `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
@@ -100,10 +109,10 @@ php artisan container:graph
 
 1. Extracts binding rows and concrete class names from the Laravel container.
 2. Extracts controller routes and expanded middleware from the live router.
-3. Extracts event listeners, jobs, queue connections, and scheduled tasks.
+3. Extracts event listeners, jobs, queue connections, scheduled tasks, and auth config (guards, providers, password brokers).
 4. Scans production PSR-4 paths for additional project classes.
 5. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
-6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, static edges, unresolved count).
+6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, auth guards/providers/password brokers, static edges, unresolved count).
 7. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
 
 On success you see:

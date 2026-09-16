@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\Console;
 
 use Closure;
 use Illuminate\Console\Command;
+use Neo4j\LaravelBoost\ContainerGraph\AuthConfigExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
@@ -54,6 +55,7 @@ class ContainerGraphCommand extends Command
         private JobHandlerExtractor $jobHandlerExtractor,
         private QueueConnectionExtractor $queueConnectionExtractor,
         private ScheduledTaskExtractor $scheduledTaskExtractor,
+        private AuthConfigExtractor $authConfigExtractor,
     ) {
         parent::__construct();
     }
@@ -69,6 +71,10 @@ class ContainerGraphCommand extends Command
         $queueConnectionRows = $this->queueConnectionExtractor->extract();
         $jobRows = $this->jobHandlerExtractor->extract($concreteClasses);
         $scheduledTaskRows = $this->scheduledTaskExtractor->extract();
+        $authConfig = $this->authConfigExtractor->extract();
+        $authProviderRows = $authConfig['providers'];
+        $authGuardRows = $authConfig['guards'];
+        $passwordBrokerRows = $authConfig['password_brokers'];
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -88,6 +94,10 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromScheduledTaskRows($scheduledTaskRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromAuthProviderRows($authProviderRows),
         );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
@@ -135,6 +145,9 @@ class ContainerGraphCommand extends Command
         $this->line('- Jobs: '.count($jobRows));
         $this->line('- Queue connections: '.count($queueConnectionRows));
         $this->line('- Scheduled tasks: '.count($scheduledTaskRows));
+        $this->line('- Auth guards: '.count($authGuardRows));
+        $this->line('- Auth providers: '.count($authProviderRows));
+        $this->line('- Password brokers: '.count($passwordBrokerRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -144,7 +157,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows);
         }
 
         if ($this->option('dry-run')) {
@@ -155,7 +168,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -555,6 +568,24 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     * @return array<int, string>
+     */
+    private function classNamesFromAuthProviderRows(array $authProviderRows): array
+    {
+        $classes = [];
+
+        foreach ($authProviderRows as $row) {
+            $model = $row['model'] ?? '';
+            if (($row['model_kind'] ?? '') === 'Class' && $model !== '' && class_exists($model)) {
+                $classes[] = $model;
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -665,6 +696,9 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
+     * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -678,6 +712,9 @@ class ContainerGraphCommand extends Command
         array $jobRows = [],
         array $queueConnectionRows = [],
         array $scheduledTaskRows = [],
+        array $authProviderRows = [],
+        array $authGuardRows = [],
+        array $passwordBrokerRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -698,6 +735,9 @@ class ContainerGraphCommand extends Command
         $this->line('- jobs: '.json_encode(array_slice($jobRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- queue_connections: '.json_encode(array_slice($queueConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- scheduled_tasks: '.json_encode(array_slice($scheduledTaskRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- auth_providers: '.json_encode(array_slice($authProviderRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- auth_guards: '.json_encode(array_slice($authGuardRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- password_brokers: '.json_encode(array_slice($passwordBrokerRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

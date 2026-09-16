@@ -45,6 +45,15 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}> */
     public array $scheduledTaskRows = [];
 
+    /** @var array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}> */
+    public array $authProviderRows = [];
+
+    /** @var array<int, array{key: string, driver: string, provider: string, is_default: bool}> */
+    public array $authGuardRows = [];
+
+    /** @var array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}> */
+    public array $passwordBrokerRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -61,6 +70,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
+     * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
      */
     public function write(
         array $instanceRows,
@@ -73,6 +85,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $jobRows = [],
         array $queueConnectionRows = [],
         array $scheduledTaskRows = [],
+        array $authProviderRows = [],
+        array $authGuardRows = [],
+        array $passwordBrokerRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -84,6 +99,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->jobRows = $jobRows;
         $this->queueConnectionRows = $queueConnectionRows;
         $this->scheduledTaskRows = $scheduledTaskRows;
+        $this->authProviderRows = $authProviderRows;
+        $this->authGuardRows = $authGuardRows;
+        $this->passwordBrokerRows = $passwordBrokerRows;
     }
 
     /**
@@ -263,6 +281,57 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             if ($kind !== null && $row['kind'] !== $kind) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function hasAuthGuard(string $key, ?string $provider = null): bool
+    {
+        foreach ($this->authGuardRows as $row) {
+            if ($row['key'] !== $key) {
+                continue;
+            }
+
+            if ($provider !== null && $row['provider'] !== $provider) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function hasAuthProvider(string $key, ?string $model = null): bool
+    {
+        foreach ($this->authProviderRows as $row) {
+            if ($row['key'] !== $key) {
+                continue;
+            }
+
+            if ($model !== null && $row['model'] !== $model) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function hasPasswordBroker(string $key, ?string $provider = null): bool
+    {
+        foreach ($this->passwordBrokerRows as $row) {
+            if ($row['key'] !== $key) {
+                continue;
+            }
+
+            if ($provider !== null && $row['provider'] !== $provider) {
                 continue;
             }
 

@@ -108,6 +108,14 @@ MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
 CYPHER;
 
+    private const CYPHER_EVENTS_CLEAR_HANDLED_BY = <<<'CYPHER'
+UNWIND $rows AS row
+WITH DISTINCT row.key AS eventKey
+MATCH (e:Event {key: eventKey})
+OPTIONAL MATCH (e)-[old:HANDLED_BY]->()
+DELETE old
+CYPHER;
+
     private const CYPHER_EVENTS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (e:Event {key: row.key})
@@ -168,6 +176,51 @@ MERGE (t)-[h:HANDLED_BY]->(id)
 SET h.action = row.action
 CYPHER;
 
+    private const CYPHER_AUTH_PROVIDERS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (p:AuthProvider {key: row.key})
+SET p.driver = row.driver,
+    p.table = row.table
+WITH p, row
+OPTIONAL MATCH (p)-[old:USES_MODEL]->()
+DELETE old
+WITH p, row
+WHERE row.model <> ''
+MERGE (a:Abstract {name: row.model})
+SET a.kind = coalesce(row.model_kind, a.kind)
+MERGE (p)-[:USES_MODEL]->(a)
+CYPHER;
+
+    private const CYPHER_AUTH_GUARDS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (g:AuthGuard {key: row.key})
+SET g.driver = row.driver,
+    g.is_default = row.is_default
+WITH g, row
+OPTIONAL MATCH (g)-[old:USES_PROVIDER]->()
+DELETE old
+WITH g, row
+WHERE row.provider <> ''
+MERGE (p:AuthProvider {key: row.provider})
+MERGE (g)-[:USES_PROVIDER]->(p)
+CYPHER;
+
+    private const CYPHER_PASSWORD_BROKERS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (b:PasswordBroker {key: row.key})
+SET b.table = row.table,
+    b.expire = row.expire,
+    b.throttle = row.throttle,
+    b.is_default = row.is_default
+WITH b, row
+OPTIONAL MATCH (b)-[old:USES_PROVIDER]->()
+DELETE old
+WITH b, row
+WHERE row.provider <> ''
+MERGE (p:AuthProvider {key: row.provider})
+MERGE (b)-[:USES_PROVIDER]->(p)
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -208,6 +261,9 @@ CYPHER;
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
      * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
      * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
+     * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
      */
     public function write(
         array $instanceRows,
@@ -220,6 +276,9 @@ CYPHER;
         array $jobRows = [],
         array $queueConnectionRows = [],
         array $scheduledTaskRows = [],
+        array $authProviderRows = [],
+        array $authGuardRows = [],
+        array $passwordBrokerRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -230,6 +289,9 @@ CYPHER;
         $this->validateJobRows($jobRows);
         $this->validateQueueConnectionRows($queueConnectionRows);
         $this->validateScheduledTaskRows($scheduledTaskRows);
+        $this->validateAuthProviderRows($authProviderRows);
+        $this->validateAuthGuardRows($authGuardRows);
+        $this->validatePasswordBrokerRows($passwordBrokerRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -269,6 +331,8 @@ CYPHER;
             $this->connection->run(self::CYPHER_ROUTE_MIDDLEWARE, ['rows' => $routeMiddlewareRows]);
         }
         if ($eventRows !== []) {
+            // Clear first so removed listeners do not linger; Events may have many HANDLED_BY edges.
+            $this->connection->run(self::CYPHER_EVENTS_CLEAR_HANDLED_BY, ['rows' => $eventRows]);
             $this->connection->run(self::CYPHER_EVENTS, ['rows' => $eventRows]);
         }
         if ($queueConnectionRows !== []) {
@@ -279,6 +343,15 @@ CYPHER;
         }
         if ($scheduledTaskRows !== []) {
             $this->connection->run(self::CYPHER_SCHEDULED_TASKS, ['rows' => $scheduledTaskRows]);
+        }
+        if ($authProviderRows !== []) {
+            $this->connection->run(self::CYPHER_AUTH_PROVIDERS, ['rows' => $authProviderRows]);
+        }
+        if ($authGuardRows !== []) {
+            $this->connection->run(self::CYPHER_AUTH_GUARDS, ['rows' => $authGuardRows]);
+        }
+        if ($passwordBrokerRows !== []) {
+            $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
         }
     }
 
@@ -296,10 +369,14 @@ CYPHER;
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
             'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
+            'events_clear_handled_by' => self::CYPHER_EVENTS_CLEAR_HANDLED_BY,
             'events' => self::CYPHER_EVENTS,
             'jobs' => self::CYPHER_JOBS,
             'queue_connections' => self::CYPHER_QUEUE_CONNECTIONS,
             'scheduled_tasks' => self::CYPHER_SCHEDULED_TASKS,
+            'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
+            'auth_guards' => self::CYPHER_AUTH_GUARDS,
+            'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
         ];
     }
 
@@ -459,6 +536,62 @@ CYPHER;
                 if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
                     throw new \InvalidArgumentException("Scheduled task row is missing boolean {$key}");
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     */
+    private function validateAuthProviderRows(array $authProviderRows): void
+    {
+        foreach ($authProviderRows as $row) {
+            foreach (['key', 'driver', 'model', 'model_kind', 'table'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Auth provider row is missing string {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
+     */
+    private function validateAuthGuardRows(array $authGuardRows): void
+    {
+        foreach ($authGuardRows as $row) {
+            foreach (['key', 'driver', 'provider'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Auth guard row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Auth guard row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     */
+    private function validatePasswordBrokerRows(array $passwordBrokerRows): void
+    {
+        foreach ($passwordBrokerRows as $row) {
+            foreach (['key', 'provider', 'table'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Password broker row is missing string {$key}");
+                }
+            }
+
+            foreach (['expire', 'throttle'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_int($row[$key])) {
+                    throw new \InvalidArgumentException("Password broker row is missing integer {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Password broker row is missing boolean is_default');
             }
         }
     }
