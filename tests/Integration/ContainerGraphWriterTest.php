@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -205,6 +205,72 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringNotContainsString('SET id:Class', $template);
         $this->assertStringNotContainsString('SET id:Interface', $template);
         $this->assertStringNotContainsString('SET id:AbstractType', $template);
+    }
+
+    public function test_auth_providers_cypher_uses_model_edge(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['auth_providers'];
+
+        $this->assertStringContainsString(':AuthProvider', $template);
+        $this->assertStringContainsString('USES_MODEL', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (p)-[old:USES_MODEL]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('MERGE (a:Abstract {name: row.model})', $template);
+        $this->assertStringContainsString(':Abstract', $template);
+    }
+
+    public function test_auth_guards_cypher_uses_provider_edge(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['auth_guards'];
+
+        $this->assertStringContainsString(':AuthGuard', $template);
+        $this->assertStringContainsString('USES_PROVIDER', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (g)-[old:USES_PROVIDER]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
+        $this->assertStringContainsString('g.is_default = row.is_default', $template);
+    }
+
+    public function test_password_brokers_cypher_uses_provider_edge(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['password_brokers'];
+
+        $this->assertStringContainsString(':PasswordBroker', $template);
+        $this->assertStringContainsString('USES_PROVIDER', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (b)-[old:USES_PROVIDER]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('b.expire = row.expire', $template);
+        $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
+    }
+
+    public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void
+    {
+        $connection = new TrackingContainerGraphConnection;
+        $writer = new ContainerGraphWriter($connection);
+
+        $providerRows = [
+            ['key' => 'users', 'driver' => 'eloquent', 'model' => 'App\\Models\\User', 'model_kind' => 'Class', 'table' => ''],
+            ['key' => 'admins', 'driver' => 'eloquent', 'model' => 'App\\Models\\Admin', 'model_kind' => 'Class', 'table' => ''],
+        ];
+
+        $guardRow = static fn (string $provider): array => [
+            'key' => 'web',
+            'driver' => 'session',
+            'provider' => $provider,
+            'is_default' => true,
+        ];
+
+        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('users')]);
+        $this->assertSame(['users'], $connection->usesProvidersFor('web'));
+
+        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('admins')]);
+        $this->assertSame(['admins'], $connection->usesProvidersFor('web'));
+
+        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('')]);
+        $this->assertSame([], $connection->usesProvidersFor('web'));
     }
 
     public function test_write_strips_legacy_abstract_secondary_labels(): void

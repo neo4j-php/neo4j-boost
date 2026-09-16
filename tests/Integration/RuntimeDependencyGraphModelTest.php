@@ -5,6 +5,7 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Foundation\Auth\User;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Commands\SyncReportsCommand;
@@ -26,7 +27,8 @@ use Neo4j\LaravelBoost\Tests\TestCase;
  * Event -> Abstract -> Instance
  * Job -> Abstract -> Instance
  * Job -> QueueConnection
- * ScheduledTask -> Abstract -> Instance.
+ * ScheduledTask -> Abstract -> Instance
+ * AuthGuard -> AuthProvider -> Abstract (optional eloquent model).
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -154,6 +156,51 @@ class RuntimeDependencyGraphModelTest extends TestCase
         ));
     }
 
+    public function test_exports_auth_guards_providers_and_password_brokers(): void
+    {
+        config([
+            'auth.defaults.guard' => 'web',
+            'auth.defaults.passwords' => 'users',
+            'auth.guards' => [
+                'web' => [
+                    'driver' => 'session',
+                    'provider' => 'users',
+                ],
+                'api' => [
+                    'driver' => 'token',
+                    'provider' => 'users',
+                ],
+            ],
+            'auth.providers' => [
+                'users' => [
+                    'driver' => 'eloquent',
+                    'model' => User::class,
+                ],
+            ],
+            'auth.passwords' => [
+                'users' => [
+                    'provider' => 'users',
+                    'table' => 'password_reset_tokens',
+                    'expire' => 60,
+                    'throttle' => 60,
+                ],
+            ],
+        ]);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Auth guards:')
+            ->expectsOutputToContain('Auth providers:')
+            ->expectsOutputToContain('Password brokers:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasAuthGuard('web', 'users'));
+        $this->assertTrue($this->graph->hasAuthGuard('api', 'users'));
+        $this->assertTrue($this->graph->hasAuthProvider('users', User::class));
+        $this->assertTrue($this->graph->hasPasswordBroker('users', 'users'));
+        $this->assertTrue($this->graph->hasInstanceNode(User::class));
+    }
+
     public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
     {
         $templates = (new ContainerGraphWriter(
@@ -166,6 +213,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('jobs', $templates);
         $this->assertArrayHasKey('queue_connections', $templates);
         $this->assertArrayHasKey('scheduled_tasks', $templates);
+        $this->assertArrayHasKey('auth_providers', $templates);
+        $this->assertArrayHasKey('auth_guards', $templates);
+        $this->assertArrayHasKey('password_brokers', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
@@ -175,6 +225,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString(':Job', $templates['jobs']);
         $this->assertStringContainsString('USES_MIDDLEWARE', $templates['route_middleware']);
         $this->assertStringContainsString(':ScheduledTask', $templates['scheduled_tasks']);
+        $this->assertStringContainsString(':AuthGuard', $templates['auth_guards']);
+        $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
+        $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
+        $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
         $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
         $this->assertStringContainsString(':Abstract', $templates['routes']);
@@ -197,6 +251,11 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $scheduleTraversal = RuntimeGraphModel::scheduledTaskTraversalCypher();
         $this->assertStringContainsString(':ScheduledTask', $scheduleTraversal);
         $this->assertStringContainsString('HANDLED_BY', $scheduleTraversal);
+
+        $authTraversal = RuntimeGraphModel::authGuardTraversalCypher();
+        $this->assertStringContainsString(':AuthGuard', $authTraversal);
+        $this->assertStringContainsString('USES_PROVIDER', $authTraversal);
+        $this->assertStringContainsString('USES_MODEL', $authTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -210,6 +269,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Jobs:')
             ->expectsOutputToContain('Queue connections:')
             ->expectsOutputToContain('Scheduled tasks:')
+            ->expectsOutputToContain('Auth guards:')
+            ->expectsOutputToContain('Auth providers:')
+            ->expectsOutputToContain('Password brokers:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -219,5 +281,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->jobRows);
         $this->assertSame([], $this->graph->queueConnectionRows);
         $this->assertSame([], $this->graph->scheduledTaskRows);
+        $this->assertSame([], $this->graph->authProviderRows);
+        $this->assertSame([], $this->graph->authGuardRows);
+        $this->assertSame([], $this->graph->passwordBrokerRows);
     }
 }

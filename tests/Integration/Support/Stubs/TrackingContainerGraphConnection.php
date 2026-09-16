@@ -6,13 +6,16 @@ use Laudis\Neo4j\Databags\SummarizedResult;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 
 /**
- * Records Job-[:USES_CONNECTION]->QueueConnection edges by applying the jobs
- * Cypher semantics from the statement text (replace vs append).
+ * Records replaceable relationship edges by applying Cypher semantics from the
+ * statement text (Job USES_CONNECTION, AuthGuard USES_PROVIDER).
  */
 final class TrackingContainerGraphConnection extends ContainerGraphConnection
 {
     /** @var array<string, list<string>> job key => connected queue connection keys */
     private array $usesConnections = [];
+
+    /** @var array<string, list<string>> auth guard key => provider keys */
+    private array $usesProviders = [];
 
     /** @var list<string> */
     private array $statements = [];
@@ -23,8 +26,14 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
     {
         $this->statements[] = $statement;
 
-        if (str_contains($statement, ':Job') && isset($parameters['rows']) && is_array($parameters['rows'])) {
-            $this->applyJobUsesConnectionSemantics($statement, $parameters['rows']);
+        if (isset($parameters['rows']) && is_array($parameters['rows'])) {
+            if (str_contains($statement, ':Job')) {
+                $this->applyJobUsesConnectionSemantics($statement, $parameters['rows']);
+            }
+
+            if (str_contains($statement, ':AuthGuard')) {
+                $this->applyAuthGuardUsesProviderSemantics($statement, $parameters['rows']);
+            }
         }
 
         $summary = null;
@@ -49,6 +58,14 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
     public function usesConnectionsFor(string $jobKey): array
     {
         return $this->usesConnections[$jobKey] ?? [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function usesProvidersFor(string $guardKey): array
+    {
+        return $this->usesProviders[$guardKey] ?? [];
     }
 
     /**
@@ -86,6 +103,43 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
                 $existing[] = $connection;
             }
             $this->usesConnections[$jobKey] = $existing;
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     */
+    private function applyAuthGuardUsesProviderSemantics(string $statement, array $rows): void
+    {
+        $replacesUsesProvider = str_contains($statement, '[old:USES_PROVIDER]')
+            && str_contains($statement, 'DELETE old');
+
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! isset($row['key']) || ! is_string($row['key'])) {
+                continue;
+            }
+
+            $guardKey = $row['key'];
+            $provider = is_string($row['provider'] ?? null) ? $row['provider'] : '';
+
+            if ($replacesUsesProvider) {
+                unset($this->usesProviders[$guardKey]);
+                if ($provider !== '') {
+                    $this->usesProviders[$guardKey] = [$provider];
+                }
+
+                continue;
+            }
+
+            if ($provider === '') {
+                continue;
+            }
+
+            $existing = $this->usesProviders[$guardKey] ?? [];
+            if (! in_array($provider, $existing, true)) {
+                $existing[] = $provider;
+            }
+            $this->usesProviders[$guardKey] = $existing;
         }
     }
 }

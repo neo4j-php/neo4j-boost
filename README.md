@@ -151,6 +151,9 @@ The export uses this runtime model:
 (:Job)-[:HANDLED_BY]->(:Abstract)
 (:Job)-[:USES_CONNECTION]->(:QueueConnection)
 (:ScheduledTask)-[:HANDLED_BY]->(:Abstract)
+(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)
+(:AuthProvider)-[:USES_MODEL]->(:Abstract)
+(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)
 ```
 
 `:Abstract` is the container lookup key (same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
@@ -173,6 +176,14 @@ LIMIT 50
 MATCH (t:ScheduledTask)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN t, root, path
+LIMIT 50
+```
+
+```cypher
+MATCH (g:AuthGuard)-[:USES_PROVIDER]->(p:AuthProvider)
+OPTIONAL MATCH model = (p)-[:USES_MODEL]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN g, p, root, model, path
 LIMIT 50
 ```
 
@@ -210,7 +221,7 @@ Once exported, you can use the **get-class-dependency-graph** MCP tool to query 
 | `neo4j-boost:install-mcp` | Downloads and installs the official `neo4j-mcp` binary (only needed for STDIO). |
 | `neo4j-boost:doctor` | Diagnoses your transport, binary, password, and overall readiness. |
 | `neo4j-boost:test-stdio` | Runs a verbose end-to-end test for the STDIO handshake and tools. |
-| `container:graph` | Exports Laravel routes, middleware, events, jobs, queue connections, scheduled tasks, and container wiring into Neo4j (`--dry-run` and `--print-cypher` available). |
+| `container:graph` | Exports Laravel routes, middleware, events, jobs, queue connections, scheduled tasks, auth config (guards/providers/password brokers), and container wiring into Neo4j (`--dry-run` and `--print-cypher` available). |
 
 ---
 
