@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
+- **Authorization** in `container:graph`: `(:Policy)-[:HANDLED_BY]->(:Abstract)` and `(:Policy)-[:FOR_MODEL]->(:Abstract)` from Gate policy registrations, plus `(:GateAbility)-[:HANDLED_BY]->(:Abstract)` for class-based Gate abilities (closures export as `GateAbility` nodes without `HANDLED_BY`). Re-export replaces stale policy/ability edges when wiring changes.
 
 ### Fixed
 

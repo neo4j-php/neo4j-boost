@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -288,6 +288,34 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('DELETE old', $template);
         $this->assertStringContainsString('b.expire = row.expire', $template);
         $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
+    }
+
+    public function test_policies_cypher_uses_handled_by_and_for_model(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['policies'];
+
+        $this->assertStringContainsString(':Policy', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('FOR_MODEL', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()', $template);
+        $this->assertStringContainsString('DELETE oldH', $template);
+        $this->assertStringContainsString('DELETE oldM', $template);
+        $this->assertStringContainsString('MERGE (m:Abstract {name: row.model})', $template);
+    }
+
+    public function test_gate_abilities_cypher_uses_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['gate_abilities'];
+
+        $this->assertStringContainsString(':GateAbility', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('a.handler_kind = row.handler_kind', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (a)-[old:HANDLED_BY]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
     }
 
     public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void

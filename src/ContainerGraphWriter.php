@@ -221,6 +221,45 @@ MERGE (p:AuthProvider {key: row.provider})
 MERGE (b)-[:USES_PROVIDER]->(p)
 CYPHER;
 
+    private const CYPHER_POLICIES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (p:Policy {key: row.key})
+SET p.name = row.name
+WITH p, row
+OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()
+DELETE oldH
+WITH p, row
+OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()
+DELETE oldM
+WITH p, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (p)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH p, row
+WHERE row.model <> ''
+MERGE (m:Abstract {name: row.model})
+SET m.kind = coalesce(row.model_kind, m.kind)
+MERGE (p)-[:FOR_MODEL]->(m)
+CYPHER;
+
+    private const CYPHER_GATE_ABILITIES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (a:GateAbility {key: row.key})
+SET a.name = row.name,
+    a.handler_kind = row.handler_kind
+WITH a, row
+OPTIONAL MATCH (a)-[old:HANDLED_BY]->()
+DELETE old
+WITH a, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (a)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -264,6 +303,8 @@ CYPHER;
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
      */
     public function write(
         array $instanceRows,
@@ -279,6 +320,8 @@ CYPHER;
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $policyRows = [],
+        array $gateAbilityRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -292,6 +335,8 @@ CYPHER;
         $this->validateAuthProviderRows($authProviderRows);
         $this->validateAuthGuardRows($authGuardRows);
         $this->validatePasswordBrokerRows($passwordBrokerRows);
+        $this->validatePolicyRows($policyRows);
+        $this->validateGateAbilityRows($gateAbilityRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -353,6 +398,12 @@ CYPHER;
         if ($passwordBrokerRows !== []) {
             $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
         }
+        if ($policyRows !== []) {
+            $this->connection->run(self::CYPHER_POLICIES, ['rows' => $policyRows]);
+        }
+        if ($gateAbilityRows !== []) {
+            $this->connection->run(self::CYPHER_GATE_ABILITIES, ['rows' => $gateAbilityRows]);
+        }
     }
 
     /**
@@ -377,6 +428,8 @@ CYPHER;
             'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
             'auth_guards' => self::CYPHER_AUTH_GUARDS,
             'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
+            'policies' => self::CYPHER_POLICIES,
+            'gate_abilities' => self::CYPHER_GATE_ABILITIES,
         ];
     }
 
@@ -592,6 +645,34 @@ CYPHER;
 
             if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
                 throw new \InvalidArgumentException('Password broker row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     */
+    private function validatePolicyRows(array $policyRows): void
+    {
+        foreach ($policyRows as $row) {
+            foreach (['key', 'name', 'model', 'model_kind', 'identifier', 'identifier_kind', 'action'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Policy row is missing string {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     */
+    private function validateGateAbilityRows(array $gateAbilityRows): void
+    {
+        foreach ($gateAbilityRows as $row) {
+            foreach (['key', 'name', 'handler_kind', 'identifier', 'identifier_kind', 'action'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Gate ability row is missing string {$key}");
+                }
             }
         }
     }
