@@ -11,7 +11,7 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(12, $statements);
+        $this->assertCount(14, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Event', implode("\n", $statements));
         $this->assertStringContainsString(':Job', implode("\n", $statements));
@@ -20,6 +20,8 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':AuthGuard', implode("\n", $statements));
         $this->assertStringContainsString(':AuthProvider', implode("\n", $statements));
         $this->assertStringContainsString(':PasswordBroker', implode("\n", $statements));
+        $this->assertStringContainsString(':Mailer', implode("\n", $statements));
+        $this->assertStringContainsString(':Mailable', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
         $this->assertStringContainsString(':Abstract', implode("\n", $statements));
@@ -94,6 +96,20 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString('RESOLVES_TO', $cypher);
     }
 
+    public function test_mailable_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::mailableTraversalCypher();
+
+        $this->assertStringContainsString(':Mailable', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
+        $this->assertStringContainsString('USES_MAILER', $cypher);
+        $this->assertStringContainsString(':Mailer', $cypher);
+        $this->assertStringContainsString('USES_CONNECTION', $cypher);
+        $this->assertStringContainsString(':QueueConnection', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+    }
+
     public function test_relationship_constants_match_acceptance_model(): void
     {
         $this->assertSame('HANDLED_BY', RuntimeGraphModel::REL_HANDLED_BY);
@@ -104,6 +120,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('USES_CONNECTION', RuntimeGraphModel::REL_USES_CONNECTION);
         $this->assertSame('USES_PROVIDER', RuntimeGraphModel::REL_USES_PROVIDER);
         $this->assertSame('USES_MODEL', RuntimeGraphModel::REL_USES_MODEL);
+        $this->assertSame('USES_MAILER', RuntimeGraphModel::REL_USES_MAILER);
         $this->assertSame('Middleware', RuntimeGraphModel::LABEL_MIDDLEWARE);
         $this->assertSame('Event', RuntimeGraphModel::LABEL_EVENT);
         $this->assertSame('Job', RuntimeGraphModel::LABEL_JOB);
@@ -112,6 +129,8 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('AuthGuard', RuntimeGraphModel::LABEL_AUTH_GUARD);
         $this->assertSame('AuthProvider', RuntimeGraphModel::LABEL_AUTH_PROVIDER);
         $this->assertSame('PasswordBroker', RuntimeGraphModel::LABEL_PASSWORD_BROKER);
+        $this->assertSame('Mailer', RuntimeGraphModel::LABEL_MAILER);
+        $this->assertSame('Mailable', RuntimeGraphModel::LABEL_MAILABLE);
         $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }

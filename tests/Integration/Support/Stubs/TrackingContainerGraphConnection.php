@@ -7,12 +7,18 @@ use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 
 /**
  * Records replaceable relationship edges by applying Cypher semantics from the
- * statement text (Job USES_CONNECTION, AuthGuard USES_PROVIDER, Event HANDLED_BY).
+ * statement text (Job USES_CONNECTION, Mailable USES_MAILER, AuthGuard USES_PROVIDER, Event HANDLED_BY).
  */
 final class TrackingContainerGraphConnection extends ContainerGraphConnection
 {
     /** @var array<string, list<string>> job key => connected queue connection keys */
     private array $usesConnections = [];
+
+    /** @var array<string, list<string>> mailable key => mailer keys */
+    private array $usesMailers = [];
+
+    /** @var array<string, list<string>> mailable key => queue connection keys */
+    private array $mailableUsesConnections = [];
 
     /** @var array<string, list<string>> auth guard key => provider keys */
     private array $usesProviders = [];
@@ -32,6 +38,10 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
         if (isset($parameters['rows']) && is_array($parameters['rows'])) {
             if (str_contains($statement, ':Job')) {
                 $this->applyJobUsesConnectionSemantics($statement, $parameters['rows']);
+            }
+
+            if (str_contains($statement, ':Mailable')) {
+                $this->applyMailableEdgeSemantics($statement, $parameters['rows']);
             }
 
             if (str_contains($statement, ':AuthGuard')) {
@@ -65,6 +75,22 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
     public function usesConnectionsFor(string $jobKey): array
     {
         return $this->usesConnections[$jobKey] ?? [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function usesMailersFor(string $mailableKey): array
+    {
+        return $this->usesMailers[$mailableKey] ?? [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function mailableUsesConnectionsFor(string $mailableKey): array
+    {
+        return $this->mailableUsesConnections[$mailableKey] ?? [];
     }
 
     /**
@@ -121,6 +147,41 @@ final class TrackingContainerGraphConnection extends ContainerGraphConnection
                 $existing[] = $connection;
             }
             $this->usesConnections[$jobKey] = $existing;
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     */
+    private function applyMailableEdgeSemantics(string $statement, array $rows): void
+    {
+        $replacesUsesMailer = str_contains($statement, '[oldMailer:USES_MAILER]')
+            && str_contains($statement, 'DELETE oldMailer');
+        $replacesUsesConnection = str_contains($statement, '[oldConn:USES_CONNECTION]')
+            && str_contains($statement, 'DELETE oldConn');
+
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! isset($row['key']) || ! is_string($row['key'])) {
+                continue;
+            }
+
+            $mailableKey = $row['key'];
+            $mailer = is_string($row['mailer'] ?? null) ? $row['mailer'] : '';
+            $connection = is_string($row['connection'] ?? null) ? $row['connection'] : '';
+
+            if ($replacesUsesMailer) {
+                unset($this->usesMailers[$mailableKey]);
+                if ($mailer !== '') {
+                    $this->usesMailers[$mailableKey] = [$mailer];
+                }
+            }
+
+            if ($replacesUsesConnection) {
+                unset($this->mailableUsesConnections[$mailableKey]);
+                if ($connection !== '') {
+                    $this->mailableUsesConnections[$mailableKey] = [$connection];
+                }
+            }
         }
     }
 

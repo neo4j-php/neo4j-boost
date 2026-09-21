@@ -3,7 +3,9 @@
 namespace Neo4j\LaravelBoost\ContainerGraph;
 
 use Illuminate\Console\Command as ArtisanCommand;
+use Illuminate\Contracts\Mail\Mailable as MailableContract;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailable;
 use Illuminate\Routing\Controller;
 use ReflectionClass;
 use ReflectionMethod;
@@ -42,6 +44,11 @@ final class MethodInjectionTargetResolver
         // so the event payload parameter is skipped during method-injection export.
         if ($this->isListener($class)) {
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
+        }
+
+        // Queued mailables must not be treated as jobs.
+        if ($this->isMailable($class)) {
+            return $this->hasPublicMethod($class, 'build') ? ['build'] : [];
         }
 
         if ($this->isJob($class)) {
@@ -107,7 +114,7 @@ final class MethodInjectionTargetResolver
 
     public function isJob(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class)) {
+        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isMailable($class)) {
             return false;
         }
 
@@ -120,6 +127,19 @@ final class MethodInjectionTargetResolver
         }
 
         return str_contains($class->getName(), '\\Jobs\\');
+    }
+
+    public function isMailable(ReflectionClass $class): bool
+    {
+        if ($class->isAbstract() || $class->isInterface()) {
+            return false;
+        }
+
+        if ($class->implementsInterface(MailableContract::class)) {
+            return true;
+        }
+
+        return $class->isSubclassOf(Mailable::class);
     }
 
     public function isListener(ReflectionClass $class): bool

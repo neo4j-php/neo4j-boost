@@ -49,6 +49,15 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
     }
 
+    public function test_queued_mailable_is_classified_as_mailable_not_job(): void
+    {
+        $queuedMailable = new ReflectionClass(Fixtures\MethodInjectionQueuedMailable::class);
+
+        $this->assertTrue($this->resolver->isMailable($queuedMailable));
+        $this->assertFalse($this->resolver->isJob($queuedMailable));
+        $this->assertSame(['build'], $this->resolver->methodsForClass($queuedMailable));
+    }
+
     public function test_invokable_job_resolves_invoke_method(): void
     {
         $this->assertSame(['__invoke'], $this->resolver->methodsForClass(new ReflectionClass(Fixtures\MethodInjectionInvokableJob::class)));
@@ -65,6 +74,7 @@ namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Mail\Mailable;
 use Illuminate\Routing\Controller;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 
@@ -107,6 +117,16 @@ final class MethodInjectionQueuedListener implements ShouldQueue
 final class MethodInjectionInvokableJob implements ShouldQueue
 {
     public function __invoke(): void {}
+}
+
+final class MethodInjectionQueuedMailable extends Mailable implements ShouldQueue
+{
+    use Queueable;
+
+    public function build(): self
+    {
+        return $this->subject('Queued')->view('mail.queued');
+    }
 }
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Middleware;

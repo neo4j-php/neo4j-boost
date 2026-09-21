@@ -221,6 +221,44 @@ MERGE (p:AuthProvider {key: row.provider})
 MERGE (b)-[:USES_PROVIDER]->(p)
 CYPHER;
 
+    private const CYPHER_MAILERS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailer {key: row.key})
+SET m.transport = row.transport,
+    m.nested_mailers = row.nested_mailers,
+    m.is_default = row.is_default
+CYPHER;
+
+    private const CYPHER_MAILABLES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailable {key: row.key})
+SET m.name = row.name,
+    m.should_queue = row.should_queue,
+    m.mailer = row.mailer,
+    m.connection = row.connection,
+    m.queue = row.queue,
+    m.unique = row.unique
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (m)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH m, row
+OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()
+DELETE oldMailer
+WITH m, row
+OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()
+DELETE oldConn
+WITH m, row
+FOREACH (_ IN CASE WHEN row.mailer <> '' THEN [1] ELSE [] END |
+  MERGE (mailer:Mailer {key: row.mailer})
+  MERGE (m)-[:USES_MAILER]->(mailer)
+)
+FOREACH (_ IN CASE WHEN row.connection <> '' THEN [1] ELSE [] END |
+  MERGE (q:QueueConnection {key: row.connection})
+  MERGE (m)-[:USES_CONNECTION]->(q)
+)
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -264,6 +302,8 @@ CYPHER;
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      */
     public function write(
         array $instanceRows,
@@ -279,6 +319,8 @@ CYPHER;
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $mailerRows = [],
+        array $mailableRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -292,6 +334,8 @@ CYPHER;
         $this->validateAuthProviderRows($authProviderRows);
         $this->validateAuthGuardRows($authGuardRows);
         $this->validatePasswordBrokerRows($passwordBrokerRows);
+        $this->validateMailerRows($mailerRows);
+        $this->validateMailableRows($mailableRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -353,6 +397,12 @@ CYPHER;
         if ($passwordBrokerRows !== []) {
             $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
         }
+        if ($mailerRows !== []) {
+            $this->connection->run(self::CYPHER_MAILERS, ['rows' => $mailerRows]);
+        }
+        if ($mailableRows !== []) {
+            $this->connection->run(self::CYPHER_MAILABLES, ['rows' => $mailableRows]);
+        }
     }
 
     /**
@@ -377,6 +427,8 @@ CYPHER;
             'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
             'auth_guards' => self::CYPHER_AUTH_GUARDS,
             'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
+            'mailers' => self::CYPHER_MAILERS,
+            'mailables' => self::CYPHER_MAILABLES,
         ];
     }
 
@@ -592,6 +644,44 @@ CYPHER;
 
             if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
                 throw new \InvalidArgumentException('Password broker row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     */
+    private function validateMailerRows(array $mailerRows): void
+    {
+        foreach ($mailerRows as $row) {
+            foreach (['key', 'transport', 'nested_mailers'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailer row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Mailer row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     */
+    private function validateMailableRows(array $mailableRows): void
+    {
+        foreach ($mailableRows as $row) {
+            foreach (['key', 'name', 'action', 'identifier', 'identifier_kind', 'mailer', 'connection', 'queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing string {$key}");
+                }
+            }
+
+            foreach (['should_queue', 'unique'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing boolean {$key}");
+                }
             }
         }
     }

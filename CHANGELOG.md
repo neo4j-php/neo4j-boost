@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mailers and mailables** in `container:graph`: `(:Mailer)` from `config/mail.php`, `(:Mailable)-[:HANDLED_BY]->(:Abstract)` from scanned mailable classes, optional `(:Mailable)-[:USES_MAILER]->(:Mailer)` and `(:Mailable)-[:USES_CONNECTION]->(:QueueConnection)`. Queued mailables are exported as Mailables (not Jobs). Re-export replaces stale mailer/connection edges when wiring changes.
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
 
 ### Fixed

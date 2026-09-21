@@ -13,6 +13,8 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\Pho
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Jobs\ProcessInvoiceJob;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Listeners\OrderShippedListener;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Mail\InvoicePaidMailable;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Mail\QueuedWelcomeMailable;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\VerifyJsonApi;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Support\ReportAggregator;
@@ -28,7 +30,9 @@ use Neo4j\LaravelBoost\Tests\TestCase;
  * Job -> Abstract -> Instance
  * Job -> QueueConnection
  * ScheduledTask -> Abstract -> Instance
- * AuthGuard -> AuthProvider -> Abstract (optional eloquent model).
+ * AuthGuard -> AuthProvider -> Abstract (optional eloquent model)
+ * Mailable -> Abstract -> Instance
+ * Mailable -> Mailer / QueueConnection.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -201,6 +205,38 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertTrue($this->graph->hasInstanceNode(User::class));
     }
 
+    public function test_exports_mailable_handled_by_and_mailers(): void
+    {
+        $this->app->bind(InvoicePaidMailable::class, InvoicePaidMailable::class);
+        $this->app->bind(QueuedWelcomeMailable::class, QueuedWelcomeMailable::class);
+        config([
+            'mail.default' => 'smtp',
+            'mail.mailers' => [
+                'smtp' => ['transport' => 'smtp'],
+                'ses' => ['transport' => 'ses'],
+            ],
+            'queue.default' => 'sync',
+            'queue.connections' => [
+                'sync' => ['driver' => 'sync'],
+                'redis' => ['driver' => 'redis', 'queue' => 'default'],
+            ],
+        ]);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Mailers:')
+            ->expectsOutputToContain('Mailables:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasMailableHandledBy(InvoicePaidMailable::class, InvoicePaidMailable::class));
+        $this->assertTrue($this->graph->hasMailableHandledBy(QueuedWelcomeMailable::class, QueuedWelcomeMailable::class));
+        $this->assertTrue($this->graph->hasInstanceNode(InvoicePaidMailable::class));
+        $this->assertTrue($this->graph->hasDependsOnEdge(InvoicePaidMailable::class, Logger::class));
+        $this->assertTrue($this->graph->hasMailer('smtp'));
+        $this->assertTrue($this->graph->hasMailer('ses'));
+        $this->assertFalse($this->graph->hasJobHandledBy(QueuedWelcomeMailable::class, QueuedWelcomeMailable::class));
+    }
+
     public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
     {
         $templates = (new ContainerGraphWriter(
@@ -217,6 +253,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('auth_providers', $templates);
         $this->assertArrayHasKey('auth_guards', $templates);
         $this->assertArrayHasKey('password_brokers', $templates);
+        $this->assertArrayHasKey('mailers', $templates);
+        $this->assertArrayHasKey('mailables', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
@@ -230,6 +268,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
         $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
         $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
+        $this->assertStringContainsString(':Mailer', $templates['mailers']);
+        $this->assertStringContainsString(':Mailable', $templates['mailables']);
+        $this->assertStringContainsString('USES_MAILER', $templates['mailables']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
         $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
         $this->assertStringContainsString(':Abstract', $templates['routes']);
@@ -257,6 +298,12 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString(':AuthGuard', $authTraversal);
         $this->assertStringContainsString('USES_PROVIDER', $authTraversal);
         $this->assertStringContainsString('USES_MODEL', $authTraversal);
+
+        $mailableTraversal = RuntimeGraphModel::mailableTraversalCypher();
+        $this->assertStringContainsString(':Mailable', $mailableTraversal);
+        $this->assertStringContainsString('HANDLED_BY', $mailableTraversal);
+        $this->assertStringContainsString('USES_MAILER', $mailableTraversal);
+        $this->assertStringContainsString('USES_CONNECTION', $mailableTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -273,6 +320,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Auth guards:')
             ->expectsOutputToContain('Auth providers:')
             ->expectsOutputToContain('Password brokers:')
+            ->expectsOutputToContain('Mailers:')
+            ->expectsOutputToContain('Mailables:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -285,5 +334,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->authProviderRows);
         $this->assertSame([], $this->graph->authGuardRows);
         $this->assertSame([], $this->graph->passwordBrokerRows);
+        $this->assertSame([], $this->graph->mailerRows);
+        $this->assertSame([], $this->graph->mailableRows);
     }
 }

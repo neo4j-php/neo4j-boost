@@ -24,6 +24,8 @@ use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\ContainerGraph\EventListenerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\JobHandlerExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\MailableExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\MailerConfigExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionTargetResolver;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
@@ -93,6 +95,8 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(QueueConnectionExtractor::class);
         $this->app->singleton(ScheduledTaskExtractor::class);
         $this->app->singleton(AuthConfigExtractor::class);
+        $this->app->singleton(MailerConfigExtractor::class);
+        $this->app->singleton(MailableExtractor::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
         $this->app->singleton(FacadeCatalogExporter::class);
         $this->app->singleton(FacadeAccessorParser::class);

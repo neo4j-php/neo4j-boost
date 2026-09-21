@@ -54,6 +54,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}> */
     public array $passwordBrokerRows = [];
 
+    /** @var array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}> */
+    public array $mailerRows = [];
+
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}> */
+    public array $mailableRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -73,6 +79,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      */
     public function write(
         array $instanceRows,
@@ -88,6 +96,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $mailerRows = [],
+        array $mailableRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -102,6 +112,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->authProviderRows = $authProviderRows;
         $this->authGuardRows = $authGuardRows;
         $this->passwordBrokerRows = $passwordBrokerRows;
+        $this->mailerRows = $mailerRows;
+        $this->mailableRows = $mailableRows;
     }
 
     /**
@@ -336,6 +348,28 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    public function hasMailer(string $key): bool
+    {
+        foreach ($this->mailerRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasMailableHandledBy(string $mailableKey, string $identifier): bool
+    {
+        foreach ($this->mailableRows as $row) {
+            if ($row['key'] === $mailableKey && $row['identifier'] === $identifier) {
+                return true;
+            }
         }
 
         return false;
