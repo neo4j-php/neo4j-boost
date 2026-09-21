@@ -30,6 +30,9 @@ final class GraphCompleteness
             'Job nodes are discovered via ShouldQueue / *Job / \\Jobs\\ heuristics from scanned classes; dispatch-time connection/queue overrides are not visible.',
             'Queued listeners (*Listener / \\Listeners\\) are not exported as Job nodes.',
             'Closure scheduled callbacks and unresolved shell/exec targets export as ScheduledTask nodes without HANDLED_BY.',
+            'Dynamic Notification via() results that depend on notifiable state may be incomplete or empty.',
+            'Notifiable routeNotificationFor* routing and on-demand Notification::route() sends are not exported.',
+            'Closure notification channels are not exported as IDENTIFIED_AS targets.',
         ];
     }
 

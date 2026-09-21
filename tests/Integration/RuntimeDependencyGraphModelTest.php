@@ -19,6 +19,7 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Support\ReportA
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
 
 /**
  * Acceptance coverage for the runtime dependency graph model:
@@ -201,6 +202,35 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertTrue($this->graph->hasInstanceNode(User::class));
     }
 
+    public function test_exports_notifications_and_channels(): void
+    {
+        // Register fixture class into the scanned class set via a container binding.
+        $this->app->bind(
+            InvoicePaidNotification::class,
+            InvoicePaidNotification::class,
+        );
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Notifications:')
+            ->expectsOutputToContain('Notification channels:')
+            ->expectsOutputToContain('Notification channel links:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasNotification(
+            InvoicePaidNotification::class,
+            'mail',
+        ));
+        $this->assertTrue($this->graph->hasNotification(
+            InvoicePaidNotification::class,
+            'database',
+        ));
+        $this->assertTrue($this->graph->hasNotificationChannel('mail'));
+        $this->assertTrue($this->graph->hasInstanceNode(
+            InvoicePaidNotification::class,
+        ));
+    }
+
     public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
     {
         $templates = (new ContainerGraphWriter(
@@ -217,6 +247,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('auth_providers', $templates);
         $this->assertArrayHasKey('auth_guards', $templates);
         $this->assertArrayHasKey('password_brokers', $templates);
+        $this->assertArrayHasKey('notifications', $templates);
+        $this->assertArrayHasKey('notification_channels', $templates);
+        $this->assertArrayHasKey('notification_uses_channel', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
@@ -230,6 +263,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
         $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
         $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
+        $this->assertStringContainsString(':Notification', $templates['notifications']);
+        $this->assertStringContainsString('USES_CHANNEL', $templates['notifications']);
+        $this->assertStringContainsString(':NotificationChannel', $templates['notification_channels']);
+        $this->assertStringContainsString('USES_CHANNEL', $templates['notification_uses_channel']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
         $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
         $this->assertStringContainsString(':Abstract', $templates['routes']);
@@ -257,6 +294,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString(':AuthGuard', $authTraversal);
         $this->assertStringContainsString('USES_PROVIDER', $authTraversal);
         $this->assertStringContainsString('USES_MODEL', $authTraversal);
+
+        $notificationTraversal = RuntimeGraphModel::notificationTraversalCypher();
+        $this->assertStringContainsString(':Notification', $notificationTraversal);
+        $this->assertStringContainsString('USES_CHANNEL', $notificationTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -273,6 +314,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Auth guards:')
             ->expectsOutputToContain('Auth providers:')
             ->expectsOutputToContain('Password brokers:')
+            ->expectsOutputToContain('Notifications:')
+            ->expectsOutputToContain('Notification channels:')
+            ->expectsOutputToContain('Notification channel links:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -285,5 +329,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->authProviderRows);
         $this->assertSame([], $this->graph->authGuardRows);
         $this->assertSame([], $this->graph->passwordBrokerRows);
+        $this->assertSame([], $this->graph->notificationRows);
+        $this->assertSame([], $this->graph->notificationUsesChannelRows);
     }
 }

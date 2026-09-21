@@ -11,7 +11,7 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(12, $statements);
+        $this->assertCount(14, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Event', implode("\n", $statements));
         $this->assertStringContainsString(':Job', implode("\n", $statements));
@@ -20,6 +20,8 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':AuthGuard', implode("\n", $statements));
         $this->assertStringContainsString(':AuthProvider', implode("\n", $statements));
         $this->assertStringContainsString(':PasswordBroker', implode("\n", $statements));
+        $this->assertStringContainsString(':Notification', implode("\n", $statements));
+        $this->assertStringContainsString(':NotificationChannel', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
         $this->assertStringContainsString(':Abstract', implode("\n", $statements));
@@ -94,6 +96,18 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString('RESOLVES_TO', $cypher);
     }
 
+    public function test_notification_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::notificationTraversalCypher();
+
+        $this->assertStringContainsString(':Notification', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('USES_CHANNEL', $cypher);
+        $this->assertStringContainsString(':NotificationChannel', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
+    }
+
     public function test_relationship_constants_match_acceptance_model(): void
     {
         $this->assertSame('HANDLED_BY', RuntimeGraphModel::REL_HANDLED_BY);
@@ -104,6 +118,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('USES_CONNECTION', RuntimeGraphModel::REL_USES_CONNECTION);
         $this->assertSame('USES_PROVIDER', RuntimeGraphModel::REL_USES_PROVIDER);
         $this->assertSame('USES_MODEL', RuntimeGraphModel::REL_USES_MODEL);
+        $this->assertSame('USES_CHANNEL', RuntimeGraphModel::REL_USES_CHANNEL);
         $this->assertSame('Middleware', RuntimeGraphModel::LABEL_MIDDLEWARE);
         $this->assertSame('Event', RuntimeGraphModel::LABEL_EVENT);
         $this->assertSame('Job', RuntimeGraphModel::LABEL_JOB);
@@ -112,6 +127,8 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('AuthGuard', RuntimeGraphModel::LABEL_AUTH_GUARD);
         $this->assertSame('AuthProvider', RuntimeGraphModel::LABEL_AUTH_PROVIDER);
         $this->assertSame('PasswordBroker', RuntimeGraphModel::LABEL_PASSWORD_BROKER);
+        $this->assertSame('Notification', RuntimeGraphModel::LABEL_NOTIFICATION);
+        $this->assertSame('NotificationChannel', RuntimeGraphModel::LABEL_NOTIFICATION_CHANNEL);
         $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }

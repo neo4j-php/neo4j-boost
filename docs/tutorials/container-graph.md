@@ -45,10 +45,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 4. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
 5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
 6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
-7. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-8. **Constructor and method-injection dependencies** for concrete classes
-9. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-10. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+7. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
+8. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+9. **Constructor and method-injection dependencies** for concrete classes
+10. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+11. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -62,10 +63,12 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:AuthGuard` | `key` (guard name) | From `config/auth.php` guards. `driver`, `is_default`. |
 | `:AuthProvider` | `key` (provider name) | User provider. `driver`, optional `table` (database driver). |
 | `:PasswordBroker` | `key` (broker name) | Password reset broker. `table`, `expire`, `throttle`, `is_default`. |
+| `:Notification` | `key` (notification FQCN) | Notification class. `should_queue`, optional `connection` / `queue`, `unique`. |
+| `:NotificationChannel` | `key` (driver name or channel FQCN) | Delivery channel. `kind` (`builtin`/`extended`/`class`/`named`), `is_default`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, notifications, channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -82,16 +85,20 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)
 (:AuthProvider)-[:USES_MODEL]->(:Abstract)      # eloquent providers with a model class
 (:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)
+(:Notification)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:Notification)-[:USES_CHANNEL {order}]->(:NotificationChannel)
+(:NotificationChannel)-[:IDENTIFIED_AS]->(:Abstract)  # when a channel class is known
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, or ScheduledTask → command/job/callable class | `action` on Event/Job/ScheduledTask edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, ScheduledTask → command/job/callable class, or Notification → notification class | `action` on Event/Job/ScheduledTask/Notification edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job → configured queue connection | — |
 | `USES_PROVIDER` | AuthGuard or PasswordBroker → AuthProvider | — |
 | `USES_MODEL` | AuthProvider → eloquent user model Abstract | — |
-| `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
+| `USES_CHANNEL` | Notification → delivery channel | `order` (index in `via()`) |
+| `IDENTIFIED_AS` | Dependency, middleware, or NotificationChannel → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
@@ -109,10 +116,10 @@ php artisan container:graph
 
 1. Extracts binding rows and concrete class names from the Laravel container.
 2. Extracts controller routes and expanded middleware from the live router.
-3. Extracts event listeners, jobs, queue connections, scheduled tasks, and auth config (guards, providers, password brokers).
+3. Extracts event listeners, jobs, queue connections, scheduled tasks, auth config (guards, providers, password brokers), and notifications (classes + channels).
 4. Scans production PSR-4 paths for additional project classes.
 5. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
-6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, auth guards/providers/password brokers, static edges, unresolved count).
+6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, auth guards/providers/password brokers, notifications/channels, static edges, unresolved count).
 7. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
 
 On success you see:
