@@ -33,6 +33,9 @@ final class GraphCompleteness
             'Closure Gate abilities export as GateAbility nodes without HANDLED_BY.',
             'Policy auto-discovery (guessing / UsePolicy attributes) and Gate before/after callbacks are not exported.',
             'Policy method inventories (view/update/delete/…) are not exported; only the model→policy class registration is.',
+            'Dynamic Notification via() results that depend on notifiable state may be incomplete or empty.',
+            'Notifiable routeNotificationFor* routing and on-demand Notification::route() sends are not exported.',
+            'Closure notification channels are not exported as IDENTIFIED_AS targets.',
         ];
     }
 

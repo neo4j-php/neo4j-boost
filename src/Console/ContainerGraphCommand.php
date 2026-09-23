@@ -12,6 +12,8 @@ use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
 use Neo4j\LaravelBoost\ContainerGraph\EventListenerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\JobHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MethodInjectionExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\NotificationChannelExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\NotificationHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ParameterDependencyResolver;
 use Neo4j\LaravelBoost\ContainerGraph\QueueConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
@@ -58,6 +60,8 @@ class ContainerGraphCommand extends Command
         private ScheduledTaskExtractor $scheduledTaskExtractor,
         private AuthConfigExtractor $authConfigExtractor,
         private AuthorizationExtractor $authorizationExtractor,
+        private NotificationHandlerExtractor $notificationHandlerExtractor,
+        private NotificationChannelExtractor $notificationChannelExtractor,
     ) {
         parent::__construct();
     }
@@ -72,6 +76,10 @@ class ContainerGraphCommand extends Command
         $eventRows = $this->eventListenerExtractor->extract();
         $queueConnectionRows = $this->queueConnectionExtractor->extract();
         $jobRows = $this->jobHandlerExtractor->extract($concreteClasses);
+        $notificationExtracted = $this->notificationHandlerExtractor->extract($concreteClasses);
+        $notificationRows = $notificationExtracted['notifications'];
+        $notificationUsesChannelRows = $notificationExtracted['uses_channel'];
+        $notificationChannelRows = $this->notificationChannelExtractor->extract();
         $scheduledTaskRows = $this->scheduledTaskExtractor->extract();
         $authConfig = $this->authConfigExtractor->extract();
         $authProviderRows = $authConfig['providers'];
@@ -95,6 +103,14 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromJobRows($jobRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromNotificationRows($notificationRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromNotificationChannelRows($notificationChannelRows, $notificationUsesChannelRows),
         );
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
@@ -163,6 +179,9 @@ class ContainerGraphCommand extends Command
         $this->line('- Password brokers: '.count($passwordBrokerRows));
         $this->line('- Policies: '.count($policyRows));
         $this->line('- Gate abilities: '.count($gateAbilityRows));
+        $this->line('- Notifications: '.count($notificationRows));
+        $this->line('- Notification channels: '.count($notificationChannelRows));
+        $this->line('- Notification channel links: '.count($notificationUsesChannelRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -172,7 +191,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows);
         }
 
         if ($this->option('dry-run')) {
@@ -183,7 +202,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -640,6 +659,43 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     * @return array<int, string>
+     */
+    private function classNamesFromNotificationRows(array $notificationRows): array
+    {
+        $classes = [];
+
+        foreach ($notificationRows as $row) {
+            $identifier = $row['identifier'] ?? '';
+            if (is_string($identifier) && $identifier !== '' && class_exists($identifier)) {
+                $classes[] = $identifier;
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     * @return array<int, string>
+     */
+    private function classNamesFromNotificationChannelRows(array $notificationChannelRows, array $notificationUsesChannelRows): array
+    {
+        $classes = [];
+
+        foreach (array_merge($notificationChannelRows, $notificationUsesChannelRows) as $row) {
+            $resolved = $row['resolved_class'] ?? '';
+            if (is_string($resolved) && $resolved !== '' && class_exists($resolved)) {
+                $classes[] = $resolved;
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -755,6 +811,9 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -773,6 +832,9 @@ class ContainerGraphCommand extends Command
         array $passwordBrokerRows = [],
         array $policyRows = [],
         array $gateAbilityRows = [],
+        array $notificationRows = [],
+        array $notificationChannelRows = [],
+        array $notificationUsesChannelRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -798,6 +860,9 @@ class ContainerGraphCommand extends Command
         $this->line('- password_brokers: '.json_encode(array_slice($passwordBrokerRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- policies: '.json_encode(array_slice($policyRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- gate_abilities: '.json_encode(array_slice($gateAbilityRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- notifications: '.json_encode(array_slice($notificationRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- notification_channels: '.json_encode(array_slice($notificationChannelRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- notification_uses_channel: '.json_encode(array_slice($notificationUsesChannelRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

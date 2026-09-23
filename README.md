@@ -157,6 +157,8 @@ The export uses this runtime model:
 (:Policy)-[:HANDLED_BY]->(:Abstract)
 (:Policy)-[:FOR_MODEL]->(:Abstract)
 (:GateAbility)-[:HANDLED_BY]->(:Abstract)
+(:Notification)-[:HANDLED_BY]->(:Abstract)
+(:Notification)-[:USES_CHANNEL]->(:NotificationChannel)
 ```
 
 `:Abstract` is the container lookup key (same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
@@ -203,6 +205,14 @@ MATCH (a:GateAbility)
 OPTIONAL MATCH (a)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN a, root, path
+LIMIT 50
+```
+
+```cypher
+MATCH (n:Notification)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH ch = (n)-[:USES_CHANNEL]->(:NotificationChannel)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(x)
+RETURN n, root, ch, path
 LIMIT 50
 ```
 

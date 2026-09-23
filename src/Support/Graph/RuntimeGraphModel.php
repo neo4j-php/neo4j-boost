@@ -17,6 +17,8 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Policy -[:HANDLED_BY]-> Abstract
  * Policy -[:FOR_MODEL]-> Abstract
  * GateAbility -[:HANDLED_BY]-> Abstract
+ * Notification -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
+ * Notification -[:USES_CHANNEL]-> NotificationChannel -[:IDENTIFIED_AS]-> Abstract
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -43,6 +45,10 @@ final class RuntimeGraphModel
 
     public const LABEL_GATE_ABILITY = 'GateAbility';
 
+    public const LABEL_NOTIFICATION = 'Notification';
+
+    public const LABEL_NOTIFICATION_CHANNEL = 'NotificationChannel';
+
     public const LABEL_INSTANCE = 'Instance';
 
     public const LABEL_DEPENDENCY = 'Dependency';
@@ -68,6 +74,8 @@ final class RuntimeGraphModel
     public const REL_USES_MODEL = 'USES_MODEL';
 
     public const REL_FOR_MODEL = 'FOR_MODEL';
+
+    public const REL_USES_CHANNEL = 'USES_CHANNEL';
 
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
@@ -99,6 +107,12 @@ final class RuntimeGraphModel
     /** Unique property on GateAbility nodes (ability name). */
     public const GATE_ABILITY_KEY = 'key';
 
+    /** Unique property on Notification nodes (FQCN). */
+    public const NOTIFICATION_KEY = 'key';
+
+    /** Unique property on NotificationChannel nodes (driver name or FQCN). */
+    public const NOTIFICATION_CHANNEL_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -126,6 +140,8 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT password_broker_key IF NOT EXISTS FOR (n:PasswordBroker) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT policy_key IF NOT EXISTS FOR (n:Policy) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT gate_ability_key IF NOT EXISTS FOR (n:GateAbility) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT notification_key IF NOT EXISTS FOR (n:Notification) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT notification_channel_key IF NOT EXISTS FOR (n:NotificationChannel) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -219,6 +235,19 @@ MATCH (a:GateAbility {key: $abilityKey})
 OPTIONAL MATCH (a)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN a AS gateAbility, root AS rootInstance, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Notification through its class dependency chain and delivery channels.
+     */
+    public static function notificationTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (n:Notification {key: $notificationKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(x)
+OPTIONAL MATCH ch = (n)-[:USES_CHANNEL]->(:NotificationChannel)
+RETURN n AS notification, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT ch) AS channels
 CYPHER;
     }
 }

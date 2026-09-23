@@ -4,6 +4,7 @@ namespace Neo4j\LaravelBoost\ContainerGraph;
 
 use Illuminate\Console\Command as ArtisanCommand;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Notification;
 use Illuminate\Routing\Controller;
 use ReflectionClass;
 use ReflectionMethod;
@@ -42,6 +43,11 @@ final class MethodInjectionTargetResolver
         // so the event payload parameter is skipped during method-injection export.
         if ($this->isListener($class)) {
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
+        }
+
+        // Notifications that implement ShouldQueue must not be treated as jobs.
+        if ($this->isNotification($class)) {
+            return $this->notificationMethods($class);
         }
 
         if ($this->isJob($class)) {
@@ -107,7 +113,7 @@ final class MethodInjectionTargetResolver
 
     public function isJob(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class)) {
+        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isNotification($class)) {
             return false;
         }
 
@@ -120,6 +126,39 @@ final class MethodInjectionTargetResolver
         }
 
         return str_contains($class->getName(), '\\Jobs\\');
+    }
+
+    public function isNotification(ReflectionClass $class): bool
+    {
+        if ($class->isAbstract() || $class->getName() === Notification::class) {
+            return false;
+        }
+
+        if ($class->isSubclassOf(Notification::class)) {
+            return true;
+        }
+
+        if (str_ends_with($class->getShortName(), 'Notification')) {
+            return true;
+        }
+
+        return str_contains($class->getName(), '\\Notifications\\');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function notificationMethods(ReflectionClass $class): array
+    {
+        $methods = [];
+
+        foreach (['via', 'toMail', 'toArray', 'toDatabase', 'toBroadcast'] as $method) {
+            if ($this->hasPublicMethod($class, $method)) {
+                $methods[] = $method;
+            }
+        }
+
+        return $methods;
     }
 
     public function isListener(ReflectionClass $class): bool

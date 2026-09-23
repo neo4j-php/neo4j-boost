@@ -46,10 +46,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
 6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
 7. **Authorization** from the live Gate (model→policy registrations and Gate abilities)
-8. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-9. **Constructor and method-injection dependencies** for concrete classes
-10. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-11. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+8. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
+9. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+10. **Constructor and method-injection dependencies** for concrete classes
+11. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+12. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -65,10 +66,12 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:PasswordBroker` | `key` (broker name) | Password reset broker. `table`, `expire`, `throttle`, `is_default`. |
 | `:Policy` | `key` (model FQCN) | Gate policy registration for a model. |
 | `:GateAbility` | `key` (ability name) | Named Gate ability (`define` / `resource`). `handler_kind` is `class`, `closure`, or `unknown`. |
+| `:Notification` | `key` (notification FQCN) | Notification class. `should_queue`, optional `connection` / `queue`, `unique`. |
+| `:NotificationChannel` | `key` (driver name or channel FQCN) | Delivery channel. `kind` (`builtin`/`extended`/`class`/`named`), `is_default`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, policies, Gate abilities, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -88,17 +91,21 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:Policy)-[:HANDLED_BY]->(:Abstract)            # policy class
 (:Policy)-[:FOR_MODEL]->(:Abstract)             # subject model
 (:GateAbility)-[:HANDLED_BY]->(:Abstract)       # class-based abilities only
+(:Notification)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:Notification)-[:USES_CHANNEL {order}]->(:NotificationChannel)
+(:NotificationChannel)-[:IDENTIFIED_AS]->(:Abstract)  # when a channel class is known
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, ScheduledTask → command/job/callable class, Policy → policy class, or GateAbility → ability class | `action` on Event/Job/ScheduledTask/Policy/GateAbility edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, ScheduledTask → command/job/callable class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/ScheduledTask/Policy/GateAbility/Notification edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job → configured queue connection | — |
 | `USES_PROVIDER` | AuthGuard or PasswordBroker → AuthProvider | — |
 | `USES_MODEL` | AuthProvider → eloquent user model Abstract | — |
 | `FOR_MODEL` | Policy → subject model Abstract | — |
-| `IDENTIFIED_AS` | Dependency or middleware → identifier | — |
+| `USES_CHANNEL` | Notification → delivery channel | `order` (index in `via()`) |
+| `IDENTIFIED_AS` | Dependency, middleware, or NotificationChannel → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
@@ -116,10 +123,10 @@ php artisan container:graph
 
 1. Extracts binding rows and concrete class names from the Laravel container.
 2. Extracts controller routes and expanded middleware from the live router.
-3. Extracts event listeners, jobs, queue connections, scheduled tasks, auth config (guards, providers, password brokers), and authorization (policies, Gate abilities).
+3. Extracts event listeners, jobs, queue connections, scheduled tasks, auth config (guards, providers, password brokers), authorization (policies, Gate abilities), and notifications (classes + channels).
 4. Scans production PSR-4 paths for additional project classes.
 5. Reflects constructors (and method injection) to build `DEPENDS_ON` chains.
-6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, auth guards/providers/password brokers, policies, Gate abilities, static edges, unresolved count).
+6. Prints a summary (bindings, instances, route handlers, route middleware links, events, jobs, queue connections, scheduled tasks, auth guards/providers/password brokers, policies, Gate abilities, notifications/channels, static edges, unresolved count).
 7. Unless `--dry-run`, connects to Neo4j and runs `MERGE`-based Cypher writes.
 
 On success you see:

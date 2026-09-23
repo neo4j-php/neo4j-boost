@@ -60,6 +60,15 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}> */
     public array $gateAbilityRows = [];
 
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}> */
+    public array $notificationRows = [];
+
+    /** @var array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}> */
+    public array $notificationChannelRows = [];
+
+    /** @var array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}> */
+    public array $notificationUsesChannelRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -81,6 +90,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
      */
     public function write(
         array $instanceRows,
@@ -98,6 +110,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $passwordBrokerRows = [],
         array $policyRows = [],
         array $gateAbilityRows = [],
+        array $notificationRows = [],
+        array $notificationChannelRows = [],
+        array $notificationUsesChannelRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -114,6 +129,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->passwordBrokerRows = $passwordBrokerRows;
         $this->policyRows = $policyRows;
         $this->gateAbilityRows = $gateAbilityRows;
+        $this->notificationRows = $notificationRows;
+        $this->notificationChannelRows = $notificationChannelRows;
+        $this->notificationUsesChannelRows = $notificationUsesChannelRows;
     }
 
     /**
@@ -382,6 +400,44 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    public function hasNotification(string $key, ?string $channelKey = null): bool
+    {
+        $found = false;
+        foreach ($this->notificationRows as $row) {
+            if ($row['key'] === $key) {
+                $found = true;
+                break;
+            }
+        }
+
+        if (! $found) {
+            return false;
+        }
+
+        if ($channelKey === null) {
+            return true;
+        }
+
+        foreach ($this->notificationUsesChannelRows as $row) {
+            if ($row['notification_key'] === $key && $row['channel_key'] === $channelKey) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasNotificationChannel(string $key): bool
+    {
+        foreach ($this->notificationChannelRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
         }
 
         return false;

@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -316,6 +316,39 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('OPTIONAL MATCH (a)-[old:HANDLED_BY]->()', $template);
         $this->assertStringContainsString('DELETE old', $template);
         $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+    }
+
+    public function test_notifications_cypher_clears_uses_channel_edges(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notifications'];
+
+        $this->assertStringContainsString(':Notification', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (n)-[old:USES_CHANNEL]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('n.should_queue = row.should_queue', $template);
+    }
+
+    public function test_notification_uses_channel_cypher_links_channels(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notification_uses_channel'];
+
+        $this->assertStringContainsString('USES_CHANNEL', $template);
+        $this->assertStringContainsString(':NotificationChannel', $template);
+        $this->assertStringContainsString('u.order = row.order', $template);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+    }
+
+    public function test_notification_channels_cypher_identifies_resolved_class(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notification_channels'];
+
+        $this->assertStringContainsString(':NotificationChannel', $template);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('c.is_default = row.is_default', $template);
     }
 
     public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void
