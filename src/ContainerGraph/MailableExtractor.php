@@ -57,13 +57,13 @@ final class MailableExtractor
                 continue;
             }
 
-            $method = $this->resolveHandlerMethod($reflection);
+            $method = $this->targetResolver->resolveMailableHandlerMethod($reflection);
 
             $seen[$className] = true;
             $rows[] = [
                 'key' => $className,
                 'name' => $reflection->getShortName(),
-                'action' => $className.'@'.$method,
+                'action' => $method === '' ? $className : $className.'@'.$method,
                 'identifier' => $className,
                 'identifier_kind' => 'Class',
                 'should_queue' => $reflection->implementsInterface(ShouldQueue::class),
@@ -76,15 +76,6 @@ final class MailableExtractor
         }
 
         return $rows;
-    }
-
-    private function resolveHandlerMethod(ReflectionClass $reflection): string
-    {
-        if ($reflection->hasMethod('build') && $reflection->getMethod('build')->isPublic()) {
-            return 'build';
-        }
-
-        return 'send';
     }
 
     private function stringProperty(ReflectionClass $reflection, string $property): string

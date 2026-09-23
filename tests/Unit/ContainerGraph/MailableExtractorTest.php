@@ -6,6 +6,8 @@ use Illuminate\Contracts\Mail\Mailable as MailableContract;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
 use Neo4j\LaravelBoost\ContainerGraph\JobHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MailableExtractor;
 use Neo4j\LaravelBoost\Tests\TestCase;
@@ -38,6 +40,33 @@ class MailableExtractorTest extends TestCase
         $this->assertSame('mails', $match['queue']);
         $this->assertTrue($match['unique']);
         $this->assertSame(ConfiguredQueuedMailable::class.'@send', $match['action']);
+    }
+
+    public function test_modern_mailable_uses_envelope_not_inherited_send(): void
+    {
+        $rows = (new MailableExtractor)->extract([ModernWelcomeMailable::class]);
+        $match = $this->findRow($rows, ModernWelcomeMailable::class);
+
+        $this->assertNotNull($match);
+        $this->assertSame(ModernWelcomeMailable::class.'@envelope', $match['action']);
+    }
+
+    public function test_constructor_only_mailable_does_not_fabricate_build_action(): void
+    {
+        $rows = (new MailableExtractor)->extract([ConstructorOnlyMailable::class]);
+        $match = $this->findRow($rows, ConstructorOnlyMailable::class);
+
+        $this->assertNotNull($match);
+        $this->assertSame(ConstructorOnlyMailable::class, $match['action']);
+    }
+
+    public function test_inherits_build_action_from_app_base_mailable(): void
+    {
+        $rows = (new MailableExtractor)->extract([ChildOfBaseMailable::class]);
+        $match = $this->findRow($rows, ChildOfBaseMailable::class);
+
+        $this->assertNotNull($match);
+        $this->assertSame(ChildOfBaseMailable::class.'@build', $match['action']);
     }
 
     public function test_queued_mailable_is_not_exported_as_job(): void
@@ -79,6 +108,34 @@ final class SimpleInvoiceMailable extends Mailable
         return $this->subject('Invoice')->view('mail.invoice');
     }
 }
+
+final class ModernWelcomeMailable extends Mailable
+{
+    public function envelope(): Envelope
+    {
+        return new Envelope(subject: 'Welcome');
+    }
+
+    public function content(): Content
+    {
+        return new Content(view: 'mail.welcome');
+    }
+}
+
+final class ConstructorOnlyMailable extends Mailable
+{
+    public function __construct(public string $orderId = '1') {}
+}
+
+abstract class AppBaseMailable extends Mailable
+{
+    public function build(): self
+    {
+        return $this->subject('Base')->view('mail.base');
+    }
+}
+
+final class ChildOfBaseMailable extends AppBaseMailable {}
 
 /**
  * Contract-only fixture so connection/queue defaults can be declared without

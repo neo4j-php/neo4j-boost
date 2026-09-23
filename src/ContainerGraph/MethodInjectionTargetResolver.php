@@ -54,7 +54,7 @@ final class MethodInjectionTargetResolver
 
         // Queued mailables must not be treated as jobs.
         if ($this->isMailable($class)) {
-            return $this->hasPublicMethod($class, 'build') ? ['build'] : [];
+            return $this->mailableMethods($class);
         }
 
         if ($this->isJob($class)) {
@@ -181,6 +181,38 @@ final class MethodInjectionTargetResolver
         return $class->isSubclassOf(Mailable::class);
     }
 
+    /**
+     * Preferred HANDLED_BY action for a mailable: app-declared build / envelope /
+     * content / attachments / send — never Illuminate\Mail\Mailable::send, and
+     * never a fabricated method name when none exist.
+     */
+    public function resolveMailableHandlerMethod(ReflectionClass $class): string
+    {
+        foreach (['build', 'envelope', 'content', 'attachments', 'send'] as $method) {
+            if ($this->isAppDeclaredMailableMethod($class, $method)) {
+                return $method;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function mailableMethods(ReflectionClass $class): array
+    {
+        $methods = [];
+
+        foreach (['build', 'envelope', 'content', 'attachments'] as $method) {
+            if ($this->isAppDeclaredMailableMethod($class, $method)) {
+                $methods[] = $method;
+            }
+        }
+
+        return $methods;
+    }
+
     public function isListener(ReflectionClass $class): bool
     {
         if ($this->isConsoleCommand($class) || $this->isController($class)) {
@@ -237,5 +269,21 @@ final class MethodInjectionTargetResolver
         }
 
         return $class->getMethod($method)->isPublic();
+    }
+
+    /**
+     * Public handler declared by the app (concrete class or app base), excluding
+     * methods that come from Illuminate\Mail\Mailable itself (e.g. send).
+     */
+    private function isAppDeclaredMailableMethod(ReflectionClass $class, string $method): bool
+    {
+        if (! $class->hasMethod($method)) {
+            return false;
+        }
+
+        $reflectionMethod = $class->getMethod($method);
+
+        return $reflectionMethod->isPublic()
+            && $reflectionMethod->getDeclaringClass()->getName() !== Mailable::class;
     }
 }
