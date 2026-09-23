@@ -154,6 +154,9 @@ The export uses this runtime model:
 (:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)
 (:AuthProvider)-[:USES_MODEL]->(:Abstract)
 (:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)
+(:Policy)-[:HANDLED_BY]->(:Abstract)
+(:Policy)-[:FOR_MODEL]->(:Abstract)
+(:GateAbility)-[:HANDLED_BY]->(:Abstract)
 (:Notification)-[:HANDLED_BY]->(:Abstract)
 (:Notification)-[:USES_CHANNEL]->(:NotificationChannel)
 ```
@@ -186,6 +189,22 @@ MATCH (g:AuthGuard)-[:USES_PROVIDER]->(p:AuthProvider)
 OPTIONAL MATCH model = (p)-[:USES_MODEL]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN g, p, root, model, path
+LIMIT 50
+```
+
+```cypher
+MATCH (p:Policy)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH model = (p)-[:FOR_MODEL]->(:Abstract)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN p, root, model, path
+LIMIT 50
+```
+
+```cypher
+MATCH (a:GateAbility)
+OPTIONAL MATCH (a)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN a, root, path
 LIMIT 50
 ```
 
