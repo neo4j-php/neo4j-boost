@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Notification `via()` extraction now handles a concrete notifiable typehint and a single-string return value (not only `array`).
 - Replace stale `Event` `HANDLED_BY` edges on re-export so removed listeners no longer linger in Neo4j.
 
 ## [1.2.0] - 2026-09-15

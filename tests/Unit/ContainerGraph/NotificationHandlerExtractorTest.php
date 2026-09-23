@@ -11,6 +11,8 @@ use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\Construc
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\QueuedInvoiceNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\SmsChannel;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\StringViaNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\TypedNotifiableNotification;
 
 class NotificationHandlerExtractorTest extends TestCase
 {
@@ -64,5 +66,30 @@ class NotificationHandlerExtractorTest extends TestCase
         $this->assertSame('redis', $notificationRows['notifications'][0]['connection']);
         $this->assertSame('notifications', $notificationRows['notifications'][0]['queue']);
         $this->assertSame([], $jobRows);
+    }
+
+    public function test_extracts_channels_when_via_typehints_a_concrete_notifiable(): void
+    {
+        $extracted = (new NotificationHandlerExtractor)->extract([
+            TypedNotifiableNotification::class,
+        ]);
+
+        $this->assertCount(1, $extracted['notifications']);
+        $this->assertSame(
+            ['mail', 'database'],
+            array_column($extracted['uses_channel'], 'channel_key'),
+        );
+    }
+
+    public function test_extracts_channels_when_via_returns_a_string(): void
+    {
+        $extracted = (new NotificationHandlerExtractor)->extract([
+            StringViaNotification::class,
+        ]);
+
+        $this->assertCount(1, $extracted['notifications']);
+        $this->assertCount(1, $extracted['uses_channel']);
+        $this->assertSame('mail', $extracted['uses_channel'][0]['channel_key']);
+        $this->assertSame('builtin', $extracted['uses_channel'][0]['channel_kind']);
     }
 }

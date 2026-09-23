@@ -11,6 +11,8 @@ use Illuminate\Notifications\Channels\DatabaseChannel;
 use Illuminate\Notifications\Channels\MailChannel;
 use Illuminate\Notifications\Notifiable;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
 use ReflectionProperty;
 use Throwable;
 use UnitEnum;
@@ -94,22 +96,25 @@ final class NotificationHandlerExtractor
             return [];
         }
 
+        $via = $reflection->getMethod('via');
+
         try {
             $instance = $reflection->newInstanceWithoutConstructor();
         } catch (Throwable) {
             return [];
         }
 
-        $stub = new class
-        {
-            use Notifiable;
-        };
+        $stub = $this->notifiableStub($via);
 
         try {
             /** @var mixed $result */
             $result = $instance->via($stub);
         } catch (Throwable) {
             return [];
+        }
+
+        if (is_string($result) && $result !== '') {
+            $result = [$result];
         }
 
         if (! is_array($result)) {
@@ -125,6 +130,30 @@ final class NotificationHandlerExtractor
         }
 
         return $channels;
+    }
+
+    private function notifiableStub(ReflectionMethod $via): object
+    {
+        $parameter = $via->getParameters()[0] ?? null;
+        $type = $parameter?->getType();
+
+        if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
+            $className = $type->getName();
+
+            try {
+                $reflection = new ReflectionClass($className);
+                if ($reflection->isInstantiable()) {
+                    return $reflection->newInstanceWithoutConstructor();
+                }
+            } catch (Throwable) {
+                // Fall through to the generic Notifiable stub.
+            }
+        }
+
+        return new class
+        {
+            use Notifiable;
+        };
     }
 
     /**
