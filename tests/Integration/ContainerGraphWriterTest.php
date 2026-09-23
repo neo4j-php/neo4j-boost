@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -290,6 +290,67 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
     }
 
+    public function test_policies_cypher_uses_handled_by_and_for_model(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['policies'];
+
+        $this->assertStringContainsString(':Policy', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('FOR_MODEL', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()', $template);
+        $this->assertStringContainsString('DELETE oldH', $template);
+        $this->assertStringContainsString('DELETE oldM', $template);
+        $this->assertStringContainsString('MERGE (m:Abstract {name: row.model})', $template);
+    }
+
+    public function test_gate_abilities_cypher_uses_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['gate_abilities'];
+
+        $this->assertStringContainsString(':GateAbility', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('a.handler_kind = row.handler_kind', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (a)-[old:HANDLED_BY]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+    }
+
+    public function test_notifications_cypher_clears_uses_channel_edges(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notifications'];
+
+        $this->assertStringContainsString(':Notification', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (n)-[old:USES_CHANNEL]->()', $template);
+        $this->assertStringContainsString('DELETE old', $template);
+        $this->assertStringContainsString('n.should_queue = row.should_queue', $template);
+    }
+
+    public function test_notification_uses_channel_cypher_links_channels(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notification_uses_channel'];
+
+        $this->assertStringContainsString('USES_CHANNEL', $template);
+        $this->assertStringContainsString(':NotificationChannel', $template);
+        $this->assertStringContainsString('u.order = row.order', $template);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+    }
+
+    public function test_notification_channels_cypher_identifies_resolved_class(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['notification_channels'];
+
+        $this->assertStringContainsString(':NotificationChannel', $template);
+        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('c.is_default = row.is_default', $template);
+    }
+
     public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void
     {
         $connection = new TrackingContainerGraphConnection;
@@ -373,15 +434,15 @@ class ContainerGraphWriterTest extends TestCase
             ['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false],
         ];
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], $mailerRows, [$mailableRow('ses', 'redis')]);
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('ses', 'redis')]);
         $this->assertSame(['ses'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
         $this->assertSame(['redis'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], $mailerRows, [$mailableRow('smtp', 'sqs')]);
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('smtp', 'sqs')]);
         $this->assertSame(['smtp'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
         $this->assertSame(['sqs'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], $mailerRows, [$mailableRow('', '')]);
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('', '')]);
         $this->assertSame([], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
         $this->assertSame([], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
     }

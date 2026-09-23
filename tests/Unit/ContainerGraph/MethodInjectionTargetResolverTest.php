@@ -49,6 +49,24 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
     }
 
+    public function test_queued_notification_is_classified_as_notification_not_job(): void
+    {
+        $queuedNotification = new ReflectionClass(Fixtures\Notifications\QueuedInvoiceNotification::class);
+
+        $this->assertTrue($this->resolver->isNotification($queuedNotification));
+        $this->assertFalse($this->resolver->isJob($queuedNotification));
+        $this->assertSame(['via'], $this->resolver->methodsForClass($queuedNotification));
+    }
+
+    public function test_notification_exposes_via_and_to_methods(): void
+    {
+        $methods = $this->resolver->methodsForClass(
+            new ReflectionClass(Fixtures\Notifications\InvoicePaidNotification::class),
+        );
+
+        $this->assertSame(['via', 'toMail', 'toArray'], $methods);
+    }
+
     public function test_queued_mailable_is_classified_as_mailable_not_job(): void
     {
         $queuedMailable = new ReflectionClass(Fixtures\MethodInjectionQueuedMailable::class);

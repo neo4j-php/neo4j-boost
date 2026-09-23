@@ -2,6 +2,7 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use Illuminate\Auth\Access\Gate;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -21,6 +22,9 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Support\ReportA
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\Post;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\PostPolicy;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
 
 /**
  * Acceptance coverage for the runtime dependency graph model:
@@ -31,6 +35,8 @@ use Neo4j\LaravelBoost\Tests\TestCase;
  * Job -> QueueConnection
  * ScheduledTask -> Abstract -> Instance
  * AuthGuard -> AuthProvider -> Abstract (optional eloquent model)
+ * Policy -> Abstract (+ FOR_MODEL) and GateAbility -> Abstract
+ * Notification -> Abstract (+ USES_CHANNEL -> NotificationChannel)
  * Mailable -> Abstract -> Instance
  * Mailable -> Mailer / QueueConnection.
  */
@@ -205,6 +211,56 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertTrue($this->graph->hasInstanceNode(User::class));
     }
 
+    public function test_exports_policies_and_gate_abilities(): void
+    {
+        /** @var Gate $gate */
+        $gate = $this->app->make(\Illuminate\Contracts\Auth\Access\Gate::class);
+        $gate->policy(Post::class, PostPolicy::class);
+        $gate->define('publish-post', PostPolicy::class.'@update');
+        $gate->define('board-the-plane', fn (): bool => true);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Policies:')
+            ->expectsOutputToContain('Gate abilities:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasPolicy(Post::class, PostPolicy::class));
+        $this->assertTrue($this->graph->hasGateAbility('publish-post', PostPolicy::class));
+        $this->assertTrue($this->graph->hasGateAbility('board-the-plane'));
+        $this->assertTrue($this->graph->hasInstanceNode(PostPolicy::class));
+        $this->assertTrue($this->graph->hasInstanceNode(Post::class));
+    }
+
+    public function test_exports_notifications_and_channels(): void
+    {
+        // Register fixture class into the scanned class set via a container binding.
+        $this->app->bind(
+            InvoicePaidNotification::class,
+            InvoicePaidNotification::class,
+        );
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Notifications:')
+            ->expectsOutputToContain('Notification channels:')
+            ->expectsOutputToContain('Notification channel links:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasNotification(
+            InvoicePaidNotification::class,
+            'mail',
+        ));
+        $this->assertTrue($this->graph->hasNotification(
+            InvoicePaidNotification::class,
+            'database',
+        ));
+        $this->assertTrue($this->graph->hasNotificationChannel('mail'));
+        $this->assertTrue($this->graph->hasInstanceNode(
+            InvoicePaidNotification::class,
+        ));
+    }
+
     public function test_exports_mailable_handled_by_and_mailers(): void
     {
         $this->app->bind(InvoicePaidMailable::class, InvoicePaidMailable::class);
@@ -253,6 +309,11 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('auth_providers', $templates);
         $this->assertArrayHasKey('auth_guards', $templates);
         $this->assertArrayHasKey('password_brokers', $templates);
+        $this->assertArrayHasKey('policies', $templates);
+        $this->assertArrayHasKey('gate_abilities', $templates);
+        $this->assertArrayHasKey('notifications', $templates);
+        $this->assertArrayHasKey('notification_channels', $templates);
+        $this->assertArrayHasKey('notification_uses_channel', $templates);
         $this->assertArrayHasKey('mailers', $templates);
         $this->assertArrayHasKey('mailables', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
@@ -268,6 +329,13 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
         $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
         $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
+        $this->assertStringContainsString(':Policy', $templates['policies']);
+        $this->assertStringContainsString('FOR_MODEL', $templates['policies']);
+        $this->assertStringContainsString(':GateAbility', $templates['gate_abilities']);
+        $this->assertStringContainsString(':Notification', $templates['notifications']);
+        $this->assertStringContainsString('USES_CHANNEL', $templates['notifications']);
+        $this->assertStringContainsString(':NotificationChannel', $templates['notification_channels']);
+        $this->assertStringContainsString('USES_CHANNEL', $templates['notification_uses_channel']);
         $this->assertStringContainsString(':Mailer', $templates['mailers']);
         $this->assertStringContainsString(':Mailable', $templates['mailables']);
         $this->assertStringContainsString('USES_MAILER', $templates['mailables']);
@@ -299,6 +367,18 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('USES_PROVIDER', $authTraversal);
         $this->assertStringContainsString('USES_MODEL', $authTraversal);
 
+        $policyTraversal = RuntimeGraphModel::policyTraversalCypher();
+        $this->assertStringContainsString(':Policy', $policyTraversal);
+        $this->assertStringContainsString('FOR_MODEL', $policyTraversal);
+
+        $abilityTraversal = RuntimeGraphModel::gateAbilityTraversalCypher();
+        $this->assertStringContainsString(':GateAbility', $abilityTraversal);
+        $this->assertStringContainsString('HANDLED_BY', $abilityTraversal);
+
+        $notificationTraversal = RuntimeGraphModel::notificationTraversalCypher();
+        $this->assertStringContainsString(':Notification', $notificationTraversal);
+        $this->assertStringContainsString('USES_CHANNEL', $notificationTraversal);
+
         $mailableTraversal = RuntimeGraphModel::mailableTraversalCypher();
         $this->assertStringContainsString(':Mailable', $mailableTraversal);
         $this->assertStringContainsString('HANDLED_BY', $mailableTraversal);
@@ -320,6 +400,11 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Auth guards:')
             ->expectsOutputToContain('Auth providers:')
             ->expectsOutputToContain('Password brokers:')
+            ->expectsOutputToContain('Policies:')
+            ->expectsOutputToContain('Gate abilities:')
+            ->expectsOutputToContain('Notifications:')
+            ->expectsOutputToContain('Notification channels:')
+            ->expectsOutputToContain('Notification channel links:')
             ->expectsOutputToContain('Mailers:')
             ->expectsOutputToContain('Mailables:')
             ->expectsOutputToContain('Dry run complete')
@@ -334,6 +419,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->authProviderRows);
         $this->assertSame([], $this->graph->authGuardRows);
         $this->assertSame([], $this->graph->passwordBrokerRows);
+        $this->assertSame([], $this->graph->policyRows);
+        $this->assertSame([], $this->graph->gateAbilityRows);
+        $this->assertSame([], $this->graph->notificationRows);
+        $this->assertSame([], $this->graph->notificationUsesChannelRows);
         $this->assertSame([], $this->graph->mailerRows);
         $this->assertSame([], $this->graph->mailableRows);
     }

@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Mailers and mailables** in `container:graph`: `(:Mailer)` from `config/mail.php`, `(:Mailable)-[:HANDLED_BY]->(:Abstract)` from scanned mailable classes, optional `(:Mailable)-[:USES_MAILER]->(:Mailer)` and `(:Mailable)-[:USES_CONNECTION]->(:QueueConnection)`. Queued mailables are exported as Mailables (not Jobs). Re-export replaces stale mailer/connection edges when wiring changes.
+- **Notifications** in `container:graph`: `(:Notification)-[:HANDLED_BY]->(:Abstract)` from scanned notification classes, plus `(:Notification)-[:USES_CHANNEL]->(:NotificationChannel)` from `via()` (string/class channels). Built-in and `Notification::extend()` channels are catalogued; queued notifications are excluded from `:Job` nodes. Re-export replaces stale `USES_CHANNEL` edges when channel lists change.
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
+- **Authorization** in `container:graph`: `(:Policy)-[:HANDLED_BY]->(:Abstract)` and `(:Policy)-[:FOR_MODEL]->(:Abstract)` from Gate policy registrations, plus `(:GateAbility)-[:HANDLED_BY]->(:Abstract)` for class-based Gate abilities (closures export as `GateAbility` nodes without `HANDLED_BY`). Re-export replaces stale policy/ability edges when wiring changes.
 
 ### Fixed
 
+- Notification `via()` extraction now handles a concrete notifiable typehint and a single-string return value (not only `array`).
 - Replace stale `Event` `HANDLED_BY` edges on re-export so removed listeners no longer linger in Neo4j.
 
 ## [1.2.0] - 2026-09-15

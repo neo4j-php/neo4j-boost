@@ -33,6 +33,12 @@ final class GraphCompleteness
             'Mailable USES_MAILER / USES_CONNECTION edges use declared class properties only; send-time mailer() / onConnection() overrides are not visible.',
             'Failover/roundrobin nested mailers are stored as a nested_mailers property on Mailer nodes (no graph edges between mailers).',
             'Closure scheduled callbacks and unresolved shell/exec targets export as ScheduledTask nodes without HANDLED_BY.',
+            'Closure Gate abilities export as GateAbility nodes without HANDLED_BY.',
+            'Policy auto-discovery (guessing / UsePolicy attributes) and Gate before/after callbacks are not exported.',
+            'Policy method inventories (view/update/delete/…) are not exported; only the model→policy class registration is.',
+            'Dynamic Notification via() results that depend on notifiable state may be incomplete or empty.',
+            'Notifiable routeNotificationFor* routing and on-demand Notification::route() sends are not exported.',
+            'Closure notification channels are not exported as IDENTIFIED_AS targets.',
         ];
     }
 

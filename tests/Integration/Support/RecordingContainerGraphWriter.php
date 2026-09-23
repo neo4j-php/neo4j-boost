@@ -54,6 +54,21 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}> */
     public array $passwordBrokerRows = [];
 
+    /** @var array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}> */
+    public array $policyRows = [];
+
+    /** @var array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}> */
+    public array $gateAbilityRows = [];
+
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}> */
+    public array $notificationRows = [];
+
+    /** @var array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}> */
+    public array $notificationChannelRows = [];
+
+    /** @var array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}> */
+    public array $notificationUsesChannelRows = [];
+
     /** @var array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}> */
     public array $mailerRows = [];
 
@@ -79,6 +94,11 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
      * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      */
@@ -96,6 +116,11 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $policyRows = [],
+        array $gateAbilityRows = [],
+        array $notificationRows = [],
+        array $notificationChannelRows = [],
+        array $notificationUsesChannelRows = [],
         array $mailerRows = [],
         array $mailableRows = [],
     ): void {
@@ -112,6 +137,11 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->authProviderRows = $authProviderRows;
         $this->authGuardRows = $authGuardRows;
         $this->passwordBrokerRows = $passwordBrokerRows;
+        $this->policyRows = $policyRows;
+        $this->gateAbilityRows = $gateAbilityRows;
+        $this->notificationRows = $notificationRows;
+        $this->notificationChannelRows = $notificationChannelRows;
+        $this->notificationUsesChannelRows = $notificationUsesChannelRows;
         $this->mailerRows = $mailerRows;
         $this->mailableRows = $mailableRows;
     }
@@ -348,6 +378,78 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    public function hasPolicy(string $modelKey, ?string $policyClass = null): bool
+    {
+        foreach ($this->policyRows as $row) {
+            if ($row['key'] !== $modelKey) {
+                continue;
+            }
+
+            if ($policyClass !== null && $row['identifier'] !== $policyClass) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function hasGateAbility(string $key, ?string $identifier = null): bool
+    {
+        foreach ($this->gateAbilityRows as $row) {
+            if ($row['key'] !== $key) {
+                continue;
+            }
+
+            if ($identifier !== null && $row['identifier'] !== $identifier) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function hasNotification(string $key, ?string $channelKey = null): bool
+    {
+        $found = false;
+        foreach ($this->notificationRows as $row) {
+            if ($row['key'] === $key) {
+                $found = true;
+                break;
+            }
+        }
+
+        if (! $found) {
+            return false;
+        }
+
+        if ($channelKey === null) {
+            return true;
+        }
+
+        foreach ($this->notificationUsesChannelRows as $row) {
+            if ($row['notification_key'] === $key && $row['channel_key'] === $channelKey) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasNotificationChannel(string $key): bool
+    {
+        foreach ($this->notificationChannelRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
         }
 
         return false;
