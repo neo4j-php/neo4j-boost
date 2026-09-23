@@ -14,6 +14,9 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * ScheduledTask -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * AuthGuard -[:USES_PROVIDER]-> AuthProvider -[:USES_MODEL]-> Abstract
  * PasswordBroker -[:USES_PROVIDER]-> AuthProvider
+ * Policy -[:HANDLED_BY]-> Abstract
+ * Policy -[:FOR_MODEL]-> Abstract
+ * GateAbility -[:HANDLED_BY]-> Abstract
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -35,6 +38,10 @@ final class RuntimeGraphModel
     public const LABEL_AUTH_PROVIDER = 'AuthProvider';
 
     public const LABEL_PASSWORD_BROKER = 'PasswordBroker';
+
+    public const LABEL_POLICY = 'Policy';
+
+    public const LABEL_GATE_ABILITY = 'GateAbility';
 
     public const LABEL_INSTANCE = 'Instance';
 
@@ -60,6 +67,8 @@ final class RuntimeGraphModel
 
     public const REL_USES_MODEL = 'USES_MODEL';
 
+    public const REL_FOR_MODEL = 'FOR_MODEL';
+
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
 
@@ -83,6 +92,12 @@ final class RuntimeGraphModel
 
     /** Unique property on PasswordBroker nodes (broker name). */
     public const PASSWORD_BROKER_KEY = 'key';
+
+    /** Unique property on Policy nodes (model FQCN). */
+    public const POLICY_KEY = 'key';
+
+    /** Unique property on GateAbility nodes (ability name). */
+    public const GATE_ABILITY_KEY = 'key';
 
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
@@ -109,6 +124,8 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT auth_guard_key IF NOT EXISTS FOR (n:AuthGuard) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT auth_provider_key IF NOT EXISTS FOR (n:AuthProvider) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT password_broker_key IF NOT EXISTS FOR (n:PasswordBroker) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT policy_key IF NOT EXISTS FOR (n:Policy) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT gate_ability_key IF NOT EXISTS FOR (n:GateAbility) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -176,6 +193,32 @@ MATCH (g:AuthGuard {key: $guardKey})-[:USES_PROVIDER]->(p:AuthProvider)
 OPTIONAL MATCH model = (p)-[:USES_MODEL]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN g AS authGuard, p AS authProvider, root AS rootInstance, collect(DISTINCT model) AS models, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Policy through its policy class and subject model.
+     */
+    public static function policyTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (p:Policy {key: $policyKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH model = (p)-[:FOR_MODEL]->(:Abstract)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN p AS policy, root AS rootInstance, collect(DISTINCT model) AS models, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Gate ability through its class handler dependency chain.
+     */
+    public static function gateAbilityTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (a:GateAbility {key: $abilityKey})
+OPTIONAL MATCH (a)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN a AS gateAbility, root AS rootInstance, collect(DISTINCT path) AS paths
 CYPHER;
     }
 }
