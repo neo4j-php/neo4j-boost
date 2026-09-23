@@ -30,6 +30,7 @@ final class GraphCompleteness
             'Job nodes are discovered via ShouldQueue / *Job / \\Jobs\\ heuristics from scanned classes; dispatch-time connection/queue overrides are not visible.',
             'Queued listeners (*Listener / \\Listeners\\) are not exported as Job nodes.',
             'Closure scheduled callbacks and unresolved shell/exec targets export as ScheduledTask nodes without HANDLED_BY.',
+            'Broadcast channel closure callbacks export as BroadcastChannel nodes without HANDLED_BY; class-based channel auth uses join().',
         ];
     }
 

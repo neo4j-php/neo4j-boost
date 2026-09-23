@@ -47,15 +47,21 @@ final class MethodInjectionExtractor
 
             $isMiddleware = $this->targetResolver->isMiddleware($reflection);
             $isListener = $this->targetResolver->isListener($reflection);
+            $isBroadcastChannel = $this->targetResolver->isBroadcastChannel($reflection);
 
             foreach ($this->targetResolver->methodsForClass($reflection) as $methodName) {
                 $method = $reflection->getMethod($methodName);
                 $file = (string) ($method->getFileName() ?: '');
                 $line = (int) $method->getStartLine();
                 $isHandle = $methodName === 'handle';
+                $isJoin = $methodName === 'join';
 
                 foreach ($method->getParameters() as $index => $parameter) {
                     if ($isListener && $isHandle && $index === 0) {
+                        continue;
+                    }
+
+                    if ($isBroadcastChannel && $isJoin && $index === 0) {
                         continue;
                     }
 

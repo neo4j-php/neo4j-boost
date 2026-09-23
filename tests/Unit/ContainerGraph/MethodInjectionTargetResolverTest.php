@@ -49,6 +49,14 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
     }
 
+    public function test_broadcast_channel_resolves_join_method(): void
+    {
+        $channel = new ReflectionClass(Fixtures\Broadcasting\MethodInjectionOrderChannel::class);
+
+        $this->assertTrue($this->resolver->isBroadcastChannel($channel));
+        $this->assertSame(['join'], $this->resolver->methodsForClass($channel));
+    }
+
     public function test_invokable_job_resolves_invoke_method(): void
     {
         $this->assertSame(['__invoke'], $this->resolver->methodsForClass(new ReflectionClass(Fixtures\MethodInjectionInvokableJob::class)));
@@ -107,6 +115,16 @@ final class MethodInjectionQueuedListener implements ShouldQueue
 final class MethodInjectionInvokableJob implements ShouldQueue
 {
     public function __invoke(): void {}
+}
+
+namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Broadcasting;
+
+final class MethodInjectionOrderChannel
+{
+    public function join(object $user, string $orderId): bool
+    {
+        return true;
+    }
 }
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Middleware;

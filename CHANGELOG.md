@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Broadcasting** in `container:graph`: `(:BroadcastConnection)` from `config/broadcasting.php`, and `(:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)` for class-based channel auth (`join()`). Closure channel callbacks export as BroadcastChannel nodes without `HANDLED_BY`. Re-export clears stale channel `HANDLED_BY` edges.
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
 
 ### Fixed

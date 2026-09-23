@@ -45,10 +45,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 4. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
 5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
 6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
-7. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-8. **Constructor and method-injection dependencies** for concrete classes
-9. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-10. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+7. **Broadcasting** from `config/broadcasting.php` connections and live channel auth (`Broadcast::channel`)
+8. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+9. **Constructor and method-injection dependencies** for concrete classes
+10. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+11. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -62,10 +63,12 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:AuthGuard` | `key` (guard name) | From `config/auth.php` guards. `driver`, `is_default`. |
 | `:AuthProvider` | `key` (provider name) | User provider. `driver`, optional `table` (database driver). |
 | `:PasswordBroker` | `key` (broker name) | Password reset broker. `table`, `expire`, `throttle`, `is_default`. |
+| `:BroadcastConnection` | `key` (connection name) | From `config/broadcasting.php`. `driver`, `is_default`. |
+| `:BroadcastChannel` | `key` (channel pattern) | Registered channel auth. Optional `guards`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, broadcast channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -82,11 +85,12 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)
 (:AuthProvider)-[:USES_MODEL]->(:Abstract)      # eloquent providers with a model class
 (:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)
+(:BroadcastChannel)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based channel auth
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, or ScheduledTask → command/job/callable class | `action` on Event/Job/ScheduledTask edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, BroadcastChannel → channel class, or ScheduledTask → command/job/callable class | `action` on Event/Job/BroadcastChannel/ScheduledTask edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job → configured queue connection | — |
 | `USES_PROVIDER` | AuthGuard or PasswordBroker → AuthProvider | — |
@@ -293,7 +297,7 @@ Typical loop:
 1. Change bindings, constructors, routes, middleware, events, jobs, or schedule entries in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:ScheduledTask` / `:Instance` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:BroadcastChannel` / `:ScheduledTask` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 

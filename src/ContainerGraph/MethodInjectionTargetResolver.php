@@ -44,6 +44,10 @@ final class MethodInjectionTargetResolver
             return $this->hasPublicMethod($class, 'handle') ? ['handle'] : [];
         }
 
+        if ($this->isBroadcastChannel($class)) {
+            return $this->hasPublicMethod($class, 'join') ? ['join'] : [];
+        }
+
         if ($this->isJob($class)) {
             if ($this->hasPublicMethod($class, 'handle')) {
                 return ['handle'];
@@ -120,6 +124,19 @@ final class MethodInjectionTargetResolver
         }
 
         return str_contains($class->getName(), '\\Jobs\\');
+    }
+
+    public function isBroadcastChannel(ReflectionClass $class): bool
+    {
+        if ($class->isAbstract() || $class->isInterface()) {
+            return false;
+        }
+
+        if (! $this->hasPublicMethod($class, 'join')) {
+            return false;
+        }
+
+        return str_contains($class->getName(), '\\Broadcasting\\');
     }
 
     public function isListener(ReflectionClass $class): bool

@@ -14,6 +14,7 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * ScheduledTask -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * AuthGuard -[:USES_PROVIDER]-> AuthProvider -[:USES_MODEL]-> Abstract
  * PasswordBroker -[:USES_PROVIDER]-> AuthProvider
+ * BroadcastChannel -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -35,6 +36,10 @@ final class RuntimeGraphModel
     public const LABEL_AUTH_PROVIDER = 'AuthProvider';
 
     public const LABEL_PASSWORD_BROKER = 'PasswordBroker';
+
+    public const LABEL_BROADCAST_CONNECTION = 'BroadcastConnection';
+
+    public const LABEL_BROADCAST_CHANNEL = 'BroadcastChannel';
 
     public const LABEL_INSTANCE = 'Instance';
 
@@ -84,6 +89,12 @@ final class RuntimeGraphModel
     /** Unique property on PasswordBroker nodes (broker name). */
     public const PASSWORD_BROKER_KEY = 'key';
 
+    /** Unique property on BroadcastConnection nodes (connection name). */
+    public const BROADCAST_CONNECTION_KEY = 'key';
+
+    /** Unique property on BroadcastChannel nodes (channel pattern). */
+    public const BROADCAST_CHANNEL_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -109,6 +120,8 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT auth_guard_key IF NOT EXISTS FOR (n:AuthGuard) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT auth_provider_key IF NOT EXISTS FOR (n:AuthProvider) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT password_broker_key IF NOT EXISTS FOR (n:PasswordBroker) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT broadcast_connection_key IF NOT EXISTS FOR (n:BroadcastConnection) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT broadcast_channel_key IF NOT EXISTS FOR (n:BroadcastChannel) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -176,6 +189,18 @@ MATCH (g:AuthGuard {key: $guardKey})-[:USES_PROVIDER]->(p:AuthProvider)
 OPTIONAL MATCH model = (p)-[:USES_MODEL]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN g AS authGuard, p AS authProvider, root AS rootInstance, collect(DISTINCT model) AS models, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Recursive path from a BroadcastChannel through its channel-auth handler chain.
+     */
+    public static function broadcastChannelTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (c:BroadcastChannel {key: $channelKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN c AS broadcastChannel, root AS rootInstance, collect(DISTINCT path) AS paths
 CYPHER;
     }
 }

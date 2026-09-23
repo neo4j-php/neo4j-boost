@@ -5,6 +5,8 @@ namespace Neo4j\LaravelBoost\Console;
 use Closure;
 use Illuminate\Console\Command;
 use Neo4j\LaravelBoost\ContainerGraph\AuthConfigExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\BroadcastChannelExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\BroadcastConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
@@ -56,6 +58,8 @@ class ContainerGraphCommand extends Command
         private QueueConnectionExtractor $queueConnectionExtractor,
         private ScheduledTaskExtractor $scheduledTaskExtractor,
         private AuthConfigExtractor $authConfigExtractor,
+        private BroadcastConnectionExtractor $broadcastConnectionExtractor,
+        private BroadcastChannelExtractor $broadcastChannelExtractor,
     ) {
         parent::__construct();
     }
@@ -75,6 +79,8 @@ class ContainerGraphCommand extends Command
         $authProviderRows = $authConfig['providers'];
         $authGuardRows = $authConfig['guards'];
         $passwordBrokerRows = $authConfig['password_brokers'];
+        $broadcastConnectionRows = $this->broadcastConnectionExtractor->extract();
+        $broadcastChannelRows = $this->broadcastChannelExtractor->extract();
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -98,6 +104,10 @@ class ContainerGraphCommand extends Command
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromAuthProviderRows($authProviderRows),
+        );
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromBroadcastChannelRows($broadcastChannelRows),
         );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
@@ -148,6 +158,8 @@ class ContainerGraphCommand extends Command
         $this->line('- Auth guards: '.count($authGuardRows));
         $this->line('- Auth providers: '.count($authProviderRows));
         $this->line('- Password brokers: '.count($passwordBrokerRows));
+        $this->line('- Broadcast connections: '.count($broadcastConnectionRows));
+        $this->line('- Broadcast channels: '.count($broadcastChannelRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -157,7 +169,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows);
+            $this->printCypher($writer, $instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $broadcastConnectionRows, $broadcastChannelRows);
         }
 
         if ($this->option('dry-run')) {
@@ -168,7 +180,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $broadcastConnectionRows, $broadcastChannelRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -586,6 +598,23 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     * @return array<int, string>
+     */
+    private function classNamesFromBroadcastChannelRows(array $broadcastChannelRows): array
+    {
+        $classes = [];
+
+        foreach ($broadcastChannelRows as $row) {
+            if (($row['identifier_kind'] ?? '') === 'Class' && class_exists($row['identifier'])) {
+                $classes[] = $row['identifier'];
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @return array{source: string, via: string, file: string, line: int}
      */
     private function emptyStaticMetadata(): array
@@ -699,6 +728,8 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */
     private function printCypher(
         ContainerGraphWriter $writer,
@@ -715,6 +746,8 @@ class ContainerGraphCommand extends Command
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $broadcastConnectionRows = [],
+        array $broadcastChannelRows = [],
     ): void {
         $this->line('');
         $this->line('Cypher templates:');
@@ -738,6 +771,8 @@ class ContainerGraphCommand extends Command
         $this->line('- auth_providers: '.json_encode(array_slice($authProviderRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- auth_guards: '.json_encode(array_slice($authGuardRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- password_brokers: '.json_encode(array_slice($passwordBrokerRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- broadcast_connections: '.json_encode(array_slice($broadcastConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- broadcast_channels: '.json_encode(array_slice($broadcastChannelRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }

@@ -54,6 +54,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}> */
     public array $passwordBrokerRows = [];
 
+    /** @var array<int, array{key: string, driver: string, is_default: bool}> */
+    public array $broadcastConnectionRows = [];
+
+    /** @var array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}> */
+    public array $broadcastChannelRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -73,6 +79,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */
     public function write(
         array $instanceRows,
@@ -88,6 +96,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $broadcastConnectionRows = [],
+        array $broadcastChannelRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -102,6 +112,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->authProviderRows = $authProviderRows;
         $this->authGuardRows = $authGuardRows;
         $this->passwordBrokerRows = $passwordBrokerRows;
+        $this->broadcastConnectionRows = $broadcastConnectionRows;
+        $this->broadcastChannelRows = $broadcastChannelRows;
     }
 
     /**
@@ -336,6 +348,39 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastConnection(string $key): bool
+    {
+        foreach ($this->broadcastConnectionRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastChannelHandledBy(string $channelKey, string $identifier): bool
+    {
+        foreach ($this->broadcastChannelRows as $row) {
+            if ($row['key'] === $channelKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastChannel(string $channelKey): bool
+    {
+        foreach ($this->broadcastChannelRows as $row) {
+            if ($row['key'] === $channelKey) {
+                return true;
+            }
         }
 
         return false;

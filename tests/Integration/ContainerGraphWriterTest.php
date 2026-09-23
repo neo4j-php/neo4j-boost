@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -288,6 +288,32 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('DELETE old', $template);
         $this->assertStringContainsString('b.expire = row.expire', $template);
         $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
+    }
+
+    public function test_broadcast_connections_cypher_sets_driver_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['broadcast_connections'];
+
+        $this->assertStringContainsString(':BroadcastConnection', $template);
+        $this->assertStringContainsString('b.driver = row.driver', $template);
+        $this->assertStringContainsString('b.is_default = row.is_default', $template);
+    }
+
+    public function test_broadcast_channels_cypher_uses_optional_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['broadcast_channels'];
+        $clear = $writer->cypherTemplates()['broadcast_channels_clear_handled_by'];
+
+        $this->assertStringContainsString(':BroadcastChannel', $template);
+        $this->assertStringContainsString('c.guards = row.guards', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString('[old:HANDLED_BY]', $clear);
+        $this->assertStringContainsString('DELETE old', $clear);
     }
 
     public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void
