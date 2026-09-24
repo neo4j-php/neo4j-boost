@@ -2,8 +2,10 @@
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph;
 
+use Illuminate\Contracts\Broadcasting\Factory as BroadcastingFactory;
 use Neo4j\LaravelBoost\ContainerGraph\BroadcastChannelExtractor;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use RuntimeException;
 
 class BroadcastChannelExtractorTest extends TestCase
 {
@@ -45,6 +47,22 @@ class BroadcastChannelExtractorTest extends TestCase
         ]);
 
         $this->assertSame([], $rows);
+    }
+
+    public function test_broadcaster_resolution_failures_propagate(): void
+    {
+        $this->app->instance(BroadcastingFactory::class, new class
+        {
+            public function connection(): never
+            {
+                throw new RuntimeException('broadcast connection failed');
+            }
+        });
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('broadcast connection failed');
+
+        (new BroadcastChannelExtractor)->extract();
     }
 }
 

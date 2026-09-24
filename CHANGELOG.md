@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Broadcast channel extraction no longer swallows broadcaster resolution failures; unexpected exceptions propagate instead of silently returning no channels.
 - Broadcast channel `join()` parameters are not exported as method injection (Laravel passes the user and channel bindings, not container-resolved deps).
 - Mailable HANDLED_BY actions prefer app-declared `build` / `envelope` / `content` / `attachments` (never inherited `Mailable::send` or a fabricated `@build`); method injection scans those methods including ones inherited from an app base class.
 - Notification `via()` extraction now handles a concrete notifiable typehint and a single-string return value (not only `array`).

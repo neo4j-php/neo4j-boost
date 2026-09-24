@@ -6,7 +6,6 @@ use Closure;
 use Illuminate\Contracts\Broadcasting\Factory as BroadcastingFactory;
 use Illuminate\Support\Collection;
 use ReflectionObject;
-use Throwable;
 
 /**
  * Discovers broadcast channel authenticators from the live default broadcaster
@@ -69,22 +68,18 @@ final class BroadcastChannelExtractor
 
     private function defaultBroadcaster(): ?object
     {
-        try {
-            if (! app()->bound(BroadcastingFactory::class)) {
-                return null;
-            }
-
-            $factory = app(BroadcastingFactory::class);
-            if (! is_object($factory) || ! method_exists($factory, 'connection')) {
-                return null;
-            }
-
-            $broadcaster = $factory->connection();
-
-            return is_object($broadcaster) ? $broadcaster : null;
-        } catch (Throwable) {
+        if (! app()->bound(BroadcastingFactory::class)) {
             return null;
         }
+
+        $factory = app(BroadcastingFactory::class);
+        if (! is_object($factory) || ! method_exists($factory, 'connection')) {
+            return null;
+        }
+
+        $broadcaster = $factory->connection();
+
+        return is_object($broadcaster) ? $broadcaster : null;
     }
 
     /**
@@ -96,11 +91,7 @@ final class BroadcastChannelExtractor
             return [];
         }
 
-        try {
-            $channels = $broadcaster->getChannels();
-        } catch (Throwable) {
-            return [];
-        }
+        $channels = $broadcaster->getChannels();
 
         if ($channels instanceof Collection) {
             return $channels->all();
@@ -118,19 +109,15 @@ final class BroadcastChannelExtractor
             return [];
         }
 
-        try {
-            $reflection = new ReflectionObject($broadcaster);
-            if (! $reflection->hasProperty('channelOptions')) {
-                return [];
-            }
-
-            $property = $reflection->getProperty('channelOptions');
-            $options = $property->getValue($broadcaster);
-
-            return is_array($options) ? $options : [];
-        } catch (Throwable) {
+        $reflection = new ReflectionObject($broadcaster);
+        if (! $reflection->hasProperty('channelOptions')) {
             return [];
         }
+
+        $property = $reflection->getProperty('channelOptions');
+        $options = $property->getValue($broadcaster);
+
+        return is_array($options) ? $options : [];
     }
 
     /**
