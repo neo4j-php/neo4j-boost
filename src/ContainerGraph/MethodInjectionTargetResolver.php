@@ -57,8 +57,10 @@ final class MethodInjectionTargetResolver
             return $this->mailableMethods($class);
         }
 
+        // Broadcast channel join() receives the user + channel bindings from
+        // Laravel, not container method injection — only constructor DI applies.
         if ($this->isBroadcastChannel($class)) {
-            return $this->hasPublicMethod($class, 'join') ? ['join'] : [];
+            return [];
         }
 
         if ($this->isJob($class)) {

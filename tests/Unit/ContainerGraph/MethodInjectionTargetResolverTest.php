@@ -49,12 +49,13 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
     }
 
-    public function test_broadcast_channel_resolves_join_method(): void
+    public function test_broadcast_channel_is_not_scanned_for_join_method_injection(): void
     {
         $channel = new ReflectionClass(Fixtures\Broadcasting\MethodInjectionOrderChannel::class);
 
         $this->assertTrue($this->resolver->isBroadcastChannel($channel));
-        $this->assertSame(['join'], $this->resolver->methodsForClass($channel));
+        $this->assertFalse($this->resolver->isJob($channel));
+        $this->assertSame([], $this->resolver->methodsForClass($channel));
     }
 
     public function test_queued_notification_is_classified_as_notification_not_job(): void
@@ -180,6 +181,18 @@ final class MethodInjectionOrderChannel
         return true;
     }
 }
+
+final class MethodInjectionTypedOrderChannel
+{
+    public function join(MethodInjectionChannelUser $user, MethodInjectionChannelOrder $order): bool
+    {
+        return true;
+    }
+}
+
+final class MethodInjectionChannelUser {}
+
+final class MethodInjectionChannelOrder {}
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures;
 

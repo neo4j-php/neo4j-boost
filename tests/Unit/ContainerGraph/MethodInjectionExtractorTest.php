@@ -18,6 +18,9 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\PodcastParser;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\TokenVerifier;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Broadcasting\MethodInjectionChannelOrder;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Broadcasting\MethodInjectionChannelUser;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Broadcasting\MethodInjectionTypedOrderChannel;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\MethodInjectionQueuedListener;
 
 class MethodInjectionExtractorTest extends TestCase
@@ -77,6 +80,30 @@ class MethodInjectionExtractorTest extends TestCase
         [$rows] = $extractor->extract([MethodInjectionQueuedListener::class]);
 
         $this->assertNull($this->findRow($rows, MethodInjectionQueuedListener::class, OrderShipped::class));
+        $this->assertSame([], $rows);
+    }
+
+    public function test_broadcast_channel_join_parameters_are_not_method_injection(): void
+    {
+        $extractor = new MethodInjectionExtractor(
+            new MethodInjectionTargetResolver,
+            new ParameterDependencyResolver,
+        );
+
+        [$rows] = $extractor->extract([
+            MethodInjectionTypedOrderChannel::class,
+        ]);
+
+        $this->assertNull($this->findRow(
+            $rows,
+            MethodInjectionTypedOrderChannel::class,
+            MethodInjectionChannelUser::class,
+        ));
+        $this->assertNull($this->findRow(
+            $rows,
+            MethodInjectionTypedOrderChannel::class,
+            MethodInjectionChannelOrder::class,
+        ));
         $this->assertSame([], $rows);
     }
 
