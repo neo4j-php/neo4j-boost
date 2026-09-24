@@ -57,6 +57,12 @@ final class MethodInjectionTargetResolver
             return $this->mailableMethods($class);
         }
 
+        // Broadcast channel join() receives the user + channel bindings from
+        // Laravel, not container method injection — only constructor DI applies.
+        if ($this->isBroadcastChannel($class)) {
+            return [];
+        }
+
         if ($this->isJob($class)) {
             if ($this->hasPublicMethod($class, 'handle')) {
                 return ['handle'];
@@ -120,7 +126,7 @@ final class MethodInjectionTargetResolver
 
     public function isJob(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isNotification($class) || $this->isMailable($class)) {
+        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isNotification($class) || $this->isMailable($class) || $this->isBroadcastChannel($class)) {
             return false;
         }
 
@@ -211,6 +217,19 @@ final class MethodInjectionTargetResolver
         }
 
         return $methods;
+    }
+
+    public function isBroadcastChannel(ReflectionClass $class): bool
+    {
+        if ($class->isAbstract() || $class->isInterface()) {
+            return false;
+        }
+
+        if (! $this->hasPublicMethod($class, 'join')) {
+            return false;
+        }
+
+        return str_contains($class->getName(), '\\Broadcasting\\');
     }
 
     public function isListener(ReflectionClass $class): bool

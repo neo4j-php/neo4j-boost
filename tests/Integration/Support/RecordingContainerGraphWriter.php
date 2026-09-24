@@ -75,6 +75,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}> */
     public array $mailableRows = [];
 
+    /** @var array<int, array{key: string, driver: string, is_default: bool}> */
+    public array $broadcastConnectionRows = [];
+
+    /** @var array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}> */
+    public array $broadcastChannelRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -101,6 +107,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
      * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */
     public function write(
         array $instanceRows,
@@ -123,6 +131,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $notificationUsesChannelRows = [],
         array $mailerRows = [],
         array $mailableRows = [],
+        array $broadcastConnectionRows = [],
+        array $broadcastChannelRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -144,6 +154,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->notificationUsesChannelRows = $notificationUsesChannelRows;
         $this->mailerRows = $mailerRows;
         $this->mailableRows = $mailableRows;
+        $this->broadcastConnectionRows = $broadcastConnectionRows;
+        $this->broadcastChannelRows = $broadcastChannelRows;
     }
 
     /**
@@ -470,6 +482,39 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     {
         foreach ($this->mailableRows as $row) {
             if ($row['key'] === $mailableKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastConnection(string $key): bool
+    {
+        foreach ($this->broadcastConnectionRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastChannelHandledBy(string $channelKey, string $identifier): bool
+    {
+        foreach ($this->broadcastChannelRows as $row) {
+            if ($row['key'] === $channelKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasBroadcastChannel(string $channelKey): bool
+    {
+        foreach ($this->broadcastChannelRows as $row) {
+            if ($row['key'] === $channelKey) {
                 return true;
             }
         }

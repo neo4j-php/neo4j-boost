@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Broadcasting** in `container:graph`: `(:BroadcastConnection)` from `config/broadcasting.php`, and `(:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)` for class-based channel auth (`join()`). Closure channel callbacks export as BroadcastChannel nodes without `HANDLED_BY`. Re-export clears stale channel `HANDLED_BY` edges.
 - **Mailers and mailables** in `container:graph`: `(:Mailer)` from `config/mail.php`, `(:Mailable)-[:HANDLED_BY]->(:Abstract)` from scanned mailable classes, optional `(:Mailable)-[:USES_MAILER]->(:Mailer)` and `(:Mailable)-[:USES_CONNECTION]->(:QueueConnection)`. Queued mailables are exported as Mailables (not Jobs). Re-export replaces stale mailer/connection edges when wiring changes.
 - **Notifications** in `container:graph`: `(:Notification)-[:HANDLED_BY]->(:Abstract)` from scanned notification classes, plus `(:Notification)-[:USES_CHANNEL]->(:NotificationChannel)` from `via()` (string/class channels). Built-in and `Notification::extend()` channels are catalogued; queued notifications are excluded from `:Job` nodes. Re-export replaces stale `USES_CHANNEL` edges when channel lists change.
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Broadcast channel `join()` parameters are not exported as method injection (Laravel passes the user and channel bindings, not container-resolved deps).
 - Mailable HANDLED_BY actions prefer app-declared `build` / `envelope` / `content` / `attachments` (never inherited `Mailable::send` or a fabricated `@build`); method injection scans those methods including ones inherited from an app base class.
 - Notification `via()` extraction now handles a concrete notifiable typehint and a single-string return value (not only `array`).
 - Replace stale `Event` `HANDLED_BY` edges on re-export so removed listeners no longer linger in Neo4j.

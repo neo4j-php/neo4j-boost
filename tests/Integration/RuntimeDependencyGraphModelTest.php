@@ -4,11 +4,13 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Illuminate\Auth\Access\Gate;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Broadcasting\Factory;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Auth\User;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
+use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Broadcasting\OrderStatusChannel;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Commands\SyncReportsCommand;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Controllers\PhotoController;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
@@ -38,7 +40,8 @@ use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoiceP
  * Policy -> Abstract (+ FOR_MODEL) and GateAbility -> Abstract
  * Notification -> Abstract (+ USES_CHANNEL -> NotificationChannel)
  * Mailable -> Abstract -> Instance
- * Mailable -> Mailer / QueueConnection.
+ * Mailable -> Mailer / QueueConnection
+ * BroadcastChannel -> Abstract -> Instance.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -211,6 +214,34 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertTrue($this->graph->hasInstanceNode(User::class));
     }
 
+    public function test_exports_broadcast_connections_and_channel_auth(): void
+    {
+        $this->app->bind(OrderStatusChannel::class, OrderStatusChannel::class);
+        config([
+            'broadcasting.default' => 'log',
+            'broadcasting.connections' => [
+                'log' => ['driver' => 'log'],
+                'null' => ['driver' => 'null'],
+                'pusher' => ['driver' => 'pusher'],
+            ],
+        ]);
+
+        $this->app->make(Factory::class)
+            ->channel('orders.{orderId}', OrderStatusChannel::class);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Broadcast connections:')
+            ->expectsOutputToContain('Broadcast channels:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $this->assertTrue($this->graph->hasBroadcastConnection('log'));
+        $this->assertTrue($this->graph->hasBroadcastConnection('pusher'));
+        $this->assertTrue($this->graph->hasBroadcastChannelHandledBy('orders.{orderId}', OrderStatusChannel::class));
+        $this->assertTrue($this->graph->hasInstanceNode(OrderStatusChannel::class));
+        $this->assertTrue($this->graph->hasDependsOnEdge(OrderStatusChannel::class, Logger::class));
+    }
+
     public function test_exports_policies_and_gate_abilities(): void
     {
         /** @var Gate $gate */
@@ -316,6 +347,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('notification_uses_channel', $templates);
         $this->assertArrayHasKey('mailers', $templates);
         $this->assertArrayHasKey('mailables', $templates);
+        $this->assertArrayHasKey('broadcast_connections', $templates);
+        $this->assertArrayHasKey('broadcast_channels', $templates);
+        $this->assertArrayHasKey('broadcast_channels_clear_handled_by', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
@@ -339,6 +373,9 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString(':Mailer', $templates['mailers']);
         $this->assertStringContainsString(':Mailable', $templates['mailables']);
         $this->assertStringContainsString('USES_MAILER', $templates['mailables']);
+        $this->assertStringContainsString(':BroadcastConnection', $templates['broadcast_connections']);
+        $this->assertStringContainsString(':BroadcastChannel', $templates['broadcast_channels']);
+        $this->assertStringContainsString('HANDLED_BY', $templates['broadcast_channels']);
         $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
         $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
         $this->assertStringContainsString(':Abstract', $templates['routes']);
@@ -384,6 +421,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('HANDLED_BY', $mailableTraversal);
         $this->assertStringContainsString('USES_MAILER', $mailableTraversal);
         $this->assertStringContainsString('USES_CONNECTION', $mailableTraversal);
+
+        $broadcastTraversal = RuntimeGraphModel::broadcastChannelTraversalCypher();
+        $this->assertStringContainsString(':BroadcastChannel', $broadcastTraversal);
+        $this->assertStringContainsString('HANDLED_BY', $broadcastTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -407,6 +448,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Notification channel links:')
             ->expectsOutputToContain('Mailers:')
             ->expectsOutputToContain('Mailables:')
+            ->expectsOutputToContain('Broadcast connections:')
+            ->expectsOutputToContain('Broadcast channels:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -425,5 +468,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->notificationUsesChannelRows);
         $this->assertSame([], $this->graph->mailerRows);
         $this->assertSame([], $this->graph->mailableRows);
+        $this->assertSame([], $this->graph->broadcastConnectionRows);
+        $this->assertSame([], $this->graph->broadcastChannelRows);
     }
 }

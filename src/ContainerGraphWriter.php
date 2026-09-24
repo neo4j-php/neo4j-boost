@@ -346,6 +346,34 @@ FOREACH (_ IN CASE WHEN row.connection <> '' THEN [1] ELSE [] END |
 )
 CYPHER;
 
+    private const CYPHER_BROADCAST_CONNECTIONS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (b:BroadcastConnection {key: row.key})
+SET b.driver = row.driver,
+    b.is_default = row.is_default
+CYPHER;
+
+    private const CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY = <<<'CYPHER'
+UNWIND $rows AS row
+WITH DISTINCT row.key AS channelKey
+MATCH (c:BroadcastChannel {key: channelKey})
+OPTIONAL MATCH (c)-[old:HANDLED_BY]->()
+DELETE old
+CYPHER;
+
+    private const CYPHER_BROADCAST_CHANNELS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (c:BroadcastChannel {key: row.key})
+SET c.name = row.name,
+    c.guards = row.guards
+WITH c, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (c)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -396,6 +424,8 @@ CYPHER;
      * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
      * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */
     public function write(
         array $instanceRows,
@@ -418,6 +448,8 @@ CYPHER;
         array $notificationUsesChannelRows = [],
         array $mailerRows = [],
         array $mailableRows = [],
+        array $broadcastConnectionRows = [],
+        array $broadcastChannelRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -438,6 +470,8 @@ CYPHER;
         $this->validateNotificationUsesChannelRows($notificationUsesChannelRows);
         $this->validateMailerRows($mailerRows);
         $this->validateMailableRows($mailableRows);
+        $this->validateBroadcastConnectionRows($broadcastConnectionRows);
+        $this->validateBroadcastChannelRows($broadcastChannelRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -520,6 +554,13 @@ CYPHER;
         if ($mailableRows !== []) {
             $this->connection->run(self::CYPHER_MAILABLES, ['rows' => $mailableRows]);
         }
+        if ($broadcastConnectionRows !== []) {
+            $this->connection->run(self::CYPHER_BROADCAST_CONNECTIONS, ['rows' => $broadcastConnectionRows]);
+        }
+        if ($broadcastChannelRows !== []) {
+            $this->connection->run(self::CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY, ['rows' => $broadcastChannelRows]);
+            $this->connection->run(self::CYPHER_BROADCAST_CHANNELS, ['rows' => $broadcastChannelRows]);
+        }
     }
 
     /**
@@ -551,6 +592,9 @@ CYPHER;
             'notification_uses_channel' => self::CYPHER_NOTIFICATION_USES_CHANNEL,
             'mailers' => self::CYPHER_MAILERS,
             'mailables' => self::CYPHER_MAILABLES,
+            'broadcast_connections' => self::CYPHER_BROADCAST_CONNECTIONS,
+            'broadcast_channels_clear_handled_by' => self::CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY,
+            'broadcast_channels' => self::CYPHER_BROADCAST_CHANNELS,
         ];
     }
 
@@ -887,6 +931,38 @@ CYPHER;
             foreach (['should_queue', 'unique'] as $key) {
                 if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
                     throw new \InvalidArgumentException("Mailable row is missing boolean {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     */
+    private function validateBroadcastConnectionRows(array $broadcastConnectionRows): void
+    {
+        foreach ($broadcastConnectionRows as $row) {
+            foreach (['key', 'driver'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Broadcast connection row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Broadcast connection row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     */
+    private function validateBroadcastChannelRows(array $broadcastChannelRows): void
+    {
+        foreach ($broadcastChannelRows as $row) {
+            foreach (['key', 'name', 'guards', 'action', 'identifier', 'identifier_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Broadcast channel row is missing string {$key}");
                 }
             }
         }

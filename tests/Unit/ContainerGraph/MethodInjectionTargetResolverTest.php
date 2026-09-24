@@ -49,6 +49,15 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['handle'], $this->resolver->methodsForClass($queuedListener));
     }
 
+    public function test_broadcast_channel_is_not_scanned_for_join_method_injection(): void
+    {
+        $channel = new ReflectionClass(Fixtures\Broadcasting\MethodInjectionOrderChannel::class);
+
+        $this->assertTrue($this->resolver->isBroadcastChannel($channel));
+        $this->assertFalse($this->resolver->isJob($channel));
+        $this->assertSame([], $this->resolver->methodsForClass($channel));
+    }
+
     public function test_queued_notification_is_classified_as_notification_not_job(): void
     {
         $queuedNotification = new ReflectionClass(Fixtures\Notifications\QueuedInvoiceNotification::class);
@@ -119,9 +128,6 @@ namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Content;
-use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Routing\Controller;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 
@@ -165,6 +171,36 @@ final class MethodInjectionInvokableJob implements ShouldQueue
 {
     public function __invoke(): void {}
 }
+
+namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Broadcasting;
+
+final class MethodInjectionOrderChannel
+{
+    public function join(object $user, string $orderId): bool
+    {
+        return true;
+    }
+}
+
+final class MethodInjectionTypedOrderChannel
+{
+    public function join(MethodInjectionChannelUser $user, MethodInjectionChannelOrder $order): bool
+    {
+        return true;
+    }
+}
+
+final class MethodInjectionChannelUser {}
+
+final class MethodInjectionChannelOrder {}
+
+namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures;
+
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
 
 final class MethodInjectionQueuedMailable extends Mailable implements ShouldQueue
 {
