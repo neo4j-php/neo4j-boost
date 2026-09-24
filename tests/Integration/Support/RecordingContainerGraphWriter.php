@@ -69,6 +69,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}> */
     public array $notificationUsesChannelRows = [];
 
+    /** @var array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}> */
+    public array $mailerRows = [];
+
+    /** @var array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}> */
+    public array $mailableRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -93,6 +99,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
      * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
      * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      */
     public function write(
         array $instanceRows,
@@ -113,6 +121,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $notificationRows = [],
         array $notificationChannelRows = [],
         array $notificationUsesChannelRows = [],
+        array $mailerRows = [],
+        array $mailableRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -132,6 +142,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->notificationRows = $notificationRows;
         $this->notificationChannelRows = $notificationChannelRows;
         $this->notificationUsesChannelRows = $notificationUsesChannelRows;
+        $this->mailerRows = $mailerRows;
+        $this->mailableRows = $mailableRows;
     }
 
     /**
@@ -436,6 +448,28 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     {
         foreach ($this->notificationChannelRows as $row) {
             if ($row['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasMailer(string $key): bool
+    {
+        foreach ($this->mailerRows as $row) {
+            if ($row['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasMailableHandledBy(string $mailableKey, string $identifier): bool
+    {
+        foreach ($this->mailableRows as $row) {
+            if ($row['key'] === $mailableKey && $row['identifier'] === $identifier) {
                 return true;
             }
         }

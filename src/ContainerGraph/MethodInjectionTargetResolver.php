@@ -3,7 +3,9 @@
 namespace Neo4j\LaravelBoost\ContainerGraph;
 
 use Illuminate\Console\Command as ArtisanCommand;
+use Illuminate\Contracts\Mail\Mailable as MailableContract;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Routing\Controller;
 use ReflectionClass;
@@ -48,6 +50,11 @@ final class MethodInjectionTargetResolver
         // Notifications that implement ShouldQueue must not be treated as jobs.
         if ($this->isNotification($class)) {
             return $this->notificationMethods($class);
+        }
+
+        // Queued mailables must not be treated as jobs.
+        if ($this->isMailable($class)) {
+            return $this->mailableMethods($class);
         }
 
         if ($this->isJob($class)) {
@@ -113,7 +120,7 @@ final class MethodInjectionTargetResolver
 
     public function isJob(ReflectionClass $class): bool
     {
-        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isNotification($class)) {
+        if ($this->isConsoleCommand($class) || $this->looksLikeListener($class) || $this->isNotification($class) || $this->isMailable($class)) {
             return false;
         }
 
@@ -154,6 +161,51 @@ final class MethodInjectionTargetResolver
 
         foreach (['via', 'toMail', 'toArray', 'toDatabase', 'toBroadcast'] as $method) {
             if ($this->hasPublicMethod($class, $method)) {
+                $methods[] = $method;
+            }
+        }
+
+        return $methods;
+    }
+
+    public function isMailable(ReflectionClass $class): bool
+    {
+        if ($class->isAbstract() || $class->isInterface()) {
+            return false;
+        }
+
+        if ($class->implementsInterface(MailableContract::class)) {
+            return true;
+        }
+
+        return $class->isSubclassOf(Mailable::class);
+    }
+
+    /**
+     * Preferred HANDLED_BY action for a mailable: app-declared build / envelope /
+     * content / attachments / send — never Illuminate\Mail\Mailable::send, and
+     * never a fabricated method name when none exist.
+     */
+    public function resolveMailableHandlerMethod(ReflectionClass $class): string
+    {
+        foreach (['build', 'envelope', 'content', 'attachments', 'send'] as $method) {
+            if ($this->isAppDeclaredMailableMethod($class, $method)) {
+                return $method;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function mailableMethods(ReflectionClass $class): array
+    {
+        $methods = [];
+
+        foreach (['build', 'envelope', 'content', 'attachments'] as $method) {
+            if ($this->isAppDeclaredMailableMethod($class, $method)) {
                 $methods[] = $method;
             }
         }
@@ -217,5 +269,21 @@ final class MethodInjectionTargetResolver
         }
 
         return $class->getMethod($method)->isPublic();
+    }
+
+    /**
+     * Public handler declared by the app (concrete class or app base), excluding
+     * methods that come from Illuminate\Mail\Mailable itself (e.g. send).
+     */
+    private function isAppDeclaredMailableMethod(ReflectionClass $class, string $method): bool
+    {
+        if (! $class->hasMethod($method)) {
+            return false;
+        }
+
+        $reflectionMethod = $class->getMethod($method);
+
+        return $reflectionMethod->isPublic()
+            && $reflectionMethod->getDeclaringClass()->getName() !== Mailable::class;
     }
 }

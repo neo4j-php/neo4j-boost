@@ -308,6 +308,44 @@ SET id.kind = coalesce(row.resolved_class_kind, id.kind)
 MERGE (c)-[:IDENTIFIED_AS]->(id)
 CYPHER;
 
+    private const CYPHER_MAILERS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailer {key: row.key})
+SET m.transport = row.transport,
+    m.nested_mailers = row.nested_mailers,
+    m.is_default = row.is_default
+CYPHER;
+
+    private const CYPHER_MAILABLES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailable {key: row.key})
+SET m.name = row.name,
+    m.should_queue = row.should_queue,
+    m.mailer = row.mailer,
+    m.connection = row.connection,
+    m.queue = row.queue,
+    m.unique = row.unique
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (m)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH m, row
+OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()
+DELETE oldMailer
+WITH m, row
+OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()
+DELETE oldConn
+WITH m, row
+FOREACH (_ IN CASE WHEN row.mailer <> '' THEN [1] ELSE [] END |
+  MERGE (mailer:Mailer {key: row.mailer})
+  MERGE (m)-[:USES_MAILER]->(mailer)
+)
+FOREACH (_ IN CASE WHEN row.connection <> '' THEN [1] ELSE [] END |
+  MERGE (q:QueueConnection {key: row.connection})
+  MERGE (m)-[:USES_CONNECTION]->(q)
+)
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -356,6 +394,8 @@ CYPHER;
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
      * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
      * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      */
     public function write(
         array $instanceRows,
@@ -376,6 +416,8 @@ CYPHER;
         array $notificationRows = [],
         array $notificationChannelRows = [],
         array $notificationUsesChannelRows = [],
+        array $mailerRows = [],
+        array $mailableRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -394,6 +436,8 @@ CYPHER;
         $this->validateNotificationRows($notificationRows);
         $this->validateNotificationChannelRows($notificationChannelRows);
         $this->validateNotificationUsesChannelRows($notificationUsesChannelRows);
+        $this->validateMailerRows($mailerRows);
+        $this->validateMailableRows($mailableRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -470,6 +514,12 @@ CYPHER;
         if ($notificationUsesChannelRows !== []) {
             $this->connection->run(self::CYPHER_NOTIFICATION_USES_CHANNEL, ['rows' => $notificationUsesChannelRows]);
         }
+        if ($mailerRows !== []) {
+            $this->connection->run(self::CYPHER_MAILERS, ['rows' => $mailerRows]);
+        }
+        if ($mailableRows !== []) {
+            $this->connection->run(self::CYPHER_MAILABLES, ['rows' => $mailableRows]);
+        }
     }
 
     /**
@@ -499,6 +549,8 @@ CYPHER;
             'notification_channels' => self::CYPHER_NOTIFICATION_CHANNELS,
             'notifications' => self::CYPHER_NOTIFICATIONS,
             'notification_uses_channel' => self::CYPHER_NOTIFICATION_USES_CHANNEL,
+            'mailers' => self::CYPHER_MAILERS,
+            'mailables' => self::CYPHER_MAILABLES,
         ];
     }
 
@@ -798,6 +850,44 @@ CYPHER;
 
             if (! array_key_exists('order', $row) || ! is_int($row['order'])) {
                 throw new \InvalidArgumentException('Notification USES_CHANNEL row is missing integer order');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     */
+    private function validateMailerRows(array $mailerRows): void
+    {
+        foreach ($mailerRows as $row) {
+            foreach (['key', 'transport', 'nested_mailers'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailer row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Mailer row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     */
+    private function validateMailableRows(array $mailableRows): void
+    {
+        foreach ($mailableRows as $row) {
+            foreach (['key', 'name', 'action', 'identifier', 'identifier_kind', 'mailer', 'connection', 'queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing string {$key}");
+                }
+            }
+
+            foreach (['should_queue', 'unique'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing boolean {$key}");
+                }
             }
         }
     }

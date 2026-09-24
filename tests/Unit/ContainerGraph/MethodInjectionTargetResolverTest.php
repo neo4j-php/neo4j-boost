@@ -67,6 +67,42 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['via', 'toMail', 'toArray'], $methods);
     }
 
+    public function test_queued_mailable_is_classified_as_mailable_not_job(): void
+    {
+        $queuedMailable = new ReflectionClass(Fixtures\MethodInjectionQueuedMailable::class);
+
+        $this->assertTrue($this->resolver->isMailable($queuedMailable));
+        $this->assertFalse($this->resolver->isJob($queuedMailable));
+        $this->assertSame(['build'], $this->resolver->methodsForClass($queuedMailable));
+    }
+
+    public function test_modern_mailable_exposes_envelope_content_and_attachments(): void
+    {
+        $mailable = new ReflectionClass(Fixtures\MethodInjectionModernMailable::class);
+
+        $this->assertSame(
+            ['envelope', 'content', 'attachments'],
+            $this->resolver->methodsForClass($mailable),
+        );
+        $this->assertSame('envelope', $this->resolver->resolveMailableHandlerMethod($mailable));
+    }
+
+    public function test_constructor_only_mailable_has_empty_handler_and_no_injection_targets(): void
+    {
+        $mailable = new ReflectionClass(Fixtures\MethodInjectionConstructorOnlyMailable::class);
+
+        $this->assertSame('', $this->resolver->resolveMailableHandlerMethod($mailable));
+        $this->assertSame([], $this->resolver->methodsForClass($mailable));
+    }
+
+    public function test_mailable_inherits_build_from_app_base_for_injection(): void
+    {
+        $mailable = new ReflectionClass(Fixtures\MethodInjectionChildMailable::class);
+
+        $this->assertSame(['build'], $this->resolver->methodsForClass($mailable));
+        $this->assertSame('build', $this->resolver->resolveMailableHandlerMethod($mailable));
+    }
+
     public function test_invokable_job_resolves_invoke_method(): void
     {
         $this->assertSame(['__invoke'], $this->resolver->methodsForClass(new ReflectionClass(Fixtures\MethodInjectionInvokableJob::class)));
@@ -83,6 +119,9 @@ namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Routing\Controller;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Events\OrderShipped;
 
@@ -126,6 +165,52 @@ final class MethodInjectionInvokableJob implements ShouldQueue
 {
     public function __invoke(): void {}
 }
+
+final class MethodInjectionQueuedMailable extends Mailable implements ShouldQueue
+{
+    use Queueable;
+
+    public function build(): self
+    {
+        return $this->subject('Queued')->view('mail.queued');
+    }
+}
+
+final class MethodInjectionModernMailable extends Mailable
+{
+    public function envelope(): Envelope
+    {
+        return new Envelope(subject: 'Welcome');
+    }
+
+    public function content(): Content
+    {
+        return new Content(view: 'mail.welcome');
+    }
+
+    /**
+     * @return list<object>
+     */
+    public function attachments(): array
+    {
+        return [];
+    }
+}
+
+final class MethodInjectionConstructorOnlyMailable extends Mailable
+{
+    public function __construct(public string $title = 'hi') {}
+}
+
+abstract class MethodInjectionAppBaseMailable extends Mailable
+{
+    public function build(): self
+    {
+        return $this->subject('Base')->view('mail.base');
+    }
+}
+
+final class MethodInjectionChildMailable extends MethodInjectionAppBaseMailable {}
 
 namespace Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Middleware;
 

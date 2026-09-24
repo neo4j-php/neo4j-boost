@@ -19,6 +19,9 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * GateAbility -[:HANDLED_BY]-> Abstract
  * Notification -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * Notification -[:USES_CHANNEL]-> NotificationChannel -[:IDENTIFIED_AS]-> Abstract
+ * Mailable -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
+ * Mailable -[:USES_MAILER]-> Mailer
+ * Mailable -[:USES_CONNECTION]-> QueueConnection
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -49,6 +52,10 @@ final class RuntimeGraphModel
 
     public const LABEL_NOTIFICATION_CHANNEL = 'NotificationChannel';
 
+    public const LABEL_MAILER = 'Mailer';
+
+    public const LABEL_MAILABLE = 'Mailable';
+
     public const LABEL_INSTANCE = 'Instance';
 
     public const LABEL_DEPENDENCY = 'Dependency';
@@ -76,6 +83,8 @@ final class RuntimeGraphModel
     public const REL_FOR_MODEL = 'FOR_MODEL';
 
     public const REL_USES_CHANNEL = 'USES_CHANNEL';
+
+    public const REL_USES_MAILER = 'USES_MAILER';
 
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
@@ -113,6 +122,12 @@ final class RuntimeGraphModel
     /** Unique property on NotificationChannel nodes (driver name or FQCN). */
     public const NOTIFICATION_CHANNEL_KEY = 'key';
 
+    /** Unique property on Mailer nodes (mailer name). */
+    public const MAILER_KEY = 'key';
+
+    /** Unique property on Mailable nodes (FQCN). */
+    public const MAILABLE_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -142,6 +157,8 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT gate_ability_key IF NOT EXISTS FOR (n:GateAbility) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT notification_key IF NOT EXISTS FOR (n:Notification) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT notification_channel_key IF NOT EXISTS FOR (n:NotificationChannel) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT mailer_key IF NOT EXISTS FOR (n:Mailer) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT mailable_key IF NOT EXISTS FOR (n:Mailable) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -248,6 +265,21 @@ MATCH (n:Notification {key: $notificationKey})-[:HANDLED_BY]->(:Abstract)-[:RESO
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(x)
 OPTIONAL MATCH ch = (n)-[:USES_CHANNEL]->(:NotificationChannel)
 RETURN n AS notification, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT ch) AS channels
+CYPHER;
+    }
+
+    /**
+     * Recursive path from a Mailable through resolved handler dependency chains,
+     * optional mailer, and optional queue connection.
+     */
+    public static function mailableTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (m:Mailable {key: $mailableKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+OPTIONAL MATCH mailer = (m)-[:USES_MAILER]->(:Mailer)
+OPTIONAL MATCH conn = (m)-[:USES_CONNECTION]->(:QueueConnection)
+RETURN m AS mailable, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT mailer) AS mailers, collect(DISTINCT conn) AS connections
 CYPHER;
     }
 }

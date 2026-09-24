@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -376,6 +376,75 @@ class ContainerGraphWriterTest extends TestCase
 
         $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('')]);
         $this->assertSame([], $connection->usesProvidersFor('web'));
+    }
+
+    public function test_mailers_cypher_sets_transport_metadata(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['mailers'];
+
+        $this->assertStringContainsString(':Mailer', $template);
+        $this->assertStringContainsString('m.transport = row.transport', $template);
+        $this->assertStringContainsString('m.nested_mailers = row.nested_mailers', $template);
+        $this->assertStringContainsString('m.is_default = row.is_default', $template);
+    }
+
+    public function test_mailables_cypher_uses_handled_by_mailer_and_connection(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['mailables'];
+
+        $this->assertStringContainsString(':Mailable', $template);
+        $this->assertStringContainsString('HANDLED_BY', $template);
+        $this->assertStringContainsString('USES_MAILER', $template);
+        $this->assertStringContainsString('USES_CONNECTION', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()', $template);
+        $this->assertStringContainsString('DELETE oldMailer', $template);
+        $this->assertStringContainsString('OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()', $template);
+        $this->assertStringContainsString('DELETE oldConn', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringNotContainsString(':Identifier', $template);
+    }
+
+    public function test_mailable_mailer_and_connection_edges_are_replaced_on_rerun(): void
+    {
+        $connection = new TrackingContainerGraphConnection;
+        $writer = new ContainerGraphWriter($connection);
+
+        $mailableRow = static fn (string $mailer, string $queueConnection): array => [
+            'key' => 'App\\Mail\\WelcomeMailable',
+            'name' => 'WelcomeMailable',
+            'action' => 'App\\Mail\\WelcomeMailable@build',
+            'identifier' => 'App\\Mail\\WelcomeMailable',
+            'identifier_kind' => 'Class',
+            'should_queue' => true,
+            'mailer' => $mailer,
+            'connection' => $queueConnection,
+            'queue' => 'mails',
+            'unique' => false,
+        ];
+
+        $mailerRows = [
+            ['key' => 'ses', 'transport' => 'ses', 'nested_mailers' => '', 'is_default' => false],
+            ['key' => 'smtp', 'transport' => 'smtp', 'nested_mailers' => '', 'is_default' => true],
+        ];
+        $queueRows = [
+            ['key' => 'redis', 'driver' => 'redis', 'default_queue' => 'default', 'is_default' => false],
+            ['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false],
+        ];
+
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('ses', 'redis')]);
+        $this->assertSame(['ses'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
+        $this->assertSame(['redis'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
+
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('smtp', 'sqs')]);
+        $this->assertSame(['smtp'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
+        $this->assertSame(['sqs'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
+
+        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('', '')]);
+        $this->assertSame([], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
+        $this->assertSame([], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
     }
 
     public function test_write_strips_legacy_abstract_secondary_labels(): void

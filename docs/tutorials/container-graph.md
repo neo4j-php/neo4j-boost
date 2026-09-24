@@ -47,10 +47,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
 7. **Authorization** from the live Gate (model→policy registrations and Gate abilities)
 8. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
-9. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-10. **Constructor and method-injection dependencies** for concrete classes
-11. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-12. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+9. **Mailers** and **mailables** from `config/mail.php` and scanned mailable classes (queued mailables are not Jobs)
+10. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+11. **Constructor and method-injection dependencies** for concrete classes
+12. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+13. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -68,10 +69,12 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:GateAbility` | `key` (ability name) | Named Gate ability (`define` / `resource`). `handler_kind` is `class`, `closure`, or `unknown`. |
 | `:Notification` | `key` (notification FQCN) | Notification class. `should_queue`, optional `connection` / `queue`, `unique`. |
 | `:NotificationChannel` | `key` (driver name or channel FQCN) | Delivery channel. `kind` (`builtin`/`extended`/`class`/`named`), `is_default`. |
+| `:Mailer` | `key` (mailer name) | From `config/mail.php`. `transport`, optional `nested_mailers`, `is_default`. |
+| `:Mailable` | `key` (mailable FQCN) | Discovered mailable class. `should_queue`, optional `mailer` / `connection` / `queue`, `unique`. |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, mailables, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -94,13 +97,17 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:Notification)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
 (:Notification)-[:USES_CHANNEL {order}]->(:NotificationChannel)
 (:NotificationChannel)-[:IDENTIFIED_AS]->(:Abstract)  # when a channel class is known
+(:Mailable)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)
+(:Mailable)-[:USES_MAILER]->(:Mailer)           # when the mailable declares a default mailer
+(:Mailable)-[:USES_CONNECTION]->(:QueueConnection)  # when a queued mailable declares a connection
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, ScheduledTask → command/job/callable class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/ScheduledTask/Policy/GateAbility/Notification edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, Mailable → mailable class, ScheduledTask → command/job/callable class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/Mailable/ScheduledTask/Policy/GateAbility/Notification edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
-| `USES_CONNECTION` | Job → configured queue connection | — |
+| `USES_CONNECTION` | Job or Mailable → configured queue connection | — |
+| `USES_MAILER` | Mailable → configured mailer | — |
 | `USES_PROVIDER` | AuthGuard or PasswordBroker → AuthProvider | — |
 | `USES_MODEL` | AuthProvider → eloquent user model Abstract | — |
 | `FOR_MODEL` | Policy → subject model Abstract | — |
@@ -307,7 +314,7 @@ Typical loop:
 1. Change bindings, constructors, routes, middleware, events, jobs, or schedule entries in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:ScheduledTask` / `:Instance` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:Mailable` / `:ScheduledTask` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 
