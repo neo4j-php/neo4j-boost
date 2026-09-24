@@ -47,6 +47,7 @@ final class MethodInjectionExtractor
 
             $isMiddleware = $this->targetResolver->isMiddleware($reflection);
             $isListener = $this->targetResolver->isListener($reflection);
+            $isNotification = $this->targetResolver->isNotification($reflection);
             $isBroadcastChannel = $this->targetResolver->isBroadcastChannel($reflection);
 
             foreach ($this->targetResolver->methodsForClass($reflection) as $methodName) {
@@ -62,6 +63,11 @@ final class MethodInjectionExtractor
                     }
 
                     if ($isBroadcastChannel && $isJoin && $index === 0) {
+                        continue;
+                    }
+
+                    // Skip the notifiable receiver on notification via/to* methods.
+                    if ($isNotification && $index === 0) {
                         continue;
                     }
 

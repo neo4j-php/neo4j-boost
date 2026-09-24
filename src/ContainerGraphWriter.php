@@ -221,6 +221,131 @@ MERGE (p:AuthProvider {key: row.provider})
 MERGE (b)-[:USES_PROVIDER]->(p)
 CYPHER;
 
+    private const CYPHER_POLICIES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (p:Policy {key: row.key})
+SET p.name = row.name
+WITH p, row
+OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()
+DELETE oldH
+WITH p, row
+OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()
+DELETE oldM
+WITH p, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (p)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH p, row
+WHERE row.model <> ''
+MERGE (m:Abstract {name: row.model})
+SET m.kind = coalesce(row.model_kind, m.kind)
+MERGE (p)-[:FOR_MODEL]->(m)
+CYPHER;
+
+    private const CYPHER_GATE_ABILITIES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (a:GateAbility {key: row.key})
+SET a.name = row.name,
+    a.handler_kind = row.handler_kind
+WITH a, row
+OPTIONAL MATCH (a)-[old:HANDLED_BY]->()
+DELETE old
+WITH a, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (a)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+CYPHER;
+
+    private const CYPHER_NOTIFICATION_CHANNELS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (c:NotificationChannel {key: row.key})
+SET c.name = row.name,
+    c.kind = row.kind,
+    c.is_default = row.is_default
+WITH c, row
+OPTIONAL MATCH (c)-[old:IDENTIFIED_AS]->()
+DELETE old
+WITH c, row
+WHERE row.resolved_class <> ''
+MERGE (id:Abstract {name: row.resolved_class})
+SET id.kind = coalesce(row.resolved_class_kind, id.kind)
+MERGE (c)-[:IDENTIFIED_AS]->(id)
+CYPHER;
+
+    private const CYPHER_NOTIFICATIONS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (n:Notification {key: row.key})
+SET n.name = row.name,
+    n.should_queue = row.should_queue,
+    n.connection = row.connection,
+    n.queue = row.queue,
+    n.unique = row.unique
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (n)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH n, row
+OPTIONAL MATCH (n)-[old:USES_CHANNEL]->()
+DELETE old
+CYPHER;
+
+    private const CYPHER_NOTIFICATION_USES_CHANNEL = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (n:Notification {key: row.notification_key})
+MERGE (c:NotificationChannel {key: row.channel_key})
+SET c.name = coalesce(c.name, row.channel_key),
+    c.kind = coalesce(row.channel_kind, c.kind)
+MERGE (n)-[u:USES_CHANNEL]->(c)
+SET u.order = row.order
+WITH c, row
+WHERE row.resolved_class <> ''
+MERGE (id:Abstract {name: row.resolved_class})
+SET id.kind = coalesce(row.resolved_class_kind, id.kind)
+MERGE (c)-[:IDENTIFIED_AS]->(id)
+CYPHER;
+
+    private const CYPHER_MAILERS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailer {key: row.key})
+SET m.transport = row.transport,
+    m.nested_mailers = row.nested_mailers,
+    m.is_default = row.is_default
+CYPHER;
+
+    private const CYPHER_MAILABLES = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (m:Mailable {key: row.key})
+SET m.name = row.name,
+    m.should_queue = row.should_queue,
+    m.mailer = row.mailer,
+    m.connection = row.connection,
+    m.queue = row.queue,
+    m.unique = row.unique
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (m)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+WITH m, row
+OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()
+DELETE oldMailer
+WITH m, row
+OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()
+DELETE oldConn
+WITH m, row
+FOREACH (_ IN CASE WHEN row.mailer <> '' THEN [1] ELSE [] END |
+  MERGE (mailer:Mailer {key: row.mailer})
+  MERGE (m)-[:USES_MAILER]->(mailer)
+)
+FOREACH (_ IN CASE WHEN row.connection <> '' THEN [1] ELSE [] END |
+  MERGE (q:QueueConnection {key: row.connection})
+  MERGE (m)-[:USES_CONNECTION]->(q)
+)
+CYPHER;
+
     private const CYPHER_BROADCAST_CONNECTIONS = <<<'CYPHER'
 UNWIND $rows AS row
 MERGE (b:BroadcastConnection {key: row.key})
@@ -292,6 +417,13 @@ CYPHER;
      * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
      * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
      * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */
@@ -309,6 +441,13 @@ CYPHER;
         array $authProviderRows = [],
         array $authGuardRows = [],
         array $passwordBrokerRows = [],
+        array $policyRows = [],
+        array $gateAbilityRows = [],
+        array $notificationRows = [],
+        array $notificationChannelRows = [],
+        array $notificationUsesChannelRows = [],
+        array $mailerRows = [],
+        array $mailableRows = [],
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
     ): void {
@@ -324,6 +463,13 @@ CYPHER;
         $this->validateAuthProviderRows($authProviderRows);
         $this->validateAuthGuardRows($authGuardRows);
         $this->validatePasswordBrokerRows($passwordBrokerRows);
+        $this->validatePolicyRows($policyRows);
+        $this->validateGateAbilityRows($gateAbilityRows);
+        $this->validateNotificationRows($notificationRows);
+        $this->validateNotificationChannelRows($notificationChannelRows);
+        $this->validateNotificationUsesChannelRows($notificationUsesChannelRows);
+        $this->validateMailerRows($mailerRows);
+        $this->validateMailableRows($mailableRows);
         $this->validateBroadcastConnectionRows($broadcastConnectionRows);
         $this->validateBroadcastChannelRows($broadcastChannelRows);
 
@@ -387,6 +533,27 @@ CYPHER;
         if ($passwordBrokerRows !== []) {
             $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
         }
+        if ($policyRows !== []) {
+            $this->connection->run(self::CYPHER_POLICIES, ['rows' => $policyRows]);
+        }
+        if ($gateAbilityRows !== []) {
+            $this->connection->run(self::CYPHER_GATE_ABILITIES, ['rows' => $gateAbilityRows]);
+        }
+        if ($notificationChannelRows !== []) {
+            $this->connection->run(self::CYPHER_NOTIFICATION_CHANNELS, ['rows' => $notificationChannelRows]);
+        }
+        if ($notificationRows !== []) {
+            $this->connection->run(self::CYPHER_NOTIFICATIONS, ['rows' => $notificationRows]);
+        }
+        if ($notificationUsesChannelRows !== []) {
+            $this->connection->run(self::CYPHER_NOTIFICATION_USES_CHANNEL, ['rows' => $notificationUsesChannelRows]);
+        }
+        if ($mailerRows !== []) {
+            $this->connection->run(self::CYPHER_MAILERS, ['rows' => $mailerRows]);
+        }
+        if ($mailableRows !== []) {
+            $this->connection->run(self::CYPHER_MAILABLES, ['rows' => $mailableRows]);
+        }
         if ($broadcastConnectionRows !== []) {
             $this->connection->run(self::CYPHER_BROADCAST_CONNECTIONS, ['rows' => $broadcastConnectionRows]);
         }
@@ -418,6 +585,13 @@ CYPHER;
             'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
             'auth_guards' => self::CYPHER_AUTH_GUARDS,
             'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
+            'policies' => self::CYPHER_POLICIES,
+            'gate_abilities' => self::CYPHER_GATE_ABILITIES,
+            'notification_channels' => self::CYPHER_NOTIFICATION_CHANNELS,
+            'notifications' => self::CYPHER_NOTIFICATIONS,
+            'notification_uses_channel' => self::CYPHER_NOTIFICATION_USES_CHANNEL,
+            'mailers' => self::CYPHER_MAILERS,
+            'mailables' => self::CYPHER_MAILABLES,
             'broadcast_connections' => self::CYPHER_BROADCAST_CONNECTIONS,
             'broadcast_channels_clear_handled_by' => self::CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY,
             'broadcast_channels' => self::CYPHER_BROADCAST_CHANNELS,
@@ -636,6 +810,128 @@ CYPHER;
 
             if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
                 throw new \InvalidArgumentException('Password broker row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     */
+    private function validatePolicyRows(array $policyRows): void
+    {
+        foreach ($policyRows as $row) {
+            foreach (['key', 'name', 'model', 'model_kind', 'identifier', 'identifier_kind', 'action'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Policy row is missing string {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     */
+    private function validateGateAbilityRows(array $gateAbilityRows): void
+    {
+        foreach ($gateAbilityRows as $row) {
+            foreach (['key', 'name', 'handler_kind', 'identifier', 'identifier_kind', 'action'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Gate ability row is missing string {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     */
+    private function validateNotificationRows(array $notificationRows): void
+    {
+        foreach ($notificationRows as $row) {
+            foreach (['key', 'name', 'action', 'identifier', 'identifier_kind', 'connection', 'queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Notification row is missing string {$key}");
+                }
+            }
+
+            foreach (['should_queue', 'unique'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Notification row is missing boolean {$key}");
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     */
+    private function validateNotificationChannelRows(array $notificationChannelRows): void
+    {
+        foreach ($notificationChannelRows as $row) {
+            foreach (['key', 'name', 'kind', 'resolved_class', 'resolved_class_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Notification channel row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Notification channel row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     */
+    private function validateNotificationUsesChannelRows(array $notificationUsesChannelRows): void
+    {
+        foreach ($notificationUsesChannelRows as $row) {
+            foreach (['notification_key', 'channel_key', 'channel_kind', 'resolved_class', 'resolved_class_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Notification USES_CHANNEL row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('order', $row) || ! is_int($row['order'])) {
+                throw new \InvalidArgumentException('Notification USES_CHANNEL row is missing integer order');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     */
+    private function validateMailerRows(array $mailerRows): void
+    {
+        foreach ($mailerRows as $row) {
+            foreach (['key', 'transport', 'nested_mailers'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailer row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
+                throw new \InvalidArgumentException('Mailer row is missing boolean is_default');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     */
+    private function validateMailableRows(array $mailableRows): void
+    {
+        foreach ($mailableRows as $row) {
+            foreach (['key', 'name', 'action', 'identifier', 'identifier_kind', 'mailer', 'connection', 'queue'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing string {$key}");
+                }
+            }
+
+            foreach (['should_queue', 'unique'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Mailable row is missing boolean {$key}");
+                }
             }
         }
     }
