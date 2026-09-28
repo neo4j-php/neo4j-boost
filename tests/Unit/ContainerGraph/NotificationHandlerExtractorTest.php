@@ -8,14 +8,31 @@ use Neo4j\LaravelBoost\ContainerGraph\NotificationHandlerExtractor;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\ClassChannelNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\ConstructorHeavyNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\CreateOrderNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\DuckTypedAlert;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\OrderCreatedNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\QueuedInvoiceNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\SmsChannel;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\StoredNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\StringViaNotification;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\TypedNotifiableNotification;
 
 class NotificationHandlerExtractorTest extends TestCase
 {
+    public function test_skips_classes_that_only_look_like_notifications(): void
+    {
+        $extracted = (new NotificationHandlerExtractor)->extract([
+            OrderCreatedNotification::class,
+            CreateOrderNotification::class,
+            StoredNotification::class,
+            DuckTypedAlert::class,
+        ]);
+
+        $this->assertSame([DuckTypedAlert::class], array_column($extracted['notifications'], 'key'));
+        $this->assertSame(['mail'], array_column($extracted['uses_channel'], 'channel_key'));
+    }
+
     public function test_extracts_notifications_and_via_channels(): void
     {
         $extracted = (new NotificationHandlerExtractor)->extract([

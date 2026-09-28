@@ -67,6 +67,35 @@ class MethodInjectionTargetResolverTest extends TestCase
         $this->assertSame(['via'], $this->resolver->methodsForClass($queuedNotification));
     }
 
+    public function test_notification_lookalikes_are_not_classified_as_notifications(): void
+    {
+        foreach ([
+            Fixtures\Notifications\OrderCreatedNotification::class,
+            Fixtures\Notifications\CreateOrderNotification::class,
+            Fixtures\Notifications\StoredNotification::class,
+        ] as $className) {
+            $this->assertFalse(
+                $this->resolver->isNotification(new ReflectionClass($className)),
+                $className.' must not be classified as a notification',
+            );
+        }
+    }
+
+    public function test_mailable_named_notification_is_scanned_as_mailable(): void
+    {
+        $mailable = new ReflectionClass(Fixtures\Notifications\OrderCreatedNotification::class);
+
+        $this->assertTrue($this->resolver->isMailable($mailable));
+        $this->assertSame(['envelope', 'content'], $this->resolver->methodsForClass($mailable));
+    }
+
+    public function test_duck_typed_class_with_via_is_classified_as_notification(): void
+    {
+        $this->assertTrue(
+            $this->resolver->isNotification(new ReflectionClass(Fixtures\Notifications\DuckTypedAlert::class)),
+        );
+    }
+
     public function test_notification_exposes_via_and_to_methods(): void
     {
         $methods = $this->resolver->methodsForClass(
