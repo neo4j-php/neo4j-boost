@@ -340,8 +340,6 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('auth_providers', $templates);
         $this->assertArrayHasKey('auth_guards', $templates);
         $this->assertArrayHasKey('password_brokers', $templates);
-        $this->assertArrayHasKey('policies', $templates);
-        $this->assertArrayHasKey('gate_abilities', $templates);
         $this->assertArrayHasKey('notifications', $templates);
         $this->assertArrayHasKey('notification_channels', $templates);
         $this->assertArrayHasKey('notification_uses_channel', $templates);
@@ -363,9 +361,6 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
         $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
         $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
-        $this->assertStringContainsString(':Policy', $templates['policies']);
-        $this->assertStringContainsString('FOR_MODEL', $templates['policies']);
-        $this->assertStringContainsString(':GateAbility', $templates['gate_abilities']);
         $this->assertStringContainsString(':Notification', $templates['notifications']);
         $this->assertStringContainsString('USES_CHANNEL', $templates['notifications']);
         $this->assertStringContainsString(':NotificationChannel', $templates['notification_channels']);

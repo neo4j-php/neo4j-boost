@@ -2,6 +2,7 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\ServiceProvider;
 use Neo4j\LaravelBoost\Boost\Tools\ContributeGraphKnowledgeTool;
 use Neo4j\LaravelBoost\Boost\Tools\GetClassDependencyGraphTool;
@@ -57,6 +58,7 @@ use Neo4j\LaravelBoost\StaticAnalysis\ServiceLocationEdgeFinder;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\DevDependencyConfigPublisher;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
+use Neo4j\Neo4jLaravel\Neo4jConnection;
 
 class Neo4jBoostServiceProvider extends ServiceProvider
 {
@@ -66,6 +68,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
 
         $this->app->singleton(Neo4jBoltClient::class);
         $this->app->singleton(BoltExecutorInterface::class, Neo4jBoltExecutor::class);
+        $this->registerEloquentConnection();
 
         $this->app->singleton(Neo4jMcpClientInterface::class, function ($app) {
             $driver = strtolower((string) config('neo4j-boost.neo4j_mcp.transport', 'driver'));
@@ -115,6 +118,30 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(AppFacadeAccessorResolver::class);
         $this->app->singleton(RealTimeFacadeResolver::class);
         $this->app->singleton(ResolutionCatalog::class);
+    }
+
+    /**
+     * Registers a named connection for Eloquent graph models that reuses the
+     * package Bolt client, so apps need no extra config/database.php entry.
+     * The driver name is deliberately not "neo4j": neo4j-laravel validates every
+     * "neo4j" driver connection and requires the app default to be one of them.
+     */
+    private function registerEloquentConnection(): void
+    {
+        $name = Neo4jBoltClient::ELOQUENT_CONNECTION;
+
+        if (config("database.connections.{$name}") === null) {
+            config(["database.connections.{$name}" => ['driver' => 'neo4j-boost', 'database' => 'neo4j']]);
+        }
+
+        $this->callAfterResolving('db', function (DatabaseManager $db) use ($name): void {
+            $db->extend($name, fn (array $config, string $connectionName): Neo4jConnection => new Neo4jConnection(
+                $this->app->make(Neo4jBoltClient::class)->client(),
+                (string) ($config['database'] ?? 'neo4j'),
+                '',
+                $config + ['name' => $connectionName],
+            ));
+        });
     }
 
     public function boot(): void

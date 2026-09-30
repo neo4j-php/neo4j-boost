@@ -17,6 +17,9 @@ final class Neo4jBoltClient
 
     public const USER_AGENT = 'Neo4j/Laravel-Boost';
 
+    /** Laravel database connection name for Eloquent graph models backed by this client. */
+    public const ELOQUENT_CONNECTION = 'neo4j_boost';
+
     private ?ClientInterface $client = null;
 
     private ?ClientInterface $mcpDriverClient = null;

@@ -2,6 +2,9 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Neo4j\LaravelBoost\ContainerGraph\Models\AbstractNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\PolicyNode;
 use Neo4j\LaravelBoost\StaticAnalysis\DependencyEdgeSource;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
@@ -219,45 +222,6 @@ WITH b, row
 WHERE row.provider <> ''
 MERGE (p:AuthProvider {key: row.provider})
 MERGE (b)-[:USES_PROVIDER]->(p)
-CYPHER;
-
-    private const CYPHER_POLICIES = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (p:Policy {key: row.key})
-SET p.name = row.name
-WITH p, row
-OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()
-DELETE oldH
-WITH p, row
-OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()
-DELETE oldM
-WITH p, row
-WHERE row.identifier <> ''
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (p)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-WITH p, row
-WHERE row.model <> ''
-MERGE (m:Abstract {name: row.model})
-SET m.kind = coalesce(row.model_kind, m.kind)
-MERGE (p)-[:FOR_MODEL]->(m)
-CYPHER;
-
-    private const CYPHER_GATE_ABILITIES = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (a:GateAbility {key: row.key})
-SET a.name = row.name,
-    a.handler_kind = row.handler_kind
-WITH a, row
-OPTIONAL MATCH (a)-[old:HANDLED_BY]->()
-DELETE old
-WITH a, row
-WHERE row.identifier <> ''
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (a)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
 CYPHER;
 
     private const CYPHER_NOTIFICATION_CHANNELS = <<<'CYPHER'
@@ -533,12 +497,8 @@ CYPHER;
         if ($passwordBrokerRows !== []) {
             $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
         }
-        if ($policyRows !== []) {
-            $this->connection->run(self::CYPHER_POLICIES, ['rows' => $policyRows]);
-        }
-        if ($gateAbilityRows !== []) {
-            $this->connection->run(self::CYPHER_GATE_ABILITIES, ['rows' => $gateAbilityRows]);
-        }
+        $this->writePolicies($policyRows);
+        $this->writeGateAbilities($gateAbilityRows);
         if ($notificationChannelRows !== []) {
             $this->connection->run(self::CYPHER_NOTIFICATION_CHANNELS, ['rows' => $notificationChannelRows]);
         }
@@ -585,8 +545,6 @@ CYPHER;
             'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
             'auth_guards' => self::CYPHER_AUTH_GUARDS,
             'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
-            'policies' => self::CYPHER_POLICIES,
-            'gate_abilities' => self::CYPHER_GATE_ABILITIES,
             'notification_channels' => self::CYPHER_NOTIFICATION_CHANNELS,
             'notifications' => self::CYPHER_NOTIFICATIONS,
             'notification_uses_channel' => self::CYPHER_NOTIFICATION_USES_CHANNEL,
@@ -811,6 +769,54 @@ CYPHER;
             if (! array_key_exists('is_default', $row) || ! is_bool($row['is_default'])) {
                 throw new \InvalidArgumentException('Password broker row is missing boolean is_default');
             }
+        }
+    }
+
+    /**
+     * Policy nodes are deleted and recreated because neo4j-laravel cannot delete a
+     * single relationship; DETACH DELETE is the only way to drop stale edges.
+     *
+     * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
+     */
+    private function writePolicies(array $policyRows): void
+    {
+        foreach ($policyRows as $row) {
+            PolicyNode::query()->whereKey($row['key'])->delete();
+            $policy = PolicyNode::query()->create(['key' => $row['key'], 'name' => $row['name']]);
+
+            if ($row['identifier'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+            $policy->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+
+            if ($row['model'] !== '') {
+                AbstractNode::ensure($row['model'], $row['model_kind']);
+                $policy->forModel()->attach($row['model']);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, handler_kind: string, identifier: string, identifier_kind: string, action: string}>  $gateAbilityRows
+     */
+    private function writeGateAbilities(array $gateAbilityRows): void
+    {
+        foreach ($gateAbilityRows as $row) {
+            GateAbilityNode::query()->whereKey($row['key'])->delete();
+            $ability = GateAbilityNode::query()->create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'handler_kind' => $row['handler_kind'],
+            ]);
+
+            if ($row['identifier'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+            $ability->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
         }
     }
 

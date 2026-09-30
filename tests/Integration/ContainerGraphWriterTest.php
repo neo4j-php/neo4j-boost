@@ -2,11 +2,17 @@
 
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
+use Illuminate\Support\Facades\DB;
+use Neo4j\LaravelBoost\ContainerGraph\Models\AbstractNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\PolicyNode;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
+use Neo4j\Neo4jLaravel\Neo4jConnection;
 
 class ContainerGraphWriterTest extends TestCase
 {
@@ -16,7 +22,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -290,32 +296,31 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
     }
 
-    public function test_policies_cypher_uses_handled_by_and_for_model(): void
+    public function test_authorization_models_use_package_connection_labels_and_keys(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['policies'];
+        $this->assertInstanceOf(Neo4jConnection::class, DB::connection(Neo4jBoltClient::ELOQUENT_CONNECTION));
 
-        $this->assertStringContainsString(':Policy', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('FOR_MODEL', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldH:HANDLED_BY]->()', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (p)-[oldM:FOR_MODEL]->()', $template);
-        $this->assertStringContainsString('DELETE oldH', $template);
-        $this->assertStringContainsString('DELETE oldM', $template);
-        $this->assertStringContainsString('MERGE (m:Abstract {name: row.model})', $template);
+        foreach ([
+            [new PolicyNode, 'Policy', 'key'],
+            [new GateAbilityNode, 'GateAbility', 'key'],
+            [new AbstractNode, 'Abstract', 'name'],
+        ] as [$model, $label, $keyName]) {
+            $this->assertSame(Neo4jBoltClient::ELOQUENT_CONNECTION, $model->getConnectionName());
+            $this->assertSame($label, $model->getLabel());
+            $this->assertSame($keyName, $model->getKeyName());
+            $this->assertFalse($model->usesTimestamps());
+        }
     }
 
-    public function test_gate_abilities_cypher_uses_handled_by(): void
+    public function test_authorization_relations_match_runtime_graph_edges(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['gate_abilities'];
+        $policy = new PolicyNode(['key' => 'App\\Models\\Post']);
+        $ability = new GateAbilityNode(['key' => 'publish-post']);
 
-        $this->assertStringContainsString(':GateAbility', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('a.handler_kind = row.handler_kind', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (a)-[old:HANDLED_BY]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+        $this->assertStringContainsString('HANDLED_BY', $policy->handledBy()->toSql());
+        $this->assertStringContainsString(':Abstract', $policy->handledBy()->toSql());
+        $this->assertStringContainsString('FOR_MODEL', $policy->forModel()->toSql());
+        $this->assertStringContainsString('HANDLED_BY', $ability->handledBy()->toSql());
     }
 
     public function test_notifications_cypher_clears_uses_channel_edges(): void
