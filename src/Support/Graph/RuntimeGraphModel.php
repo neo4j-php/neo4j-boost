@@ -23,6 +23,7 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Mailable -[:USES_MAILER]-> Mailer
  * Mailable -[:USES_CONNECTION]-> QueueConnection
  * BroadcastChannel -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
+ * ArtisanCommand -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -60,6 +61,8 @@ final class RuntimeGraphModel
     public const LABEL_MAILER = 'Mailer';
 
     public const LABEL_MAILABLE = 'Mailable';
+
+    public const LABEL_ARTISAN_COMMAND = 'ArtisanCommand';
 
     public const LABEL_INSTANCE = 'Instance';
 
@@ -138,6 +141,9 @@ final class RuntimeGraphModel
     /** Unique property on Mailable nodes (FQCN). */
     public const MAILABLE_KEY = 'key';
 
+    /** Unique property on ArtisanCommand nodes (command name). */
+    public const ARTISAN_COMMAND_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -171,6 +177,7 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT notification_channel_key IF NOT EXISTS FOR (n:NotificationChannel) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT mailer_key IF NOT EXISTS FOR (n:Mailer) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT mailable_key IF NOT EXISTS FOR (n:Mailable) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT artisan_command_key IF NOT EXISTS FOR (n:ArtisanCommand) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -250,6 +257,18 @@ CYPHER;
 MATCH (c:BroadcastChannel {key: $channelKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN c AS broadcastChannel, root AS rootInstance, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Recursive path from an ArtisanCommand through its command class dependency chain.
+     */
+    public static function artisanCommandTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (c:ArtisanCommand {key: $commandKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN c AS artisanCommand, root AS rootInstance, collect(DISTINCT path) AS paths
 CYPHER;
     }
 
