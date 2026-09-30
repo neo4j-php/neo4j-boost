@@ -163,6 +163,7 @@ The export uses this runtime model:
 (:Mailable)-[:USES_MAILER]->(:Mailer)
 (:Mailable)-[:USES_CONNECTION]->(:QueueConnection)
 (:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)
+(:ArtisanCommand)-[:HANDLED_BY]->(:Abstract)
 ```
 
 `:Abstract` is the container lookup key (same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts. Explore routes and middleware in Neo4j Browser with:
@@ -231,6 +232,13 @@ LIMIT 50
 
 ```cypher
 MATCH (c:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN c, root, path
+LIMIT 50
+```
+
+```cypher
+MATCH (c:ArtisanCommand {source: 'app'})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN c, root, path
 LIMIT 50

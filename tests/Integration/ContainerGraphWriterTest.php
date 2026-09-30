@@ -25,6 +25,7 @@ use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordsGraphWrites;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
+use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\Neo4jLaravel\Neo4jConnection;
 
@@ -537,6 +538,83 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertNeverWroteKind($recorded, $handledBy);
     }
 
+    public function test_artisan_commands_replace_handled_by_and_skip_it_without_handler(): void
+    {
+        $this->recordGraphWrites();
+        $command = static fn (string $key, string $identifier): array => [
+            'key' => $key,
+            'name' => $key,
+            'description' => 'Sync reports',
+            'hidden' => false,
+            'aliases' => '',
+            'kind' => 'class',
+            'source' => 'app',
+            'action' => $identifier === '' ? '' : $identifier.'@handle',
+            'identifier' => $identifier,
+            'identifier_kind' => 'Class',
+        ];
+
+        $this->writeRows([22 => [
+            $command('reports:sync', 'App\\Console\\Commands\\SyncReports'),
+            $command('inspire', ''),
+        ]]);
+        $recorded = $this->takeGraphWrites();
+
+        $commandNode = static fn (string $key): array => [
+            'key' => $key,
+            'name' => $key,
+            'description' => 'Sync reports',
+            'hidden' => false,
+            'aliases' => '',
+            'kind' => 'class',
+            'source' => 'app',
+        ];
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ARTISAN_COMMAND)->upsert(
+            [$commandNode('reports:sync'), $commandNode('inspire')],
+            ['key'],
+        ));
+        $clear = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ARTISAN_COMMAND)->deleteRelationships(
+            'HANDLED_BY>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            [['from' => ['key' => 'reports:sync']], ['from' => ['key' => 'inspire']]],
+        ));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsert(
+            [['name' => 'App\\Console\\Commands\\SyncReports', 'kind' => 'Class']],
+            ['name'],
+        ));
+        $handledBy = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ARTISAN_COMMAND)->upsertRelationships(
+            'HANDLED_BY>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            [[
+                'from' => ['key' => 'reports:sync'],
+                'to' => ['name' => 'App\\Console\\Commands\\SyncReports'],
+                'properties' => ['action' => 'App\\Console\\Commands\\SyncReports@handle'],
+            ]],
+        ));
+        $this->assertLessThan($handledBy, $clear);
+    }
+
+    public function test_artisan_command_rows_require_boolean_hidden(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Artisan command row is missing boolean hidden');
+
+        $writer->write([], [], [], artisanCommandRows: [[
+            'key' => 'reports:sync',
+            'name' => 'reports:sync',
+            'description' => '',
+            'hidden' => 'no',
+            'aliases' => '',
+            'kind' => 'class',
+            'source' => 'app',
+            'action' => 'App\\Console\\Commands\\SyncReports@handle',
+            'identifier' => 'App\\Console\\Commands\\SyncReports',
+            'identifier_kind' => 'Class',
+        ]]);
+    }
+
     public function test_write_drops_legacy_identifier_nodes(): void
     {
         $this->recordGraphWrites();
@@ -594,7 +672,7 @@ class ContainerGraphWriterTest extends TestCase
      */
     private function writeRows(array $rowsByPosition): void
     {
-        $arguments = array_fill(0, 22, []);
+        $arguments = array_fill(0, 23, []);
         foreach ($rowsByPosition as $position => $rows) {
             $arguments[$position] = $rows;
         }

@@ -78,6 +78,7 @@ class ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      */
     public function write(
         array $instanceRows,
@@ -102,6 +103,7 @@ class ContainerGraphWriter
         array $mailableRows = [],
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
+        array $artisanCommandRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -124,6 +126,7 @@ class ContainerGraphWriter
         $this->validateMailableRows($mailableRows);
         $this->validateBroadcastConnectionRows($broadcastConnectionRows);
         $this->validateBroadcastChannelRows($broadcastChannelRows);
+        $this->validateArtisanCommandRows($artisanCommandRows);
 
         $this->ensureConstraints();
         $this->table(self::LEGACY_IDENTIFIER_LABEL)->delete();
@@ -151,6 +154,7 @@ class ContainerGraphWriter
         $this->writeMailables($mailableRows);
         $this->writeBroadcastConnections($broadcastConnectionRows);
         $this->writeBroadcastChannels($broadcastChannelRows);
+        $this->writeArtisanCommands($artisanCommandRows);
     }
 
     private function table(string $label): Neo4jQueryBuilder
@@ -997,6 +1001,42 @@ class ContainerGraphWriter
     }
 
     /**
+     * Commands without a resolvable handler class keep no HANDLED_BY edge.
+     *
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     */
+    private function writeArtisanCommands(array $artisanCommandRows): void
+    {
+        $handled = array_values(array_filter($artisanCommandRows, static fn (array $row): bool => $row['identifier'] !== ''));
+
+        $commands = $this->table(RuntimeGraphModel::LABEL_ARTISAN_COMMAND);
+        $commands->upsert(array_map(static fn (array $row): array => [
+            'key' => $row['key'],
+            'name' => $row['name'],
+            'description' => $row['description'],
+            'hidden' => $row['hidden'],
+            'aliases' => $row['aliases'],
+            'kind' => $row['kind'],
+            'source' => $row['source'],
+        ], $artisanCommandRows), [RuntimeGraphModel::ARTISAN_COMMAND_KEY]);
+        $commands->deleteRelationships(
+            RuntimeGraphModel::REL_HANDLED_BY.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (string $key): array => ['from' => ['key' => $key]], array_values(array_unique(array_column($artisanCommandRows, 'key')))),
+        );
+        $this->upsertAbstracts(array_map(static fn (array $row): array => ['name' => $row['identifier'], 'kind' => $row['identifier_kind']], $handled));
+        $commands->upsertRelationships(
+            RuntimeGraphModel::REL_HANDLED_BY.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (array $row): array => [
+                'from' => ['key' => $row['key']],
+                'to' => ['name' => $row['identifier']],
+                'properties' => ['action' => $row['action']],
+            ], $handled),
+        );
+    }
+
+    /**
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      */
     private function validatePolicyRows(array $policyRows): void
@@ -1146,6 +1186,24 @@ class ContainerGraphWriter
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Broadcast channel row is missing string {$key}");
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     */
+    private function validateArtisanCommandRows(array $artisanCommandRows): void
+    {
+        foreach ($artisanCommandRows as $row) {
+            foreach (['key', 'name', 'description', 'aliases', 'kind', 'source', 'action', 'identifier', 'identifier_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Artisan command row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('hidden', $row) || ! is_bool($row['hidden'])) {
+                throw new \InvalidArgumentException('Artisan command row is missing boolean hidden');
             }
         }
     }

@@ -11,7 +11,7 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(20, $statements);
+        $this->assertCount(21, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Event', implode("\n", $statements));
         $this->assertStringContainsString(':Job', implode("\n", $statements));
@@ -28,6 +28,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':NotificationChannel', implode("\n", $statements));
         $this->assertStringContainsString(':Mailer', implode("\n", $statements));
         $this->assertStringContainsString(':Mailable', implode("\n", $statements));
+        $this->assertStringContainsString(':ArtisanCommand', implode("\n", $statements));
         $this->assertStringContainsString(':Instance', implode("\n", $statements));
         $this->assertStringContainsString(':Dependency', implode("\n", $statements));
         $this->assertStringContainsString(':Abstract', implode("\n", $statements));
@@ -113,6 +114,17 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString(':Abstract', $cypher);
     }
 
+    public function test_artisan_command_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::artisanCommandTraversalCypher();
+
+        $this->assertStringContainsString(':ArtisanCommand', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
+        $this->assertStringContainsString('DEPENDS_ON', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+    }
+
     public function test_policy_traversal_cypher_uses_runtime_relationships(): void
     {
         $cypher = RuntimeGraphModel::policyTraversalCypher();
@@ -189,6 +201,7 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertSame('NotificationChannel', RuntimeGraphModel::LABEL_NOTIFICATION_CHANNEL);
         $this->assertSame('Mailer', RuntimeGraphModel::LABEL_MAILER);
         $this->assertSame('Mailable', RuntimeGraphModel::LABEL_MAILABLE);
+        $this->assertSame('ArtisanCommand', RuntimeGraphModel::LABEL_ARTISAN_COMMAND);
         $this->assertSame('Abstract', RuntimeGraphModel::LABEL_ABSTRACT);
     }
 }
