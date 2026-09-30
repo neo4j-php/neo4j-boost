@@ -40,6 +40,7 @@ final class GraphCompleteness
             'Notifiable routeNotificationFor* routing and on-demand Notification::route() sends are not exported.',
             'Closure notification channels are not exported as IDENTIFIED_AS targets.',
             'Broadcast channel closure callbacks export as BroadcastChannel nodes without HANDLED_BY; class-based channel auth uses join() (channel-binding parameters are not method injection).',
+            'Closure Artisan commands (Artisan::command()) export as ArtisanCommand nodes without HANDLED_BY; aliases are stored as a property, not separate nodes.',
         ];
     }
 
