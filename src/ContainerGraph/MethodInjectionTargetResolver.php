@@ -143,7 +143,7 @@ final class MethodInjectionTargetResolver
 
     public function isNotification(ReflectionClass $class): bool
     {
-        if ($class->isAbstract() || $class->getName() === Notification::class) {
+        if ($class->isAbstract() || $class->isInterface() || $class->getName() === Notification::class) {
             return false;
         }
 
@@ -151,11 +151,9 @@ final class MethodInjectionTargetResolver
             return true;
         }
 
-        if (str_ends_with($class->getShortName(), 'Notification')) {
-            return true;
-        }
-
-        return str_contains($class->getName(), '\\Notifications\\');
+        // Laravel sends any object exposing via(), so accept duck-typed notifications,
+        // but never mailables (which are often named *Notification).
+        return ! $this->isMailable($class) && $this->hasPublicMethod($class, 'via');
     }
 
     /**
