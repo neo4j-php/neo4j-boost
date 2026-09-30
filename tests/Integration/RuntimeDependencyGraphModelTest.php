@@ -8,6 +8,7 @@ use Illuminate\Contracts\Broadcasting\Factory;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\Artisan;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Broadcasting\OrderStatusChannel;
@@ -41,7 +42,8 @@ use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoiceP
  * Notification -> Abstract (+ USES_CHANNEL -> NotificationChannel)
  * Mailable -> Abstract -> Instance
  * Mailable -> Mailer / QueueConnection
- * BroadcastChannel -> Abstract -> Instance.
+ * BroadcastChannel -> Abstract -> Instance
+ * ArtisanCommand -> Abstract -> Instance.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -167,6 +169,41 @@ class RuntimeDependencyGraphModelTest extends TestCase
             SyncReportsCommand::class,
             ReportAggregator::class,
         ));
+    }
+
+    public function test_exports_artisan_command_registry(): void
+    {
+        Artisan::command('reports:ping', fn () => 0)->purpose('Ping reports');
+        $this->app->make(Kernel::class)
+            ->registerCommand($this->app->make(SyncReportsCommand::class));
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Artisan commands:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $classCommand = $this->graph->findArtisanCommand('reports:sync');
+        $this->assertNotNull($classCommand);
+        $this->assertSame('class', $classCommand['kind']);
+        $this->assertSame('app', $classCommand['source']);
+        $this->assertSame('Sync report aggregates', $classCommand['description']);
+        $this->assertSame(SyncReportsCommand::class, $classCommand['identifier']);
+        $this->assertSame(SyncReportsCommand::class.'@handle', $classCommand['action']);
+        $this->assertTrue($this->graph->hasInstanceNode(SyncReportsCommand::class));
+        $this->assertTrue($this->graph->hasDependsOnEdge(
+            SyncReportsCommand::class,
+            ReportAggregator::class,
+        ));
+
+        $closureCommand = $this->graph->findArtisanCommand('reports:ping');
+        $this->assertNotNull($closureCommand);
+        $this->assertSame('closure', $closureCommand['kind']);
+        $this->assertSame('Ping reports', $closureCommand['description']);
+        $this->assertSame('', $closureCommand['identifier']);
+
+        $frameworkCommand = $this->graph->findArtisanCommand('list');
+        $this->assertNotNull($frameworkCommand);
+        $this->assertSame('framework', $frameworkCommand['source']);
     }
 
     public function test_exports_auth_guards_providers_and_password_brokers(): void
@@ -350,6 +387,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertArrayHasKey('broadcast_connections', $templates);
         $this->assertArrayHasKey('broadcast_channels', $templates);
         $this->assertArrayHasKey('broadcast_channels_clear_handled_by', $templates);
+        $this->assertArrayHasKey('artisan_commands', $templates);
+        $this->assertArrayHasKey('artisan_commands_clear_handled_by', $templates);
         $this->assertArrayHasKey('identified_as', $templates);
         $this->assertArrayHasKey('abstract_resolves_to', $templates);
         $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
@@ -425,6 +464,10 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $broadcastTraversal = RuntimeGraphModel::broadcastChannelTraversalCypher();
         $this->assertStringContainsString(':BroadcastChannel', $broadcastTraversal);
         $this->assertStringContainsString('HANDLED_BY', $broadcastTraversal);
+
+        $artisanTraversal = RuntimeGraphModel::artisanCommandTraversalCypher();
+        $this->assertStringContainsString(':ArtisanCommand', $artisanTraversal);
+        $this->assertStringContainsString('HANDLED_BY', $artisanTraversal);
     }
 
     public function test_dry_run_lists_route_handlers_without_write(): void
@@ -450,6 +493,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Mailables:')
             ->expectsOutputToContain('Broadcast connections:')
             ->expectsOutputToContain('Broadcast channels:')
+            ->expectsOutputToContain('Artisan commands:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -470,5 +514,6 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->mailableRows);
         $this->assertSame([], $this->graph->broadcastConnectionRows);
         $this->assertSame([], $this->graph->broadcastChannelRows);
+        $this->assertSame([], $this->graph->artisanCommandRows);
     }
 }

@@ -16,7 +16,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'artisan_commands', 'artisan_commands_clear_handled_by', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'gate_abilities', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'policies', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -375,6 +375,46 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
         $this->assertStringContainsString('[old:HANDLED_BY]', $clear);
         $this->assertStringContainsString('DELETE old', $clear);
+    }
+
+    public function test_artisan_commands_cypher_uses_optional_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['artisan_commands'];
+        $clear = $writer->cypherTemplates()['artisan_commands_clear_handled_by'];
+
+        $this->assertStringContainsString(':ArtisanCommand', $template);
+        $this->assertStringContainsString('c.description = row.description', $template);
+        $this->assertStringContainsString('c.hidden = row.hidden', $template);
+        $this->assertStringContainsString('c.aliases = row.aliases', $template);
+        $this->assertStringContainsString('c.kind = row.kind', $template);
+        $this->assertStringContainsString('c.source = row.source', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString(':ArtisanCommand', $clear);
+        $this->assertStringContainsString('DELETE old', $clear);
+    }
+
+    public function test_artisan_command_rows_require_boolean_hidden(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Artisan command row is missing boolean hidden');
+
+        $writer->write([], [], [], artisanCommandRows: [[
+            'key' => 'reports:sync',
+            'name' => 'reports:sync',
+            'description' => '',
+            'hidden' => 'no',
+            'aliases' => '',
+            'kind' => 'class',
+            'source' => 'app',
+            'action' => 'App\\Console\\Commands\\SyncReports@handle',
+            'identifier' => 'App\\Console\\Commands\\SyncReports',
+            'identifier_kind' => 'Class',
+        ]]);
     }
 
     public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void

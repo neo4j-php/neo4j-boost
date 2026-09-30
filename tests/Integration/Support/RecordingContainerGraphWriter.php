@@ -81,6 +81,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}> */
     public array $broadcastChannelRows = [];
 
+    /** @var array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}> */
+    public array $artisanCommandRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -109,6 +112,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      */
     public function write(
         array $instanceRows,
@@ -133,6 +137,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $mailableRows = [],
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
+        array $artisanCommandRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -156,6 +161,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->mailableRows = $mailableRows;
         $this->broadcastConnectionRows = $broadcastConnectionRows;
         $this->broadcastChannelRows = $broadcastChannelRows;
+        $this->artisanCommandRows = $artisanCommandRows;
     }
 
     /**
@@ -520,5 +526,19 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         }
 
         return false;
+    }
+
+    /**
+     * @return null|array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}
+     */
+    public function findArtisanCommand(string $commandKey): ?array
+    {
+        foreach ($this->artisanCommandRows as $row) {
+            if ($row['key'] === $commandKey) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 }
