@@ -4,11 +4,25 @@ namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Illuminate\Support\Facades\DB;
 use Neo4j\LaravelBoost\ContainerGraph\Models\AbstractNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\AuthGuardNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\AuthProviderNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\BroadcastChannelNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\BroadcastConnectionNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\EventNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\JobNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\MailableNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\MailerNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationChannelNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\PasswordBrokerNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\PolicyNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\QueueConnectionNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\ScheduledTaskNode;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
+use Neo4j\LaravelBoost\Tests\Integration\Support\RecordsEloquentCypher;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
@@ -16,13 +30,15 @@ use Neo4j\Neo4jLaravel\Neo4jConnection;
 
 class ContainerGraphWriterTest extends TestCase
 {
+    use RecordsEloquentCypher;
+
     public function test_cypher_templates_include_core_keys(): void
     {
         $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'auth_guards', 'auth_providers', 'bindings', 'broadcast_channels', 'broadcast_channels_clear_handled_by', 'broadcast_connections', 'contextual_binds', 'events', 'events_clear_handled_by', 'identified_as', 'instance_depends_on', 'instances', 'jobs', 'mailables', 'mailers', 'notification_channels', 'notification_uses_channel', 'notifications', 'password_brokers', 'queue_connections', 'route_middleware', 'routes', 'scheduled_tasks'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -126,176 +142,6 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('order: row.order', $template);
     }
 
-    public function test_events_cypher_uses_handled_by(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['events'];
-        $clearTemplate = $writer->cypherTemplates()['events_clear_handled_by'];
-
-        $this->assertStringContainsString(':Event', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
-        $this->assertStringContainsString('e.name = row.name', $template);
-        $this->assertStringContainsString('h.action = row.action', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-
-        $this->assertStringContainsString('OPTIONAL MATCH (e)-[old:HANDLED_BY]->()', $clearTemplate);
-        $this->assertStringContainsString('DELETE old', $clearTemplate);
-        $this->assertStringContainsString('WITH DISTINCT row.key AS eventKey', $clearTemplate);
-    }
-
-    public function test_event_handled_by_edges_are_replaced_on_rerun(): void
-    {
-        $connection = new TrackingContainerGraphConnection;
-        $writer = new ContainerGraphWriter($connection);
-
-        $eventRow = static fn (string $identifier): array => [
-            'key' => 'App\\Events\\OrderShipped',
-            'name' => 'OrderShipped',
-            'action' => $identifier.'@handle',
-            'identifier' => $identifier,
-            'identifier_kind' => 'Class',
-        ];
-
-        $writer->write([], [], [], [], [], [], [
-            $eventRow('App\\Listeners\\SendEmail'),
-            $eventRow('App\\Listeners\\NotifySlack'),
-        ]);
-        $this->assertSame(
-            ['App\\Listeners\\NotifySlack', 'App\\Listeners\\SendEmail'],
-            $connection->handledByFor('App\\Events\\OrderShipped'),
-        );
-
-        $writer->write([], [], [], [], [], [], [
-            $eventRow('App\\Listeners\\NotifySlack'),
-        ]);
-        $this->assertSame(
-            ['App\\Listeners\\NotifySlack'],
-            $connection->handledByFor('App\\Events\\OrderShipped'),
-        );
-
-        $writer->write([], [], [], [], [], [], [
-            $eventRow('App\\Listeners\\WriteAuditLog'),
-        ]);
-        $this->assertSame(
-            ['App\\Listeners\\WriteAuditLog'],
-            $connection->handledByFor('App\\Events\\OrderShipped'),
-        );
-    }
-
-    public function test_jobs_cypher_uses_handled_by_and_optional_connection(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['jobs'];
-
-        $this->assertStringContainsString(':Job', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('USES_CONNECTION', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (j)-[old:USES_CONNECTION]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
-        $this->assertStringContainsString('h.action = row.action', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-    }
-
-    public function test_job_uses_connection_edges_are_replaced_on_rerun(): void
-    {
-        $connection = new TrackingContainerGraphConnection;
-        $writer = new ContainerGraphWriter($connection);
-
-        $jobRow = static fn (string $queueConnection): array => [
-            'key' => 'App\\Jobs\\ExampleJob',
-            'name' => 'ExampleJob',
-            'action' => 'App\\Jobs\\ExampleJob@handle',
-            'identifier' => 'App\\Jobs\\ExampleJob',
-            'identifier_kind' => 'Class',
-            'should_queue' => true,
-            'connection' => $queueConnection,
-            'queue' => 'default',
-            'unique' => false,
-        ];
-
-        $queueRows = [
-            ['key' => 'redis', 'driver' => 'redis', 'default_queue' => 'default', 'is_default' => false],
-            ['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false],
-        ];
-
-        $writer->write([], [], [], [], [], [], [], [$jobRow('redis')], $queueRows);
-        $this->assertSame(['redis'], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
-
-        $writer->write([], [], [], [], [], [], [], [$jobRow('sqs')], $queueRows);
-        $this->assertSame(['sqs'], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
-
-        $writer->write([], [], [], [], [], [], [], [$jobRow('')], $queueRows);
-        $this->assertSame([], $connection->usesConnectionsFor('App\\Jobs\\ExampleJob'));
-    }
-
-    public function test_queue_connections_cypher_sets_driver_metadata(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['queue_connections'];
-
-        $this->assertStringContainsString(':QueueConnection', $template);
-        $this->assertStringContainsString('q.driver = row.driver', $template);
-        $this->assertStringContainsString('q.is_default = row.is_default', $template);
-    }
-
-    public function test_scheduled_tasks_cypher_merges_task_and_optional_handled_by(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['scheduled_tasks'];
-
-        $this->assertStringContainsString('MERGE (t:ScheduledTask {key: row.key})', $template);
-        $this->assertStringContainsString('t.expression = row.expression', $template);
-        $this->assertStringContainsString('t.kind = row.kind', $template);
-        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('h.action = row.action', $template);
-        $this->assertStringContainsString(':Abstract', $template);
-        $this->assertStringNotContainsString('SET id:Class', $template);
-        $this->assertStringNotContainsString('SET id:Interface', $template);
-        $this->assertStringNotContainsString('SET id:AbstractType', $template);
-    }
-
-    public function test_auth_providers_cypher_uses_model_edge(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['auth_providers'];
-
-        $this->assertStringContainsString(':AuthProvider', $template);
-        $this->assertStringContainsString('USES_MODEL', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (p)-[old:USES_MODEL]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('MERGE (a:Abstract {name: row.model})', $template);
-        $this->assertStringContainsString(':Abstract', $template);
-    }
-
-    public function test_auth_guards_cypher_uses_provider_edge(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['auth_guards'];
-
-        $this->assertStringContainsString(':AuthGuard', $template);
-        $this->assertStringContainsString('USES_PROVIDER', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (g)-[old:USES_PROVIDER]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
-        $this->assertStringContainsString('g.is_default = row.is_default', $template);
-    }
-
-    public function test_password_brokers_cypher_uses_provider_edge(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['password_brokers'];
-
-        $this->assertStringContainsString(':PasswordBroker', $template);
-        $this->assertStringContainsString('USES_PROVIDER', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (b)-[old:USES_PROVIDER]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('b.expire = row.expire', $template);
-        $this->assertStringContainsString('MERGE (p:AuthProvider {key: row.provider})', $template);
-    }
-
     public function test_authorization_models_use_package_connection_labels_and_keys(): void
     {
         $this->assertInstanceOf(Neo4jConnection::class, DB::connection(Neo4jBoltClient::ELOQUENT_CONNECTION));
@@ -323,127 +169,114 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertStringContainsString('HANDLED_BY', $ability->handledBy()->toSql());
     }
 
-    public function test_notifications_cypher_clears_uses_channel_edges(): void
+    public function test_notification_models_use_package_connection_labels_and_keys(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['notifications'];
-
-        $this->assertStringContainsString(':Notification', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (n)-[old:USES_CHANNEL]->()', $template);
-        $this->assertStringContainsString('DELETE old', $template);
-        $this->assertStringContainsString('n.should_queue = row.should_queue', $template);
+        foreach ([
+            [new NotificationNode, 'Notification'],
+            [new NotificationChannelNode, 'NotificationChannel'],
+        ] as [$model, $label]) {
+            $this->assertSame(Neo4jBoltClient::ELOQUENT_CONNECTION, $model->getConnectionName());
+            $this->assertSame($label, $model->getLabel());
+            $this->assertSame('key', $model->getKeyName());
+            $this->assertFalse($model->usesTimestamps());
+        }
     }
 
-    public function test_notification_uses_channel_cypher_links_channels(): void
+    public function test_notification_relations_match_runtime_graph_edges(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['notification_uses_channel'];
+        $notification = new NotificationNode(['key' => 'App\\Notifications\\InvoicePaid']);
+        $channel = new NotificationChannelNode(['key' => 'mail']);
 
-        $this->assertStringContainsString('USES_CHANNEL', $template);
-        $this->assertStringContainsString(':NotificationChannel', $template);
-        $this->assertStringContainsString('u.order = row.order', $template);
-        $this->assertStringContainsString('IDENTIFIED_AS', $template);
+        $this->assertStringContainsString('HANDLED_BY', $notification->handledBy()->toSql());
+        $this->assertStringContainsString('USES_CHANNEL', $notification->usesChannel()->toSql());
+        $this->assertStringContainsString(':NotificationChannel', $notification->usesChannel()->toSql());
+        $this->assertStringContainsString('IDENTIFIED_AS', $channel->identifiedAs()->toSql());
     }
 
-    public function test_notification_channels_cypher_identifies_resolved_class(): void
+    public function test_package_connection_keeps_boolean_bindings(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['notification_channels'];
-
-        $this->assertStringContainsString(':NotificationChannel', $template);
-        $this->assertStringContainsString('IDENTIFIED_AS', $template);
-        $this->assertStringContainsString('c.is_default = row.is_default', $template);
+        $this->assertSame(
+            ['p0' => true, 'p1' => false],
+            DB::connection(Neo4jBoltClient::ELOQUENT_CONNECTION)->prepareBindings([true, false]),
+        );
     }
 
-    public function test_broadcast_connections_cypher_sets_driver_metadata(): void
+    public function test_config_models_use_package_connection_labels_and_keys(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['broadcast_connections'];
-
-        $this->assertStringContainsString(':BroadcastConnection', $template);
-        $this->assertStringContainsString('b.driver = row.driver', $template);
-        $this->assertStringContainsString('b.is_default = row.is_default', $template);
+        foreach ([
+            [new QueueConnectionNode, 'QueueConnection'],
+            [new AuthProviderNode, 'AuthProvider'],
+            [new AuthGuardNode, 'AuthGuard'],
+            [new PasswordBrokerNode, 'PasswordBroker'],
+            [new MailerNode, 'Mailer'],
+            [new MailableNode, 'Mailable'],
+            [new BroadcastConnectionNode, 'BroadcastConnection'],
+            [new BroadcastChannelNode, 'BroadcastChannel'],
+        ] as [$model, $label]) {
+            $this->assertSame(Neo4jBoltClient::ELOQUENT_CONNECTION, $model->getConnectionName());
+            $this->assertSame($label, $model->getLabel());
+            $this->assertSame('key', $model->getKeyName());
+            $this->assertFalse($model->usesTimestamps());
+        }
     }
 
-    public function test_broadcast_channels_cypher_uses_optional_handled_by(): void
+    public function test_config_relations_match_runtime_graph_edges(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['broadcast_channels'];
-        $clear = $writer->cypherTemplates()['broadcast_channels_clear_handled_by'];
+        $mailable = new MailableNode(['key' => 'App\\Mail\\Welcome']);
 
-        $this->assertStringContainsString(':BroadcastChannel', $template);
-        $this->assertStringContainsString('c.guards = row.guards', $template);
-        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('h.action = row.action', $template);
-        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
-        $this->assertStringContainsString('[old:HANDLED_BY]', $clear);
-        $this->assertStringContainsString('DELETE old', $clear);
+        $this->assertStringContainsString('USES_MODEL', (new AuthProviderNode(['key' => 'users']))->usesModel()->toSql());
+        $this->assertStringContainsString('USES_PROVIDER', (new AuthGuardNode(['key' => 'web']))->usesProvider()->toSql());
+        $this->assertStringContainsString('USES_PROVIDER', (new PasswordBrokerNode(['key' => 'users']))->usesProvider()->toSql());
+        $this->assertStringContainsString('HANDLED_BY', $mailable->handledBy()->toSql());
+        $this->assertStringContainsString('USES_MAILER', $mailable->usesMailer()->toSql());
+        $this->assertStringContainsString(':QueueConnection', $mailable->usesConnection()->toSql());
+        $this->assertStringContainsString('HANDLED_BY', (new BroadcastChannelNode(['key' => 'orders']))->handledBy()->toSql());
     }
 
-    public function test_auth_guard_provider_edges_are_replaced_on_rerun(): void
+    public function test_auth_guard_and_broker_are_recreated_and_linked_only_to_current_provider(): void
     {
-        $connection = new TrackingContainerGraphConnection;
-        $writer = new ContainerGraphWriter($connection);
+        $this->recordEloquentCypher();
+        $guard = static fn (string $provider): array => ['key' => 'web', 'driver' => 'session', 'provider' => $provider, 'is_default' => true];
+        $broker = static fn (string $provider): array => ['key' => 'users', 'provider' => $provider, 'table' => 'password_reset_tokens', 'expire' => 60, 'throttle' => 60, 'is_default' => true];
 
-        $providerRows = [
-            ['key' => 'users', 'driver' => 'eloquent', 'model' => 'App\\Models\\User', 'model_kind' => 'Class', 'table' => ''],
-            ['key' => 'admins', 'driver' => 'eloquent', 'model' => 'App\\Models\\Admin', 'model_kind' => 'Class', 'table' => ''],
-        ];
+        $this->writeRows([11 => [$guard('admins')], 12 => [$broker('admins')]]);
+        $recorded = $this->takeEloquentCypher();
 
-        $guardRow = static fn (string $provider): array => [
-            'key' => 'web',
-            'driver' => 'session',
-            'provider' => $provider,
-            'is_default' => true,
-        ];
+        $delete = $this->statementsMatching($recorded, [':AuthGuard', 'DETACH DELETE'], ['web']);
+        $link = $this->statementsMatching($recorded, [':AuthGuard', 'USES_PROVIDER'], ['web', 'admins']);
+        $this->assertCount(1, $delete);
+        $this->assertCount(1, $link);
+        $this->assertLessThan(array_search($link[0], $recorded, true), array_search($delete[0], $recorded, true));
+        $this->assertCount(1, $this->statementsMatching($recorded, [':PasswordBroker', 'DETACH DELETE'], ['users']));
+        $this->assertCount(1, $this->statementsMatching($recorded, [':PasswordBroker', 'USES_PROVIDER'], ['users', 'admins']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:PasswordBroker'], [60, true]));
 
-        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('users')]);
-        $this->assertSame(['users'], $connection->usesProvidersFor('web'));
+        $this->writeRows([11 => [$guard('')], 12 => [$broker('')]]);
+        $recorded = $this->takeEloquentCypher();
 
-        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('admins')]);
-        $this->assertSame(['admins'], $connection->usesProvidersFor('web'));
-
-        $writer->write([], [], [], [], [], [], [], [], [], [], $providerRows, [$guardRow('')]);
-        $this->assertSame([], $connection->usesProvidersFor('web'));
+        $this->assertCount(1, $this->statementsMatching($recorded, [':AuthGuard', 'DETACH DELETE'], ['web']));
+        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_PROVIDER']));
     }
 
-    public function test_mailers_cypher_sets_transport_metadata(): void
+    public function test_auth_provider_is_recreated_with_current_model(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['mailers'];
+        $this->recordEloquentCypher();
 
-        $this->assertStringContainsString(':Mailer', $template);
-        $this->assertStringContainsString('m.transport = row.transport', $template);
-        $this->assertStringContainsString('m.nested_mailers = row.nested_mailers', $template);
-        $this->assertStringContainsString('m.is_default = row.is_default', $template);
+        $this->writeRows([10 => [['key' => 'users', 'driver' => 'eloquent', 'model' => 'App\\Models\\Admin', 'model_kind' => 'Class', 'table' => '']]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':AuthProvider', 'DETACH DELETE'], ['users']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_MODEL'], ['users', 'App\\Models\\Admin']));
+
+        $this->writeRows([10 => [['key' => 'users', 'driver' => 'database', 'model' => '', 'model_kind' => '', 'table' => 'users']]]);
+
+        $this->assertCount(0, $this->statementsMatching($this->takeEloquentCypher(), ['USES_MODEL']));
     }
 
-    public function test_mailables_cypher_uses_handled_by_mailer_and_connection(): void
+    public function test_mailable_is_recreated_with_current_mailer_and_connection(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['mailables'];
-
-        $this->assertStringContainsString(':Mailable', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString('USES_MAILER', $template);
-        $this->assertStringContainsString('USES_CONNECTION', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()', $template);
-        $this->assertStringContainsString('DELETE oldMailer', $template);
-        $this->assertStringContainsString('OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()', $template);
-        $this->assertStringContainsString('DELETE oldConn', $template);
-        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
-        $this->assertStringContainsString('h.action = row.action', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-    }
-
-    public function test_mailable_mailer_and_connection_edges_are_replaced_on_rerun(): void
-    {
-        $connection = new TrackingContainerGraphConnection;
-        $writer = new ContainerGraphWriter($connection);
-
-        $mailableRow = static fn (string $mailer, string $queueConnection): array => [
+        $this->recordEloquentCypher();
+        $mailable = static fn (string $mailer, string $queueConnection): array => [
             'key' => 'App\\Mail\\WelcomeMailable',
             'name' => 'WelcomeMailable',
             'action' => 'App\\Mail\\WelcomeMailable@build',
@@ -456,26 +289,162 @@ class ContainerGraphWriterTest extends TestCase
             'unique' => false,
         ];
 
-        $mailerRows = [
-            ['key' => 'ses', 'transport' => 'ses', 'nested_mailers' => '', 'is_default' => false],
-            ['key' => 'smtp', 'transport' => 'smtp', 'nested_mailers' => '', 'is_default' => true],
+        $this->writeRows([19 => [$mailable('ses', 'redis')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':Mailable', 'DETACH DELETE'], ['App\\Mail\\WelcomeMailable']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Mailable'], [true, false]));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Mail\\WelcomeMailable@build']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_MAILER'], ['App\\Mail\\WelcomeMailable', 'ses']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_CONNECTION', ':QueueConnection'], ['App\\Mail\\WelcomeMailable', 'redis']));
+
+        $this->writeRows([19 => [$mailable('', '')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':Mailable', 'DETACH DELETE']));
+        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_MAILER']));
+        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_CONNECTION']));
+    }
+
+    public function test_mailers_and_broadcast_connections_are_updated_in_place(): void
+    {
+        $this->recordEloquentCypher();
+
+        $this->writeRows([
+            18 => [['key' => 'smtp', 'transport' => 'smtp', 'nested_mailers' => '', 'is_default' => true]],
+            20 => [['key' => 'pusher', 'driver' => 'pusher', 'is_default' => false]],
+        ]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(0, $this->statementsMatching($recorded, ['DETACH DELETE']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Mailer'], ['smtp', true]));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:BroadcastConnection'], ['pusher', false]));
+    }
+
+    public function test_broadcast_channel_rows_sharing_a_key_collapse_to_one_node(): void
+    {
+        $this->recordEloquentCypher();
+        $row = static fn (string $identifier, string $action): array => ['key' => 'orders.{id}', 'name' => 'orders.{id}', 'guards' => 'web', 'action' => $action, 'identifier' => $identifier, 'identifier_kind' => $identifier === '' ? '' : 'Class'];
+
+        $this->writeRows([21 => [
+            $row('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@join'),
+            $row('App\\Broadcasting\\AdminChannel', 'App\\Broadcasting\\AdminChannel@join'),
+            $row('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@authorize'),
+            $row('', ''),
+        ]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':BroadcastChannel', 'DETACH DELETE'], ['orders.{id}']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:BroadcastChannel']));
+        $this->assertCount(2, $this->statementsMatching($recorded, ['HANDLED_BY']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Broadcasting\\OrderChannel@authorize']));
+        $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Broadcasting\\OrderChannel@join']));
+    }
+
+    public function test_runtime_surface_models_use_package_connection_labels_and_keys(): void
+    {
+        foreach ([[new EventNode, 'Event'], [new JobNode, 'Job'], [new ScheduledTaskNode, 'ScheduledTask']] as [$model, $label]) {
+            $this->assertSame(Neo4jBoltClient::ELOQUENT_CONNECTION, $model->getConnectionName());
+            $this->assertSame($label, $model->getLabel());
+            $this->assertSame('key', $model->getKeyName());
+            $this->assertFalse($model->usesTimestamps());
+        }
+
+        $job = new JobNode(['key' => 'App\\Jobs\\ExampleJob']);
+        $this->assertStringContainsString('HANDLED_BY', (new EventNode(['key' => 'App\\Events\\OrderShipped']))->handledBy()->toSql());
+        $this->assertStringContainsString('HANDLED_BY', $job->handledBy()->toSql());
+        $this->assertStringContainsString(':QueueConnection', $job->usesConnection()->toSql());
+        $this->assertStringContainsString('HANDLED_BY', (new ScheduledTaskNode(['key' => 'task']))->handledBy()->toSql());
+    }
+
+    public function test_event_listeners_are_replaced_on_rerun(): void
+    {
+        $this->recordEloquentCypher();
+        $listener = static fn (string $identifier): array => [
+            'key' => 'App\\Events\\OrderShipped',
+            'name' => 'OrderShipped',
+            'action' => $identifier.'@handle',
+            'identifier' => $identifier,
+            'identifier_kind' => 'Class',
         ];
-        $queueRows = [
-            ['key' => 'redis', 'driver' => 'redis', 'default_queue' => 'default', 'is_default' => false],
-            ['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false],
+
+        $this->writeRows([6 => [$listener('App\\Listeners\\SendEmail'), $listener('App\\Listeners\\NotifySlack'), $listener('App\\Listeners\\SendEmail')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':Event', 'DETACH DELETE'], ['App\\Events\\OrderShipped']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Event']));
+        $this->assertCount(2, $this->statementsMatching($recorded, ['HANDLED_BY']));
+
+        $this->writeRows([6 => [$listener('App\\Listeners\\WriteAuditLog')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':Event', 'DETACH DELETE']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Events\\OrderShipped', 'App\\Listeners\\WriteAuditLog']));
+    }
+
+    public function test_job_is_recreated_with_current_connection_and_queue_connections_update_in_place(): void
+    {
+        $this->recordEloquentCypher();
+        $job = static fn (string $queueConnection): array => [
+            'key' => 'App\\Jobs\\ExampleJob',
+            'name' => 'ExampleJob',
+            'action' => 'App\\Jobs\\ExampleJob@handle',
+            'identifier' => 'App\\Jobs\\ExampleJob',
+            'identifier_kind' => 'Class',
+            'should_queue' => true,
+            'connection' => $queueConnection,
+            'queue' => 'default',
+            'unique' => false,
+        ];
+        $queueRows = [['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false]];
+
+        $this->writeRows([7 => [$job('sqs')], 8 => $queueRows]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(0, $this->statementsMatching($recorded, [':QueueConnection', 'DETACH DELETE']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:QueueConnection', 'driver'], ['sqs', false]));
+        $this->assertCount(1, $this->statementsMatching($recorded, [':Job', 'DETACH DELETE'], ['App\\Jobs\\ExampleJob']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Job'], [true, false]));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_CONNECTION'], ['App\\Jobs\\ExampleJob', 'sqs']));
+
+        $this->writeRows([7 => [$job('')], 8 => $queueRows]);
+
+        $this->assertCount(0, $this->statementsMatching($this->takeEloquentCypher(), ['USES_CONNECTION']));
+    }
+
+    public function test_scheduled_task_is_recreated_with_current_handler(): void
+    {
+        $this->recordEloquentCypher();
+        $task = static fn (string $identifier): array => [
+            'key' => 'schedule:inspire',
+            'name' => 'inspire',
+            'expression' => '0 * * * *',
+            'command' => 'inspire',
+            'description' => '',
+            'timezone' => 'UTC',
+            'kind' => $identifier === '' ? 'closure' : 'command',
+            'without_overlapping' => true,
+            'on_one_server' => false,
+            'run_in_background' => false,
+            'even_in_maintenance_mode' => false,
+            'action' => $identifier === '' ? '' : $identifier.'@handle',
+            'identifier' => $identifier,
+            'identifier_kind' => $identifier === '' ? '' : 'Class',
         ];
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('ses', 'redis')], [], []);
-        $this->assertSame(['ses'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
-        $this->assertSame(['redis'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
+        $this->writeRows([9 => [$task('App\\Console\\Commands\\Inspire')]]);
+        $recorded = $this->takeEloquentCypher();
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('smtp', 'sqs')], [], []);
-        $this->assertSame(['smtp'], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
-        $this->assertSame(['sqs'], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
+        $this->assertCount(1, $this->statementsMatching($recorded, [':ScheduledTask', 'DETACH DELETE'], ['schedule:inspire']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:ScheduledTask'], ['0 * * * *', true, false]));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['schedule:inspire', 'App\\Console\\Commands\\Inspire']));
 
-        $writer->write([], [], [], [], [], [], [], [], $queueRows, [], [], [], [], [], [], [], [], [], $mailerRows, [$mailableRow('', '')], [], []);
-        $this->assertSame([], $connection->usesMailersFor('App\\Mail\\WelcomeMailable'));
-        $this->assertSame([], $connection->mailableUsesConnectionsFor('App\\Mail\\WelcomeMailable'));
+        $this->writeRows([9 => [$task('')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, [':ScheduledTask', 'DETACH DELETE']));
+        $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY']));
     }
 
     public function test_write_strips_legacy_abstract_secondary_labels(): void
@@ -516,5 +485,18 @@ class ContainerGraphWriterTest extends TestCase
     public function test_parse_dsn_returns_null_for_invalid_string(): void
     {
         $this->assertNull(ContainerGraphConnection::parseDsnToConnection('not-a-valid-url'));
+    }
+
+    /**
+     * @param  array<int, list<array<string, mixed>>>  $rowsByPosition  write() argument position => rows
+     */
+    private function writeRows(array $rowsByPosition): void
+    {
+        $arguments = array_fill(0, 22, []);
+        foreach ($rowsByPosition as $position => $rows) {
+            $arguments[$position] = $rows;
+        }
+
+        (new ContainerGraphWriter(new TrackingContainerGraphConnection))->write(...$arguments);
     }
 }

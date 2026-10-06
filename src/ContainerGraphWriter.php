@@ -3,8 +3,21 @@
 namespace Neo4j\LaravelBoost;
 
 use Neo4j\LaravelBoost\ContainerGraph\Models\AbstractNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\AuthGuardNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\AuthProviderNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\BroadcastChannelNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\BroadcastConnectionNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\EventNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\JobNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\MailableNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\MailerNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationChannelNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\PasswordBrokerNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\PolicyNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\QueueConnectionNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\ScheduledTaskNode;
 use Neo4j\LaravelBoost\StaticAnalysis\DependencyEdgeSource;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
@@ -109,233 +122,6 @@ SET id.kind = coalesce(row.identifier_kind, id.kind)
 MERGE (m)-[:IDENTIFIED_AS]->(id)
 MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
-CYPHER;
-
-    private const CYPHER_EVENTS_CLEAR_HANDLED_BY = <<<'CYPHER'
-UNWIND $rows AS row
-WITH DISTINCT row.key AS eventKey
-MATCH (e:Event {key: eventKey})
-OPTIONAL MATCH (e)-[old:HANDLED_BY]->()
-DELETE old
-CYPHER;
-
-    private const CYPHER_EVENTS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (e:Event {key: row.key})
-SET e.name = row.name
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (e)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-CYPHER;
-
-    private const CYPHER_QUEUE_CONNECTIONS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (q:QueueConnection {key: row.key})
-SET q.driver = row.driver,
-    q.default_queue = row.default_queue,
-    q.is_default = row.is_default
-CYPHER;
-
-    private const CYPHER_JOBS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (j:Job {key: row.key})
-SET j.name = row.name,
-    j.should_queue = row.should_queue,
-    j.connection = row.connection,
-    j.queue = row.queue,
-    j.unique = row.unique
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (j)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-WITH j, row
-OPTIONAL MATCH (j)-[old:USES_CONNECTION]->()
-DELETE old
-WITH j, row
-WHERE row.connection <> ''
-MERGE (q:QueueConnection {key: row.connection})
-MERGE (j)-[:USES_CONNECTION]->(q)
-CYPHER;
-
-    private const CYPHER_SCHEDULED_TASKS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (t:ScheduledTask {key: row.key})
-SET t.name = row.name,
-    t.expression = row.expression,
-    t.command = row.command,
-    t.description = row.description,
-    t.timezone = row.timezone,
-    t.kind = row.kind,
-    t.without_overlapping = row.without_overlapping,
-    t.on_one_server = row.on_one_server,
-    t.run_in_background = row.run_in_background,
-    t.even_in_maintenance_mode = row.even_in_maintenance_mode
-WITH t, row
-WHERE row.identifier <> ''
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (t)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-CYPHER;
-
-    private const CYPHER_AUTH_PROVIDERS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (p:AuthProvider {key: row.key})
-SET p.driver = row.driver,
-    p.table = row.table
-WITH p, row
-OPTIONAL MATCH (p)-[old:USES_MODEL]->()
-DELETE old
-WITH p, row
-WHERE row.model <> ''
-MERGE (a:Abstract {name: row.model})
-SET a.kind = coalesce(row.model_kind, a.kind)
-MERGE (p)-[:USES_MODEL]->(a)
-CYPHER;
-
-    private const CYPHER_AUTH_GUARDS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (g:AuthGuard {key: row.key})
-SET g.driver = row.driver,
-    g.is_default = row.is_default
-WITH g, row
-OPTIONAL MATCH (g)-[old:USES_PROVIDER]->()
-DELETE old
-WITH g, row
-WHERE row.provider <> ''
-MERGE (p:AuthProvider {key: row.provider})
-MERGE (g)-[:USES_PROVIDER]->(p)
-CYPHER;
-
-    private const CYPHER_PASSWORD_BROKERS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (b:PasswordBroker {key: row.key})
-SET b.table = row.table,
-    b.expire = row.expire,
-    b.throttle = row.throttle,
-    b.is_default = row.is_default
-WITH b, row
-OPTIONAL MATCH (b)-[old:USES_PROVIDER]->()
-DELETE old
-WITH b, row
-WHERE row.provider <> ''
-MERGE (p:AuthProvider {key: row.provider})
-MERGE (b)-[:USES_PROVIDER]->(p)
-CYPHER;
-
-    private const CYPHER_NOTIFICATION_CHANNELS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (c:NotificationChannel {key: row.key})
-SET c.name = row.name,
-    c.kind = row.kind,
-    c.is_default = row.is_default
-WITH c, row
-OPTIONAL MATCH (c)-[old:IDENTIFIED_AS]->()
-DELETE old
-WITH c, row
-WHERE row.resolved_class <> ''
-MERGE (id:Abstract {name: row.resolved_class})
-SET id.kind = coalesce(row.resolved_class_kind, id.kind)
-MERGE (c)-[:IDENTIFIED_AS]->(id)
-CYPHER;
-
-    private const CYPHER_NOTIFICATIONS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (n:Notification {key: row.key})
-SET n.name = row.name,
-    n.should_queue = row.should_queue,
-    n.connection = row.connection,
-    n.queue = row.queue,
-    n.unique = row.unique
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (n)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-WITH n, row
-OPTIONAL MATCH (n)-[old:USES_CHANNEL]->()
-DELETE old
-CYPHER;
-
-    private const CYPHER_NOTIFICATION_USES_CHANNEL = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (n:Notification {key: row.notification_key})
-MERGE (c:NotificationChannel {key: row.channel_key})
-SET c.name = coalesce(c.name, row.channel_key),
-    c.kind = coalesce(row.channel_kind, c.kind)
-MERGE (n)-[u:USES_CHANNEL]->(c)
-SET u.order = row.order
-WITH c, row
-WHERE row.resolved_class <> ''
-MERGE (id:Abstract {name: row.resolved_class})
-SET id.kind = coalesce(row.resolved_class_kind, id.kind)
-MERGE (c)-[:IDENTIFIED_AS]->(id)
-CYPHER;
-
-    private const CYPHER_MAILERS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (m:Mailer {key: row.key})
-SET m.transport = row.transport,
-    m.nested_mailers = row.nested_mailers,
-    m.is_default = row.is_default
-CYPHER;
-
-    private const CYPHER_MAILABLES = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (m:Mailable {key: row.key})
-SET m.name = row.name,
-    m.should_queue = row.should_queue,
-    m.mailer = row.mailer,
-    m.connection = row.connection,
-    m.queue = row.queue,
-    m.unique = row.unique
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (m)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
-WITH m, row
-OPTIONAL MATCH (m)-[oldMailer:USES_MAILER]->()
-DELETE oldMailer
-WITH m, row
-OPTIONAL MATCH (m)-[oldConn:USES_CONNECTION]->()
-DELETE oldConn
-WITH m, row
-FOREACH (_ IN CASE WHEN row.mailer <> '' THEN [1] ELSE [] END |
-  MERGE (mailer:Mailer {key: row.mailer})
-  MERGE (m)-[:USES_MAILER]->(mailer)
-)
-FOREACH (_ IN CASE WHEN row.connection <> '' THEN [1] ELSE [] END |
-  MERGE (q:QueueConnection {key: row.connection})
-  MERGE (m)-[:USES_CONNECTION]->(q)
-)
-CYPHER;
-
-    private const CYPHER_BROADCAST_CONNECTIONS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (b:BroadcastConnection {key: row.key})
-SET b.driver = row.driver,
-    b.is_default = row.is_default
-CYPHER;
-
-    private const CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY = <<<'CYPHER'
-UNWIND $rows AS row
-WITH DISTINCT row.key AS channelKey
-MATCH (c:BroadcastChannel {key: channelKey})
-OPTIONAL MATCH (c)-[old:HANDLED_BY]->()
-DELETE old
-CYPHER;
-
-    private const CYPHER_BROADCAST_CHANNELS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (c:BroadcastChannel {key: row.key})
-SET c.name = row.name,
-    c.guards = row.guards
-WITH c, row
-WHERE row.identifier <> ''
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (c)-[h:HANDLED_BY]->(id)
-SET h.action = row.action
 CYPHER;
 
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
@@ -474,53 +260,22 @@ CYPHER;
         if ($routeMiddlewareRows !== []) {
             $this->connection->run(self::CYPHER_ROUTE_MIDDLEWARE, ['rows' => $routeMiddlewareRows]);
         }
-        if ($eventRows !== []) {
-            // Clear first so removed listeners do not linger; Events may have many HANDLED_BY edges.
-            $this->connection->run(self::CYPHER_EVENTS_CLEAR_HANDLED_BY, ['rows' => $eventRows]);
-            $this->connection->run(self::CYPHER_EVENTS, ['rows' => $eventRows]);
-        }
-        if ($queueConnectionRows !== []) {
-            $this->connection->run(self::CYPHER_QUEUE_CONNECTIONS, ['rows' => $queueConnectionRows]);
-        }
-        if ($jobRows !== []) {
-            $this->connection->run(self::CYPHER_JOBS, ['rows' => $jobRows]);
-        }
-        if ($scheduledTaskRows !== []) {
-            $this->connection->run(self::CYPHER_SCHEDULED_TASKS, ['rows' => $scheduledTaskRows]);
-        }
-        if ($authProviderRows !== []) {
-            $this->connection->run(self::CYPHER_AUTH_PROVIDERS, ['rows' => $authProviderRows]);
-        }
-        if ($authGuardRows !== []) {
-            $this->connection->run(self::CYPHER_AUTH_GUARDS, ['rows' => $authGuardRows]);
-        }
-        if ($passwordBrokerRows !== []) {
-            $this->connection->run(self::CYPHER_PASSWORD_BROKERS, ['rows' => $passwordBrokerRows]);
-        }
+        $this->writeEvents($eventRows);
+        $this->writeQueueConnections($queueConnectionRows);
+        $this->writeJobs($jobRows);
+        $this->writeScheduledTasks($scheduledTaskRows);
+        $this->writeAuthProviders($authProviderRows);
+        $this->writeAuthGuards($authGuardRows);
+        $this->writePasswordBrokers($passwordBrokerRows);
         $this->writePolicies($policyRows);
         $this->writeGateAbilities($gateAbilityRows);
-        if ($notificationChannelRows !== []) {
-            $this->connection->run(self::CYPHER_NOTIFICATION_CHANNELS, ['rows' => $notificationChannelRows]);
-        }
-        if ($notificationRows !== []) {
-            $this->connection->run(self::CYPHER_NOTIFICATIONS, ['rows' => $notificationRows]);
-        }
-        if ($notificationUsesChannelRows !== []) {
-            $this->connection->run(self::CYPHER_NOTIFICATION_USES_CHANNEL, ['rows' => $notificationUsesChannelRows]);
-        }
-        if ($mailerRows !== []) {
-            $this->connection->run(self::CYPHER_MAILERS, ['rows' => $mailerRows]);
-        }
-        if ($mailableRows !== []) {
-            $this->connection->run(self::CYPHER_MAILABLES, ['rows' => $mailableRows]);
-        }
-        if ($broadcastConnectionRows !== []) {
-            $this->connection->run(self::CYPHER_BROADCAST_CONNECTIONS, ['rows' => $broadcastConnectionRows]);
-        }
-        if ($broadcastChannelRows !== []) {
-            $this->connection->run(self::CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY, ['rows' => $broadcastChannelRows]);
-            $this->connection->run(self::CYPHER_BROADCAST_CHANNELS, ['rows' => $broadcastChannelRows]);
-        }
+        $this->writeNotificationChannels($notificationChannelRows);
+        $this->writeNotifications($notificationRows);
+        $this->writeNotificationUsesChannel($notificationUsesChannelRows);
+        $this->writeMailers($mailerRows);
+        $this->writeMailables($mailableRows);
+        $this->writeBroadcastConnections($broadcastConnectionRows);
+        $this->writeBroadcastChannels($broadcastChannelRows);
     }
 
     /**
@@ -537,22 +292,6 @@ CYPHER;
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
             'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
-            'events_clear_handled_by' => self::CYPHER_EVENTS_CLEAR_HANDLED_BY,
-            'events' => self::CYPHER_EVENTS,
-            'jobs' => self::CYPHER_JOBS,
-            'queue_connections' => self::CYPHER_QUEUE_CONNECTIONS,
-            'scheduled_tasks' => self::CYPHER_SCHEDULED_TASKS,
-            'auth_providers' => self::CYPHER_AUTH_PROVIDERS,
-            'auth_guards' => self::CYPHER_AUTH_GUARDS,
-            'password_brokers' => self::CYPHER_PASSWORD_BROKERS,
-            'notification_channels' => self::CYPHER_NOTIFICATION_CHANNELS,
-            'notifications' => self::CYPHER_NOTIFICATIONS,
-            'notification_uses_channel' => self::CYPHER_NOTIFICATION_USES_CHANNEL,
-            'mailers' => self::CYPHER_MAILERS,
-            'mailables' => self::CYPHER_MAILABLES,
-            'broadcast_connections' => self::CYPHER_BROADCAST_CONNECTIONS,
-            'broadcast_channels_clear_handled_by' => self::CYPHER_BROADCAST_CHANNELS_CLEAR_HANDLED_BY,
-            'broadcast_channels' => self::CYPHER_BROADCAST_CHANNELS,
         ];
     }
 
@@ -781,8 +520,8 @@ CYPHER;
     private function writePolicies(array $policyRows): void
     {
         foreach ($policyRows as $row) {
-            PolicyNode::query()->whereKey($row['key'])->delete();
-            $policy = PolicyNode::query()->create(['key' => $row['key'], 'name' => $row['name']]);
+            PolicyNode::whereKey($row['key'])->delete();
+            $policy = PolicyNode::create(['key' => $row['key'], 'name' => $row['name']]);
 
             if ($row['identifier'] === '') {
                 continue;
@@ -804,8 +543,8 @@ CYPHER;
     private function writeGateAbilities(array $gateAbilityRows): void
     {
         foreach ($gateAbilityRows as $row) {
-            GateAbilityNode::query()->whereKey($row['key'])->delete();
-            $ability = GateAbilityNode::query()->create([
+            GateAbilityNode::whereKey($row['key'])->delete();
+            $ability = GateAbilityNode::create([
                 'key' => $row['key'],
                 'name' => $row['name'],
                 'handler_kind' => $row['handler_kind'],
@@ -817,6 +556,358 @@ CYPHER;
 
             AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
             $ability->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+        }
+    }
+
+    /**
+     * Recreating a channel also drops incoming USES_CHANNEL edges; they are
+     * re-attached by writeNotificationUsesChannel() in the same export.
+     *
+     * @param  array<int, array{key: string, name: string, kind: string, resolved_class: string, resolved_class_kind: string, is_default: bool}>  $notificationChannelRows
+     */
+    private function writeNotificationChannels(array $notificationChannelRows): void
+    {
+        foreach ($notificationChannelRows as $row) {
+            NotificationChannelNode::whereKey($row['key'])->delete();
+            $channel = NotificationChannelNode::create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'kind' => $row['kind'],
+                'is_default' => $row['is_default'],
+            ]);
+
+            if ($row['resolved_class'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['resolved_class'], $row['resolved_class_kind']);
+            $channel->identifiedAs()->attach($row['resolved_class']);
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $notificationRows
+     */
+    private function writeNotifications(array $notificationRows): void
+    {
+        foreach ($notificationRows as $row) {
+            NotificationNode::whereKey($row['key'])->delete();
+            $notification = NotificationNode::create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'should_queue' => $row['should_queue'],
+                'connection' => $row['connection'],
+                'queue' => $row['queue'],
+                'unique' => $row['unique'],
+            ]);
+
+            if ($row['identifier'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+            $notification->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+        }
+    }
+
+    /**
+     * Channels referenced only from via() (custom channel classes) are not recreated
+     * by writeNotificationChannels(), so their IDENTIFIED_AS edge may already exist.
+     *
+     * @param  array<int, array{notification_key: string, channel_key: string, channel_kind: string, resolved_class: string, resolved_class_kind: string, order: int}>  $notificationUsesChannelRows
+     */
+    private function writeNotificationUsesChannel(array $notificationUsesChannelRows): void
+    {
+        $byPair = [];
+        foreach ($notificationUsesChannelRows as $row) {
+            $byPair[$row['notification_key']."\0".$row['channel_key']] = $row;
+        }
+
+        foreach ($byPair as $row) {
+            $notification = NotificationNode::firstOrCreate(['key' => $row['notification_key']]);
+
+            $channel = NotificationChannelNode::firstOrNew(['key' => $row['channel_key']]);
+            $channel->name ??= $row['channel_key'];
+            $channel->kind = $row['channel_kind'];
+            $channel->save();
+
+            $notification->usesChannel()->attach($row['channel_key'], ['order' => $row['order']]);
+
+            if ($row['resolved_class'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['resolved_class'], $row['resolved_class_kind']);
+            if (! $channel->identifiedAs()->get()->contains('name', $row['resolved_class'])) {
+                $channel->identifiedAs()->attach($row['resolved_class']);
+            }
+        }
+    }
+
+    /**
+     * One row per listener; rows sharing an event key collapse into one node with
+     * one HANDLED_BY edge per distinct listener (last row wins), as MERGE did.
+     *
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
+     */
+    private function writeEvents(array $eventRows): void
+    {
+        $byKey = [];
+        foreach ($eventRows as $row) {
+            $byKey[$row['key']]['row'] = $row;
+            if ($row['identifier'] !== '') {
+                $byKey[$row['key']]['listeners'][$row['identifier']] = $row;
+            }
+        }
+
+        foreach ($byKey as $key => $group) {
+            EventNode::whereKey($key)->delete();
+            $event = EventNode::create(['key' => $key, 'name' => $group['row']['name']]);
+
+            foreach ($group['listeners'] ?? [] as $identifier => $listener) {
+                AbstractNode::ensure($identifier, $listener['identifier_kind']);
+                $event->handledBy()->attach($identifier, ['action' => $listener['action']]);
+            }
+        }
+    }
+
+    /**
+     * Updated in place (not recreated) so incoming USES_CONNECTION edges from
+     * jobs and mailables survive.
+     *
+     * @param  array<int, array{key: string, driver: string, default_queue: string, is_default: bool}>  $queueConnectionRows
+     */
+    private function writeQueueConnections(array $queueConnectionRows): void
+    {
+        foreach ($queueConnectionRows as $row) {
+            QueueConnectionNode::updateOrCreate(['key' => $row['key']], [
+                'driver' => $row['driver'],
+                'default_queue' => $row['default_queue'],
+                'is_default' => $row['is_default'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, connection: string, queue: string, unique: bool}>  $jobRows
+     */
+    private function writeJobs(array $jobRows): void
+    {
+        foreach ($jobRows as $row) {
+            JobNode::whereKey($row['key'])->delete();
+            $job = JobNode::create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'should_queue' => $row['should_queue'],
+                'connection' => $row['connection'],
+                'queue' => $row['queue'],
+                'unique' => $row['unique'],
+            ]);
+
+            if ($row['identifier'] !== '') {
+                AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+                $job->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+            }
+
+            if ($row['connection'] !== '') {
+                QueueConnectionNode::firstOrCreate(['key' => $row['connection']]);
+                $job->usesConnection()->attach($row['connection']);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, expression: string, command: string, description: string, timezone: string, kind: string, without_overlapping: bool, on_one_server: bool, run_in_background: bool, even_in_maintenance_mode: bool, action: string, identifier: string, identifier_kind: string}>  $scheduledTaskRows
+     */
+    private function writeScheduledTasks(array $scheduledTaskRows): void
+    {
+        foreach ($scheduledTaskRows as $row) {
+            ScheduledTaskNode::whereKey($row['key'])->delete();
+            $task = ScheduledTaskNode::create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'expression' => $row['expression'],
+                'command' => $row['command'],
+                'description' => $row['description'],
+                'timezone' => $row['timezone'],
+                'kind' => $row['kind'],
+                'without_overlapping' => $row['without_overlapping'],
+                'on_one_server' => $row['on_one_server'],
+                'run_in_background' => $row['run_in_background'],
+                'even_in_maintenance_mode' => $row['even_in_maintenance_mode'],
+            ]);
+
+            if ($row['identifier'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+            $task->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+        }
+    }
+
+    /**
+     * Recreating a provider also drops incoming USES_PROVIDER edges; guards and
+     * password brokers re-attach them later in the same export.
+     *
+     * @param  array<int, array{key: string, driver: string, model: string, model_kind: string, table: string}>  $authProviderRows
+     */
+    private function writeAuthProviders(array $authProviderRows): void
+    {
+        foreach ($authProviderRows as $row) {
+            AuthProviderNode::whereKey($row['key'])->delete();
+            $provider = AuthProviderNode::create([
+                'key' => $row['key'],
+                'driver' => $row['driver'],
+                'table' => $row['table'],
+            ]);
+
+            if ($row['model'] === '') {
+                continue;
+            }
+
+            AbstractNode::ensure($row['model'], $row['model_kind']);
+            $provider->usesModel()->attach($row['model']);
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, provider: string, is_default: bool}>  $authGuardRows
+     */
+    private function writeAuthGuards(array $authGuardRows): void
+    {
+        foreach ($authGuardRows as $row) {
+            AuthGuardNode::whereKey($row['key'])->delete();
+            $guard = AuthGuardNode::create([
+                'key' => $row['key'],
+                'driver' => $row['driver'],
+                'is_default' => $row['is_default'],
+            ]);
+
+            if ($row['provider'] === '') {
+                continue;
+            }
+
+            AuthProviderNode::firstOrCreate(['key' => $row['provider']]);
+            $guard->usesProvider()->attach($row['provider']);
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, provider: string, table: string, expire: int, throttle: int, is_default: bool}>  $passwordBrokerRows
+     */
+    private function writePasswordBrokers(array $passwordBrokerRows): void
+    {
+        foreach ($passwordBrokerRows as $row) {
+            PasswordBrokerNode::whereKey($row['key'])->delete();
+            $broker = PasswordBrokerNode::create([
+                'key' => $row['key'],
+                'table' => $row['table'],
+                'expire' => $row['expire'],
+                'throttle' => $row['throttle'],
+                'is_default' => $row['is_default'],
+            ]);
+
+            if ($row['provider'] === '') {
+                continue;
+            }
+
+            AuthProviderNode::firstOrCreate(['key' => $row['provider']]);
+            $broker->usesProvider()->attach($row['provider']);
+        }
+    }
+
+    /**
+     * Updated in place (not recreated) so incoming USES_MAILER edges survive.
+     *
+     * @param  array<int, array{key: string, transport: string, nested_mailers: string, is_default: bool}>  $mailerRows
+     */
+    private function writeMailers(array $mailerRows): void
+    {
+        foreach ($mailerRows as $row) {
+            MailerNode::updateOrCreate(['key' => $row['key']], [
+                'transport' => $row['transport'],
+                'nested_mailers' => $row['nested_mailers'],
+                'is_default' => $row['is_default'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
+     */
+    private function writeMailables(array $mailableRows): void
+    {
+        foreach ($mailableRows as $row) {
+            MailableNode::whereKey($row['key'])->delete();
+            $mailable = MailableNode::create([
+                'key' => $row['key'],
+                'name' => $row['name'],
+                'should_queue' => $row['should_queue'],
+                'mailer' => $row['mailer'],
+                'connection' => $row['connection'],
+                'queue' => $row['queue'],
+                'unique' => $row['unique'],
+            ]);
+
+            if ($row['identifier'] !== '') {
+                AbstractNode::ensure($row['identifier'], $row['identifier_kind']);
+                $mailable->handledBy()->attach($row['identifier'], ['action' => $row['action']]);
+            }
+
+            if ($row['mailer'] !== '') {
+                MailerNode::firstOrCreate(['key' => $row['mailer']]);
+                $mailable->usesMailer()->attach($row['mailer']);
+            }
+
+            if ($row['connection'] !== '') {
+                QueueConnectionNode::firstOrCreate(['key' => $row['connection']]);
+                $mailable->usesConnection()->attach($row['connection']);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
+     */
+    private function writeBroadcastConnections(array $broadcastConnectionRows): void
+    {
+        foreach ($broadcastConnectionRows as $row) {
+            BroadcastConnectionNode::updateOrCreate(['key' => $row['key']], [
+                'driver' => $row['driver'],
+                'is_default' => $row['is_default'],
+            ]);
+        }
+    }
+
+    /**
+     * Several rows may share a channel key; they collapse into one node with one
+     * HANDLED_BY edge per distinct handler (last row wins), as MERGE did.
+     *
+     * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     */
+    private function writeBroadcastChannels(array $broadcastChannelRows): void
+    {
+        $byKey = [];
+        foreach ($broadcastChannelRows as $row) {
+            $byKey[$row['key']]['row'] = $row;
+            if ($row['identifier'] !== '') {
+                $byKey[$row['key']]['handlers'][$row['identifier']] = $row;
+            }
+        }
+
+        foreach ($byKey as $key => $group) {
+            BroadcastChannelNode::whereKey($key)->delete();
+            $channel = BroadcastChannelNode::create([
+                'key' => $key,
+                'name' => $group['row']['name'],
+                'guards' => $group['row']['guards'],
+            ]);
+
+            foreach ($group['handlers'] ?? [] as $identifier => $handler) {
+                AbstractNode::ensure($identifier, $handler['identifier_kind']);
+                $channel->handledBy()->attach($identifier, ['action' => $handler['action']]);
+            }
         }
     }
 

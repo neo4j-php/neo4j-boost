@@ -29,6 +29,6 @@ final class AbstractNode extends Neo4jModel
      */
     public static function ensure(string $name, string $kind): self
     {
-        return self::query()->updateOrCreate(['name' => $name], ['kind' => $kind]);
+        return self::updateOrCreate(['name' => $name], ['kind' => $kind]);
     }
 }
