@@ -32,7 +32,7 @@
         "laravel/framework": "^12.0|^13.0",
         "laravel/boost": "^2.0",
         "laudis/neo4j-php-client": "^3.4",
-        "neo4j-php/neo4j-laravel": "dev-main"
+        "neo4j-php/neo4j-laravel": "dev-fix-boolean-bindings-and-laravel-13-select"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",
@@ -77,7 +77,7 @@
     "repositories": {
         "neo4j-laravel": {
             "type": "vcs",
-            "url": "https://github.com/neo4j-php/neo4j-laravel"
+            "url": "https://github.com/cod3xa/neo4j-laravel"
         }
     }
 }

@@ -86,8 +86,12 @@ trait RecordsEloquentCypher
                     return false;
                 }
             }
+            $params = [];
+            array_walk_recursive($statement['params'], static function (mixed $param) use (&$params): void {
+                $params[] = $param;
+            });
             foreach ($values as $value) {
-                if (! in_array($value, $statement['params'], true)) {
+                if (! in_array($value, $params, true)) {
                     return false;
                 }
             }
