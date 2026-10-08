@@ -38,7 +38,7 @@ class ContainerGraphWriterTest extends TestCase
         $keys = array_keys($writer->cypherTemplates());
         sort($keys);
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
+        $this->assertSame(['abstract_resolves_to', 'artisan_commands', 'artisan_commands_clear_handled_by', 'bindings', 'contextual_binds', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
     }
 
     public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
@@ -447,6 +447,46 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY']));
     }
 
+    public function test_artisan_commands_cypher_uses_optional_handled_by(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+        $template = $writer->cypherTemplates()['artisan_commands'];
+        $clear = $writer->cypherTemplates()['artisan_commands_clear_handled_by'];
+
+        $this->assertStringContainsString(':ArtisanCommand', $template);
+        $this->assertStringContainsString('c.description = row.description', $template);
+        $this->assertStringContainsString('c.hidden = row.hidden', $template);
+        $this->assertStringContainsString('c.aliases = row.aliases', $template);
+        $this->assertStringContainsString('c.kind = row.kind', $template);
+        $this->assertStringContainsString('c.source = row.source', $template);
+        $this->assertStringContainsString('WHERE row.identifier <> \'\'', $template);
+        $this->assertStringContainsString('h.action = row.action', $template);
+        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
+        $this->assertStringContainsString(':ArtisanCommand', $clear);
+        $this->assertStringContainsString('DELETE old', $clear);
+    }
+
+    public function test_artisan_command_rows_require_boolean_hidden(): void
+    {
+        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Artisan command row is missing boolean hidden');
+
+        $writer->write([], [], [], artisanCommandRows: [[
+            'key' => 'reports:sync',
+            'name' => 'reports:sync',
+            'description' => '',
+            'hidden' => 'no',
+            'aliases' => '',
+            'kind' => 'class',
+            'source' => 'app',
+            'action' => 'App\\Console\\Commands\\SyncReports@handle',
+            'identifier' => 'App\\Console\\Commands\\SyncReports',
+            'identifier_kind' => 'Class',
+        ]]);
+    }
+
     public function test_write_strips_legacy_abstract_secondary_labels(): void
     {
         $connection = new TrackingContainerGraphConnection;
@@ -492,7 +532,7 @@ class ContainerGraphWriterTest extends TestCase
      */
     private function writeRows(array $rowsByPosition): void
     {
-        $arguments = array_fill(0, 22, []);
+        $arguments = array_fill(0, 23, []);
         foreach ($rowsByPosition as $position => $rows) {
             $arguments[$position] = $rows;
         }

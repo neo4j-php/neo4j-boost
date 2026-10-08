@@ -124,6 +124,31 @@ MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
 SET u.parameters = coalesce(row.parameters, '')
 CYPHER;
 
+    private const CYPHER_ARTISAN_COMMANDS_CLEAR_HANDLED_BY = <<<'CYPHER'
+UNWIND $rows AS row
+WITH DISTINCT row.key AS commandKey
+MATCH (c:ArtisanCommand {key: commandKey})
+OPTIONAL MATCH (c)-[old:HANDLED_BY]->()
+DELETE old
+CYPHER;
+
+    private const CYPHER_ARTISAN_COMMANDS = <<<'CYPHER'
+UNWIND $rows AS row
+MERGE (c:ArtisanCommand {key: row.key})
+SET c.name = row.name,
+    c.description = row.description,
+    c.hidden = row.hidden,
+    c.aliases = row.aliases,
+    c.kind = row.kind,
+    c.source = row.source
+WITH c, row
+WHERE row.identifier <> ''
+MERGE (id:Abstract {name: row.identifier})
+SET id.kind = coalesce(row.identifier_kind, id.kind)
+MERGE (c)-[h:HANDLED_BY]->(id)
+SET h.action = row.action
+CYPHER;
+
     private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
 MATCH (n:Identifier)
 DETACH DELETE n
@@ -176,6 +201,7 @@ CYPHER;
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string, should_queue: bool, mailer: string, connection: string, queue: string, unique: bool}>  $mailableRows
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      */
     public function write(
         array $instanceRows,
@@ -200,6 +226,7 @@ CYPHER;
         array $mailableRows = [],
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
+        array $artisanCommandRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -222,6 +249,7 @@ CYPHER;
         $this->validateMailableRows($mailableRows);
         $this->validateBroadcastConnectionRows($broadcastConnectionRows);
         $this->validateBroadcastChannelRows($broadcastChannelRows);
+        $this->validateArtisanCommandRows($artisanCommandRows);
 
         $this->ensureConstraints();
         $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
@@ -276,6 +304,10 @@ CYPHER;
         $this->writeMailables($mailableRows);
         $this->writeBroadcastConnections($broadcastConnectionRows);
         $this->writeBroadcastChannels($broadcastChannelRows);
+        if ($artisanCommandRows !== []) {
+            $this->connection->run(self::CYPHER_ARTISAN_COMMANDS_CLEAR_HANDLED_BY, ['rows' => $artisanCommandRows]);
+            $this->connection->run(self::CYPHER_ARTISAN_COMMANDS, ['rows' => $artisanCommandRows]);
+        }
     }
 
     /**
@@ -292,6 +324,8 @@ CYPHER;
             'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
             'routes' => self::CYPHER_ROUTES,
             'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
+            'artisan_commands_clear_handled_by' => self::CYPHER_ARTISAN_COMMANDS_CLEAR_HANDLED_BY,
+            'artisan_commands' => self::CYPHER_ARTISAN_COMMANDS,
         ];
     }
 
@@ -1061,6 +1095,24 @@ CYPHER;
                 if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
                     throw new \InvalidArgumentException("Broadcast channel row is missing string {$key}");
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     */
+    private function validateArtisanCommandRows(array $artisanCommandRows): void
+    {
+        foreach ($artisanCommandRows as $row) {
+            foreach (['key', 'name', 'description', 'aliases', 'kind', 'source', 'action', 'identifier', 'identifier_kind'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Artisan command row is missing string {$key}");
+                }
+            }
+
+            if (! array_key_exists('hidden', $row) || ! is_bool($row['hidden'])) {
+                throw new \InvalidArgumentException('Artisan command row is missing boolean hidden');
             }
         }
     }
