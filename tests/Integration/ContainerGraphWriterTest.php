@@ -21,19 +21,20 @@ use Neo4j\LaravelBoost\ContainerGraph\Models\QueueConnectionNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\ScheduledTaskNode;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
-use Neo4j\LaravelBoost\Tests\Integration\Support\RecordsEloquentCypher;
+use Neo4j\LaravelBoost\Tests\Integration\Support\RecordsGraphWrites;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\Neo4jLaravel\Neo4jConnection;
 
 class ContainerGraphWriterTest extends TestCase
 {
-    use RecordsEloquentCypher;
+    use RecordsGraphWrites;
 
     public function test_bindings_write_both_abstracts_and_binds_to_metadata_in_bulk(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $binding = static fn (string $abstract, string $concrete, string $concreteKind): array => [
             'abstract' => $abstract,
             'abstractKind' => 'Interface',
@@ -46,24 +47,33 @@ class ContainerGraphWriterTest extends TestCase
             'provenance' => 'reflection',
             'remarks' => '',
         ];
+        $edge = static fn (string $abstract, string $concrete): array => [
+            'from' => ['name' => $abstract],
+            'to' => ['name' => $concrete],
+            'properties' => ['type' => 'singleton', 'source' => 'reflection', 'confidence' => 'high', 'provenance' => 'reflection', 'remarks' => ''],
+        ];
 
         $this->writeRows([1 => [
             $binding('App\\Contracts\\Ledger', 'App\\Ledgers\\ArrayLedger', 'Class'),
             $binding('App\\Contracts\\Clock', 'clock', 'Alias'),
         ]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Abstract'], ['App\\Contracts\\Ledger', 'Interface', 'clock', 'Alias']));
-        $edges = $this->statementsMatching($recorded, ['UNWIND', 'BINDS_TO'], ['App\\Contracts\\Ledger', 'App\\Ledgers\\ArrayLedger', 'App\\Contracts\\Clock', 'clock']);
-        $this->assertCount(1, $edges);
-        foreach (['type', 'source', 'confidence', 'provenance', 'remarks'] as $property) {
-            $this->assertStringContainsString('rel.'.$property, $edges[0]['cypher']);
-        }
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsert([
+            ['name' => 'App\\Contracts\\Ledger', 'kind' => 'Interface'],
+            ['name' => 'App\\Ledgers\\ArrayLedger', 'kind' => 'Class'],
+            ['name' => 'App\\Contracts\\Clock', 'kind' => 'Interface'],
+            ['name' => 'clock', 'kind' => 'Alias'],
+        ], ['name']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsertRelationships('BINDS_TO>', RuntimeGraphModel::LABEL_ABSTRACT, [
+            $edge('App\\Contracts\\Ledger', 'App\\Ledgers\\ArrayLedger'),
+            $edge('App\\Contracts\\Clock', 'clock'),
+        ]));
     }
 
     public function test_dependency_chains_link_dependency_identifier_and_instance(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $chain = static fn (string $instance, string $key): array => [
             'instance' => $instance,
             'dependency_key' => $key,
@@ -84,32 +94,54 @@ class ContainerGraphWriterTest extends TestCase
         ];
 
         $this->writeRows([2 => [$chain('App\\Services\\Billing', 'billing-logger'), $chain('', 'orphan-logger')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Dependency', 'access'], ['billing-logger', 'orphan-logger', 'di']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['IDENTIFIED_AS', ':Dependency'], ['billing-logger', 'orphan-logger', 'Psr\\Log\\LoggerInterface']));
-        $dependsOn = $this->statementsMatching($recorded, ['DEPENDS_ON', ':Instance'], ['App\\Services\\Billing', 'billing-logger', 'app/Services/Billing.php', 12]);
-        $this->assertCount(1, $dependsOn);
-        $this->assertCount(0, $this->statementsMatching($recorded, ['DEPENDS_ON'], ['orphan-logger']));
-        foreach (['file', 'line', 'via', 'type', 'method', 'parameter', 'helper', 'source', 'confidence', 'provenance', 'remarks', 'catalog_source'] as $property) {
-            $this->assertStringContainsString('rel.'.$property, $dependsOn[0]['cypher']);
-        }
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_DEPENDENCY)->upsert([
+            ['key' => 'billing-logger', 'access' => 'di'],
+            ['key' => 'orphan-logger', 'access' => 'di'],
+        ], ['key']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_DEPENDENCY)->upsertRelationships(RuntimeGraphModel::REL_IDENTIFIED_AS.'>', RuntimeGraphModel::LABEL_ABSTRACT, [
+            ['from' => ['key' => 'billing-logger'], 'to' => ['name' => 'Psr\\Log\\LoggerInterface']],
+            ['from' => ['key' => 'orphan-logger'], 'to' => ['name' => 'Psr\\Log\\LoggerInterface']],
+        ]));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_INSTANCE)->upsertRelationships(RuntimeGraphModel::REL_DEPENDS_ON.'>', RuntimeGraphModel::LABEL_DEPENDENCY, [[
+            'from' => ['name' => 'App\\Services\\Billing'],
+            'to' => ['key' => 'billing-logger'],
+            'properties' => [
+                'file' => 'app/Services/Billing.php',
+                'line' => 12,
+                'via' => 'constructor',
+                'type' => 'constructor',
+                'method' => '__construct',
+                'parameter' => 'logger',
+                'helper' => '',
+                'source' => 'reflection',
+                'confidence' => 'high',
+                'provenance' => 'reflection',
+                'remarks' => '',
+                'catalog_source' => '',
+            ],
+        ]]));
     }
 
     public function test_instances_resolve_to_themselves(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
 
         $this->writeRows([0 => [['class' => 'App\\Services\\Billing']]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertNotSame([], $this->statementsMatching($recorded, ['UNWIND', ':Instance'], ['App\\Services\\Billing']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['RESOLVES_TO', 'rel.lifetime'], ['App\\Services\\Billing', 'bind']));
+        $this->assertNotSame([], $this->writesLike($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_INSTANCE)->upsert([['name' => 'App\\Services\\Billing']], ['name'])));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsertRelationships(RuntimeGraphModel::REL_RESOLVES_TO.'>', RuntimeGraphModel::LABEL_INSTANCE, [[
+            'from' => ['name' => 'App\\Services\\Billing'],
+            'to' => ['name' => 'App\\Services\\Billing'],
+            'properties' => ['lifetime' => 'bind'],
+        ]]));
     }
 
     public function test_routes_upsert_handler_and_clear_legacy_route_name(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
 
         $this->writeRows([4 => [[
             'key' => 'GET|orders',
@@ -120,18 +152,24 @@ class ContainerGraphWriterTest extends TestCase
             'identifier' => 'App\\Http\\Controllers\\OrderController',
             'identifier_kind' => 'Class',
         ]]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $routes = $this->statementsMatching($recorded, ['MERGE (n:Route', 'route_name'], ['GET|orders', 'orders.index']);
-        $this->assertCount(1, $routes);
-        $this->assertArrayHasKey('route_name', $routes[0]['params']['rows'][0]);
-        $this->assertNull($routes[0]['params']['rows'][0]['route_name']);
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY', ':Route'], ['GET|orders', 'App\\Http\\Controllers\\OrderController']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ROUTE)->upsert([[
+            'key' => 'GET|orders',
+            'uri' => 'orders',
+            'methods' => 'GET|HEAD',
+            'name' => 'orders.index',
+            'action' => 'App\\Http\\Controllers\\OrderController@index',
+            'route_name' => null,
+        ]], ['key']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ROUTE)->upsertRelationships(RuntimeGraphModel::REL_HANDLED_BY.'>', RuntimeGraphModel::LABEL_ABSTRACT, [
+            ['from' => ['key' => 'GET|orders'], 'to' => ['name' => 'App\\Http\\Controllers\\OrderController']],
+        ]));
     }
 
     public function test_route_middleware_edges_are_replaced_and_keep_repeated_middleware(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $throttle = static fn (string $parameters, int $order): array => [
             'route_key' => 'GET|orders',
             'middleware_key' => 'throttle',
@@ -140,18 +178,29 @@ class ContainerGraphWriterTest extends TestCase
             'parameters' => $parameters,
             'order' => $order,
         ];
+        $usesThrottle = static fn (string $parameters, int $order): array => [
+            'from' => ['key' => 'GET|orders'],
+            'to' => ['key' => 'throttle'],
+            'properties' => ['order' => $order, 'parameters' => $parameters],
+        ];
+        $identifiedAs = ['from' => ['key' => 'throttle'], 'to' => ['name' => 'Illuminate\\Routing\\Middleware\\ThrottleRequests']];
 
         $this->writeRows([5 => [$throttle('60,1', 0), $throttle('10,1', 1)]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Middleware'], ['throttle']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['IDENTIFIED_AS', ':Middleware'], ['throttle', 'Illuminate\\Routing\\Middleware\\ThrottleRequests']));
-        $delete = $this->statementsMatching($recorded, ['USES_MIDDLEWARE', 'DELETE rel'], ['GET|orders']);
-        $create = $this->statementsMatching($recorded, ['USES_MIDDLEWARE', 'CREATE'], ['60,1', '10,1', 0, 1]);
-        $this->assertCount(1, $delete);
-        $this->assertCount(1, $create);
-        $this->assertCount(2, $create[0]['params']['rows']);
-        $this->assertLessThan(array_search($create[0], $recorded, true), array_search($delete[0], $recorded, true));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_MIDDLEWARE)->upsert([
+            ['key' => 'throttle', 'name' => 'throttle'],
+            ['key' => 'throttle', 'name' => 'throttle'],
+        ], ['key']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_MIDDLEWARE)->upsertRelationships(RuntimeGraphModel::REL_IDENTIFIED_AS.'>', RuntimeGraphModel::LABEL_ABSTRACT, [$identifiedAs, $identifiedAs]));
+        $delete = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ROUTE)->deleteRelationships(RuntimeGraphModel::REL_USES_MIDDLEWARE.'>', RuntimeGraphModel::LABEL_MIDDLEWARE, [
+            ['from' => ['key' => 'GET|orders']],
+        ]));
+        $create = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ROUTE)->insertRelationships(RuntimeGraphModel::REL_USES_MIDDLEWARE.'>', RuntimeGraphModel::LABEL_MIDDLEWARE, [
+            $usesThrottle('60,1', 0),
+            $usesThrottle('10,1', 1),
+        ]));
+        $this->assertLessThan($create, $delete);
     }
 
     public function test_authorization_models_use_package_connection_labels_and_keys(): void
@@ -173,12 +222,10 @@ class ContainerGraphWriterTest extends TestCase
     public function test_authorization_relations_match_runtime_graph_edges(): void
     {
         $policy = new PolicyNode(['key' => 'App\\Models\\Post']);
-        $ability = new GateAbilityNode(['key' => 'publish-post']);
 
-        $this->assertStringContainsString('HANDLED_BY', $policy->handledBy()->toSql());
-        $this->assertStringContainsString(':Abstract', $policy->handledBy()->toSql());
-        $this->assertStringContainsString('FOR_MODEL', $policy->forModel()->toSql());
-        $this->assertStringContainsString('HANDLED_BY', $ability->handledBy()->toSql());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $policy->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_FOR_MODEL.'>', AbstractNode::class, $policy->forModel());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new GateAbilityNode(['key' => 'publish-post']))->handledBy());
     }
 
     public function test_notification_models_use_package_connection_labels_and_keys(): void
@@ -197,12 +244,10 @@ class ContainerGraphWriterTest extends TestCase
     public function test_notification_relations_match_runtime_graph_edges(): void
     {
         $notification = new NotificationNode(['key' => 'App\\Notifications\\InvoicePaid']);
-        $channel = new NotificationChannelNode(['key' => 'mail']);
 
-        $this->assertStringContainsString('HANDLED_BY', $notification->handledBy()->toSql());
-        $this->assertStringContainsString('USES_CHANNEL', $notification->usesChannel()->toSql());
-        $this->assertStringContainsString(':NotificationChannel', $notification->usesChannel()->toSql());
-        $this->assertStringContainsString('IDENTIFIED_AS', $channel->identifiedAs()->toSql());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $notification->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_CHANNEL.'>', NotificationChannelNode::class, $notification->usesChannel());
+        $this->assertRelationship(RuntimeGraphModel::REL_IDENTIFIED_AS.'>', AbstractNode::class, (new NotificationChannelNode(['key' => 'mail']))->identifiedAs());
     }
 
     public function test_package_connection_keeps_boolean_bindings(): void
@@ -236,58 +281,57 @@ class ContainerGraphWriterTest extends TestCase
     {
         $mailable = new MailableNode(['key' => 'App\\Mail\\Welcome']);
 
-        $this->assertStringContainsString('USES_MODEL', (new AuthProviderNode(['key' => 'users']))->usesModel()->toSql());
-        $this->assertStringContainsString('USES_PROVIDER', (new AuthGuardNode(['key' => 'web']))->usesProvider()->toSql());
-        $this->assertStringContainsString('USES_PROVIDER', (new PasswordBrokerNode(['key' => 'users']))->usesProvider()->toSql());
-        $this->assertStringContainsString('HANDLED_BY', $mailable->handledBy()->toSql());
-        $this->assertStringContainsString('USES_MAILER', $mailable->usesMailer()->toSql());
-        $this->assertStringContainsString(':QueueConnection', $mailable->usesConnection()->toSql());
-        $this->assertStringContainsString('HANDLED_BY', (new BroadcastChannelNode(['key' => 'orders']))->handledBy()->toSql());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_MODEL.'>', AbstractNode::class, (new AuthProviderNode(['key' => 'users']))->usesModel());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_PROVIDER.'>', AuthProviderNode::class, (new AuthGuardNode(['key' => 'web']))->usesProvider());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_PROVIDER.'>', AuthProviderNode::class, (new PasswordBrokerNode(['key' => 'users']))->usesProvider());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $mailable->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_MAILER.'>', MailerNode::class, $mailable->usesMailer());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_CONNECTION.'>', QueueConnectionNode::class, $mailable->usesConnection());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new BroadcastChannelNode(['key' => 'orders']))->handledBy());
     }
 
     public function test_auth_guard_and_broker_are_recreated_and_linked_only_to_current_provider(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $guard = static fn (string $provider): array => ['key' => 'web', 'driver' => 'session', 'provider' => $provider, 'is_default' => true];
         $broker = static fn (string $provider): array => ['key' => 'users', 'provider' => $provider, 'table' => 'password_reset_tokens', 'expire' => 60, 'throttle' => 60, 'is_default' => true];
 
         $this->writeRows([11 => [$guard('admins')], 12 => [$broker('admins')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $delete = $this->statementsMatching($recorded, [':AuthGuard', 'DETACH DELETE'], ['web']);
-        $link = $this->statementsMatching($recorded, [':AuthGuard', 'USES_PROVIDER'], ['web', 'admins']);
-        $this->assertCount(1, $delete);
-        $this->assertCount(1, $link);
-        $this->assertLessThan(array_search($link[0], $recorded, true), array_search($delete[0], $recorded, true));
-        $this->assertCount(1, $this->statementsMatching($recorded, [':PasswordBroker', 'DETACH DELETE'], ['users']));
-        $this->assertCount(1, $this->statementsMatching($recorded, [':PasswordBroker', 'USES_PROVIDER'], ['users', 'admins']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:PasswordBroker'], [60, true]));
+        $delete = $this->assertWroteOnce($recorded, fn () => AuthGuardNode::whereKey('web')->delete());
+        $link = $this->assertWroteOnce($recorded, fn () => (new AuthGuardNode(['key' => 'web']))->usesProvider()->attach('admins'));
+        $this->assertLessThan($link, $delete);
+        $this->assertWroteOnce($recorded, fn () => PasswordBrokerNode::whereKey('users')->delete());
+        $this->assertWroteOnce($recorded, fn () => PasswordBrokerNode::create(['key' => 'users', 'table' => 'password_reset_tokens', 'expire' => 60, 'throttle' => 60, 'is_default' => true]));
+        $this->assertWroteOnce($recorded, fn () => (new PasswordBrokerNode(['key' => 'users']))->usesProvider()->attach('admins'));
 
         $this->writeRows([11 => [$guard('')], 12 => [$broker('')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':AuthGuard', 'DETACH DELETE'], ['web']));
-        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_PROVIDER']));
+        $this->assertWroteOnce($recorded, fn () => AuthGuardNode::whereKey('web')->delete());
+        $this->assertNeverWroteKind($recorded, fn () => (new AuthGuardNode(['key' => 'web']))->usesProvider()->attach('admins'));
+        $this->assertNeverWroteKind($recorded, fn () => (new PasswordBrokerNode(['key' => 'users']))->usesProvider()->attach('admins'));
     }
 
     public function test_auth_provider_is_recreated_with_current_model(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
 
         $this->writeRows([10 => [['key' => 'users', 'driver' => 'eloquent', 'model' => 'App\\Models\\Admin', 'model_kind' => 'Class', 'table' => '']]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':AuthProvider', 'DETACH DELETE'], ['users']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_MODEL'], ['users', 'App\\Models\\Admin']));
+        $this->assertWroteOnce($recorded, fn () => AuthProviderNode::whereKey('users')->delete());
+        $this->assertWroteOnce($recorded, fn () => (new AuthProviderNode(['key' => 'users']))->usesModel()->attach('App\\Models\\Admin'));
 
         $this->writeRows([10 => [['key' => 'users', 'driver' => 'database', 'model' => '', 'model_kind' => '', 'table' => 'users']]]);
 
-        $this->assertCount(0, $this->statementsMatching($this->takeEloquentCypher(), ['USES_MODEL']));
+        $this->assertNeverWroteKind($this->takeGraphWrites(), fn () => (new AuthProviderNode(['key' => 'users']))->usesModel()->attach('App\\Models\\Admin'));
     }
 
     public function test_mailable_is_recreated_with_current_mailer_and_connection(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $mailable = static fn (string $mailer, string $queueConnection): array => [
             'key' => 'App\\Mail\\WelcomeMailable',
             'name' => 'WelcomeMailable',
@@ -300,44 +344,54 @@ class ContainerGraphWriterTest extends TestCase
             'queue' => 'mails',
             'unique' => false,
         ];
+        $node = static fn (): MailableNode => new MailableNode(['key' => 'App\\Mail\\WelcomeMailable']);
 
         $this->writeRows([19 => [$mailable('ses', 'redis')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':Mailable', 'DETACH DELETE'], ['App\\Mail\\WelcomeMailable']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Mailable'], [true, false]));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Mail\\WelcomeMailable@build']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_MAILER'], ['App\\Mail\\WelcomeMailable', 'ses']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_CONNECTION', ':QueueConnection'], ['App\\Mail\\WelcomeMailable', 'redis']));
+        $this->assertWroteOnce($recorded, fn () => MailableNode::whereKey('App\\Mail\\WelcomeMailable')->delete());
+        $this->assertWroteOnce($recorded, fn () => MailableNode::create([
+            'key' => 'App\\Mail\\WelcomeMailable',
+            'name' => 'WelcomeMailable',
+            'should_queue' => true,
+            'mailer' => 'ses',
+            'connection' => 'redis',
+            'queue' => 'mails',
+            'unique' => false,
+        ]));
+        $this->assertWroteOnce($recorded, fn () => $node()->handledBy()->attach('App\\Mail\\WelcomeMailable', ['action' => 'App\\Mail\\WelcomeMailable@build']));
+        $this->assertWroteOnce($recorded, fn () => $node()->usesMailer()->attach('ses'));
+        $this->assertWroteOnce($recorded, fn () => $node()->usesConnection()->attach('redis'));
 
         $this->writeRows([19 => [$mailable('', '')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':Mailable', 'DETACH DELETE']));
-        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_MAILER']));
-        $this->assertCount(0, $this->statementsMatching($recorded, ['USES_CONNECTION']));
+        $this->assertWroteOnce($recorded, fn () => MailableNode::whereKey('App\\Mail\\WelcomeMailable')->delete());
+        $this->assertNeverWroteKind($recorded, fn () => $node()->usesMailer()->attach('ses'));
+        $this->assertNeverWroteKind($recorded, fn () => $node()->usesConnection()->attach('redis'));
     }
 
     public function test_mailers_and_broadcast_connections_are_updated_in_place(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
 
         $this->writeRows([
             18 => [['key' => 'smtp', 'transport' => 'smtp', 'nested_mailers' => '', 'is_default' => true]],
             20 => [['key' => 'pusher', 'driver' => 'pusher', 'is_default' => false]],
         ]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(0, $this->statementsMatching($recorded, [':Mailer', 'DETACH DELETE']));
-        $this->assertCount(0, $this->statementsMatching($recorded, [':BroadcastConnection', 'DETACH DELETE']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Mailer'], ['smtp', true]));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:BroadcastConnection'], ['pusher', false]));
+        $this->assertNeverWroteKind($recorded, fn () => MailerNode::whereKey('smtp')->delete());
+        $this->assertNeverWroteKind($recorded, fn () => BroadcastConnectionNode::whereKey('pusher')->delete());
+        $this->assertWroteOnce($recorded, fn () => MailerNode::create(['key' => 'smtp', 'transport' => 'smtp', 'nested_mailers' => '', 'is_default' => true]));
+        $this->assertWroteOnce($recorded, fn () => BroadcastConnectionNode::create(['key' => 'pusher', 'driver' => 'pusher', 'is_default' => false]));
     }
 
     public function test_broadcast_channel_rows_sharing_a_key_collapse_to_one_node(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $row = static fn (string $identifier, string $action): array => ['key' => 'orders.{id}', 'name' => 'orders.{id}', 'guards' => 'web', 'action' => $action, 'identifier' => $identifier, 'identifier_kind' => $identifier === '' ? '' : 'Class'];
+        $handledBy = static fn (string $identifier, string $action): mixed => (new BroadcastChannelNode(['key' => 'orders.{id}']))->handledBy()->attach($identifier, ['action' => $action]);
 
         $this->writeRows([21 => [
             $row('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@join'),
@@ -345,13 +399,14 @@ class ContainerGraphWriterTest extends TestCase
             $row('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@authorize'),
             $row('', ''),
         ]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':BroadcastChannel', 'DETACH DELETE'], ['orders.{id}']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:BroadcastChannel']));
-        $this->assertCount(2, $this->statementsMatching($recorded, ['HANDLED_BY']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Broadcasting\\OrderChannel@authorize']));
-        $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Broadcasting\\OrderChannel@join']));
+        $this->assertWroteOnce($recorded, fn () => BroadcastChannelNode::whereKey('orders.{id}')->delete());
+        $this->assertWroteOnce($recorded, fn () => BroadcastChannelNode::create(['key' => 'orders.{id}', 'name' => 'orders.{id}', 'guards' => 'web']));
+        $this->assertCount(2, $this->writesLike($recorded, fn () => $handledBy('App\\Broadcasting\\OrderChannel', ''), sameValues: false));
+        $this->assertWroteOnce($recorded, fn () => $handledBy('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@authorize'));
+        $this->assertWroteOnce($recorded, fn () => $handledBy('App\\Broadcasting\\AdminChannel', 'App\\Broadcasting\\AdminChannel@join'));
+        $this->assertSame([], $this->writesLike($recorded, fn () => $handledBy('App\\Broadcasting\\OrderChannel', 'App\\Broadcasting\\OrderChannel@join')));
     }
 
     public function test_runtime_surface_models_use_package_connection_labels_and_keys(): void
@@ -364,15 +419,15 @@ class ContainerGraphWriterTest extends TestCase
         }
 
         $job = new JobNode(['key' => 'App\\Jobs\\ExampleJob']);
-        $this->assertStringContainsString('HANDLED_BY', (new EventNode(['key' => 'App\\Events\\OrderShipped']))->handledBy()->toSql());
-        $this->assertStringContainsString('HANDLED_BY', $job->handledBy()->toSql());
-        $this->assertStringContainsString(':QueueConnection', $job->usesConnection()->toSql());
-        $this->assertStringContainsString('HANDLED_BY', (new ScheduledTaskNode(['key' => 'task']))->handledBy()->toSql());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new EventNode(['key' => 'App\\Events\\OrderShipped']))->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $job->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_USES_CONNECTION.'>', QueueConnectionNode::class, $job->usesConnection());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new ScheduledTaskNode(['key' => 'task']))->handledBy());
     }
 
     public function test_event_listeners_are_replaced_on_rerun(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $listener = static fn (string $identifier): array => [
             'key' => 'App\\Events\\OrderShipped',
             'name' => 'OrderShipped',
@@ -380,25 +435,26 @@ class ContainerGraphWriterTest extends TestCase
             'identifier' => $identifier,
             'identifier_kind' => 'Class',
         ];
+        $handledBy = static fn (string $identifier): mixed => (new EventNode(['key' => 'App\\Events\\OrderShipped']))->handledBy()->attach($identifier, ['action' => $identifier.'@handle']);
 
         $this->writeRows([6 => [$listener('App\\Listeners\\SendEmail'), $listener('App\\Listeners\\NotifySlack'), $listener('App\\Listeners\\SendEmail')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':Event', 'DETACH DELETE'], ['App\\Events\\OrderShipped']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Event']));
-        $this->assertCount(2, $this->statementsMatching($recorded, ['HANDLED_BY']));
+        $this->assertWroteOnce($recorded, fn () => EventNode::whereKey('App\\Events\\OrderShipped')->delete());
+        $this->assertWroteOnce($recorded, fn () => EventNode::create(['key' => 'App\\Events\\OrderShipped', 'name' => 'OrderShipped']));
+        $this->assertCount(2, $this->writesLike($recorded, fn () => $handledBy('App\\Listeners\\SendEmail'), sameValues: false));
 
         $this->writeRows([6 => [$listener('App\\Listeners\\WriteAuditLog')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':Event', 'DETACH DELETE']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['App\\Events\\OrderShipped', 'App\\Listeners\\WriteAuditLog']));
+        $this->assertWroteOnce($recorded, fn () => EventNode::whereKey('App\\Events\\OrderShipped')->delete());
+        $this->assertCount(1, $this->writesLike($recorded, fn () => $handledBy('App\\Listeners\\SendEmail'), sameValues: false));
+        $this->assertWroteOnce($recorded, fn () => $handledBy('App\\Listeners\\WriteAuditLog'));
     }
 
     public function test_job_is_recreated_with_current_connection_and_queue_connections_update_in_place(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $job = static fn (string $queueConnection): array => [
             'key' => 'App\\Jobs\\ExampleJob',
             'name' => 'ExampleJob',
@@ -411,24 +467,32 @@ class ContainerGraphWriterTest extends TestCase
             'unique' => false,
         ];
         $queueRows = [['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false]];
+        $usesConnection = static fn (): mixed => (new JobNode(['key' => 'App\\Jobs\\ExampleJob']))->usesConnection()->attach('sqs');
 
         $this->writeRows([7 => [$job('sqs')], 8 => $queueRows]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(0, $this->statementsMatching($recorded, [':QueueConnection', 'DETACH DELETE']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:QueueConnection', 'driver'], ['sqs', false]));
-        $this->assertCount(1, $this->statementsMatching($recorded, [':Job', 'DETACH DELETE'], ['App\\Jobs\\ExampleJob']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Job'], [true, false]));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['USES_CONNECTION'], ['App\\Jobs\\ExampleJob', 'sqs']));
+        $this->assertNeverWroteKind($recorded, fn () => QueueConnectionNode::whereKey('sqs')->delete());
+        $this->assertWroteOnce($recorded, fn () => QueueConnectionNode::create(['key' => 'sqs', 'driver' => 'sqs', 'default_queue' => 'default', 'is_default' => false]));
+        $this->assertWroteOnce($recorded, fn () => JobNode::whereKey('App\\Jobs\\ExampleJob')->delete());
+        $this->assertWroteOnce($recorded, fn () => JobNode::create([
+            'key' => 'App\\Jobs\\ExampleJob',
+            'name' => 'ExampleJob',
+            'should_queue' => true,
+            'connection' => 'sqs',
+            'queue' => 'default',
+            'unique' => false,
+        ]));
+        $this->assertWroteOnce($recorded, $usesConnection);
 
         $this->writeRows([7 => [$job('')], 8 => $queueRows]);
 
-        $this->assertCount(0, $this->statementsMatching($this->takeEloquentCypher(), ['USES_CONNECTION']));
+        $this->assertNeverWroteKind($this->takeGraphWrites(), $usesConnection);
     }
 
     public function test_scheduled_task_is_recreated_with_current_handler(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $task = static fn (string $identifier): array => [
             'key' => 'schedule:inspire',
             'name' => 'inspire',
@@ -445,33 +509,46 @@ class ContainerGraphWriterTest extends TestCase
             'identifier' => $identifier,
             'identifier_kind' => $identifier === '' ? '' : 'Class',
         ];
+        $handledBy = static fn (): mixed => (new ScheduledTaskNode(['key' => 'schedule:inspire']))->handledBy()->attach('App\\Console\\Commands\\Inspire', ['action' => 'App\\Console\\Commands\\Inspire@handle']);
 
         $this->writeRows([9 => [$task('App\\Console\\Commands\\Inspire')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':ScheduledTask', 'DETACH DELETE'], ['schedule:inspire']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:ScheduledTask'], ['0 * * * *', true, false]));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY'], ['schedule:inspire', 'App\\Console\\Commands\\Inspire']));
+        $this->assertWroteOnce($recorded, fn () => ScheduledTaskNode::whereKey('schedule:inspire')->delete());
+        $this->assertWroteOnce($recorded, fn () => ScheduledTaskNode::create([
+            'key' => 'schedule:inspire',
+            'name' => 'inspire',
+            'expression' => '0 * * * *',
+            'command' => 'inspire',
+            'description' => '',
+            'timezone' => 'UTC',
+            'kind' => 'command',
+            'without_overlapping' => true,
+            'on_one_server' => false,
+            'run_in_background' => false,
+            'even_in_maintenance_mode' => false,
+        ]));
+        $this->assertWroteOnce($recorded, $handledBy);
 
         $this->writeRows([9 => [$task('')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $this->assertCount(1, $this->statementsMatching($recorded, [':ScheduledTask', 'DETACH DELETE']));
-        $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY']));
+        $this->assertWroteOnce($recorded, fn () => ScheduledTaskNode::whereKey('schedule:inspire')->delete());
+        $this->assertNeverWroteKind($recorded, $handledBy);
     }
 
     public function test_write_drops_legacy_identifier_nodes(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
 
         $this->writeRows([]);
 
-        $this->assertCount(1, $this->statementsMatching($this->takeEloquentCypher(), [':Identifier', 'DETACH DELETE']));
+        $this->assertWroteOnce($this->takeGraphWrites(), fn () => $this->graph('Identifier')->delete());
     }
 
     public function test_contextual_binds_keep_stored_reason_when_row_reason_is_empty(): void
     {
-        $this->recordEloquentCypher();
+        $this->recordGraphWrites();
         $row = static fn (string $give, string $reason): array => [
             'when' => 'App\\Http\\Controllers\\ReportController',
             'when_kind' => 'Class',
@@ -481,15 +558,19 @@ class ContainerGraphWriterTest extends TestCase
             'give_kind' => 'Class',
             'reason' => $reason,
         ];
+        $binds = static fn (string $give, array $properties): array => [
+            'from' => ['name' => 'App\\Http\\Controllers\\ReportController'],
+            'to' => ['name' => $give],
+            'properties' => ['needs' => 'App\\Contracts\\Exporter', 'needs_kind' => 'Interface', ...$properties],
+        ];
 
         $this->writeRows([3 => [$row('App\\Exporters\\CsvExporter', ''), $row('App\\Exporters\\PdfExporter', 'closure')]]);
-        $recorded = $this->takeEloquentCypher();
+        $recorded = $this->takeGraphWrites();
 
-        $withoutReason = $this->statementsMatching($recorded, ['CONTEXTUAL_BINDS', 'rel.needs_kind'], ['App\\Exporters\\CsvExporter']);
-        $this->assertCount(1, $withoutReason);
-        $this->assertStringNotContainsString('rel.reason', $withoutReason[0]['cypher']);
-        $this->assertCount(1, $this->statementsMatching($recorded, ['CONTEXTUAL_BINDS', 'rel.reason', 'rel.needs_kind'], ['App\\Exporters\\PdfExporter', 'closure']));
-        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Abstract', 'reason'], ['App\\Exporters\\PdfExporter', 'closure']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsert([['name' => 'App\\Exporters\\CsvExporter', 'kind' => 'Class']], ['name']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsert([['name' => 'App\\Exporters\\PdfExporter', 'kind' => 'Class', 'reason' => 'closure']], ['name']));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_INSTANCE)->upsertRelationships('CONTEXTUAL_BINDS>', RuntimeGraphModel::LABEL_ABSTRACT, [$binds('App\\Exporters\\CsvExporter', [])]));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_INSTANCE)->upsertRelationships('CONTEXTUAL_BINDS>', RuntimeGraphModel::LABEL_ABSTRACT, [$binds('App\\Exporters\\PdfExporter', ['reason' => 'closure'])]));
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void
