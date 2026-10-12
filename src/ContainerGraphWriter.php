@@ -2,6 +2,7 @@
 
 namespace Neo4j\LaravelBoost;
 
+use Illuminate\Support\Facades\DB;
 use Neo4j\LaravelBoost\ContainerGraph\Models\AbstractNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\AuthGuardNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\AuthProviderNode;
@@ -26,113 +27,14 @@ use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeConfidence;
 use Neo4j\LaravelBoost\Support\Graph\DependencyEdgeProvenance;
 use Neo4j\LaravelBoost\Support\Graph\ResolvesToLifetime;
 use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
+use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
+use Neo4j\Neo4jLaravel\Neo4jQueryBuilder;
+use RuntimeException;
 
 class ContainerGraphWriter
 {
-    private const CYPHER_BINDINGS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (a:Abstract {name: row.abstract})
-SET a.kind = row.abstractKind
-WITH row, a
-MERGE (c:Abstract {name: row.concrete})
-SET c.kind = row.concreteKind
-MERGE (a)-[r:BINDS_TO]->(c)
-SET r.type = row.type,
-    r.source = row.source,
-    r.confidence = row.confidence,
-    r.provenance = row.provenance,
-    r.remarks = coalesce(row.remarks, '')
-CYPHER;
-
-    private const CYPHER_INSTANCES = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (:Instance {name: row.class})
-CYPHER;
-
-    private const CYPHER_IDENTIFIED_AS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (dep:Dependency {key: row.dependency_key})
-SET dep.access = row.access
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = row.identifier_kind,
-    id.reason = coalesce(row.reason, id.reason)
-MERGE (dep)-[:IDENTIFIED_AS]->(id)
-CYPHER;
-
-    private const CYPHER_ABSTRACT_RESOLVES_TO = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (i:Instance {name: row.instance})
-MERGE (id)-[r:RESOLVES_TO]->(i)
-SET r.lifetime = row.lifetime
-CYPHER;
-
-    private const CYPHER_INSTANCE_DEPENDS_ON = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (i:Instance {name: row.instance})
-MERGE (dep:Dependency {key: row.dependency_key})
-MERGE (i)-[d:DEPENDS_ON]->(dep)
-SET d.file = row.file,
-    d.line = row.line,
-    d.via = row.via,
-    d.type = row.injection_type,
-    d.method = row.method,
-    d.parameter = row.parameter,
-    d.helper = coalesce(row.helper, ''),
-    d.source = row.source,
-    d.confidence = row.confidence,
-    d.provenance = row.provenance,
-    d.remarks = coalesce(row.remarks, ''),
-    d.catalog_source = coalesce(row.catalog_source, '')
-CYPHER;
-
-    private const CYPHER_CONTEXTUAL_BINDS = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (i:Instance {name: row.when})
-MERGE (g:Abstract {name: row.give})
-SET g.kind = row.give_kind,
-    g.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE g.reason END
-MERGE (i)-[r:CONTEXTUAL_BINDS]->(g)
-SET r.needs = row.needs,
-    r.needs_kind = row.needs_kind,
-    r.reason = CASE WHEN row.reason <> '' THEN row.reason ELSE r.reason END
-CYPHER;
-
-    private const CYPHER_ROUTES = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (r:Route {key: row.key})
-SET r.uri = row.uri,
-    r.methods = row.methods,
-    r.name = row.name,
-    r.action = row.action
-REMOVE r.route_name
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (r)-[:HANDLED_BY]->(id)
-CYPHER;
-
-    private const CYPHER_ROUTE_MIDDLEWARE = <<<'CYPHER'
-UNWIND $rows AS row
-MERGE (r:Route {key: row.route_key})
-MERGE (m:Middleware {key: row.middleware_key})
-SET m.name = row.middleware_key
-MERGE (id:Abstract {name: row.identifier})
-SET id.kind = coalesce(row.identifier_kind, id.kind)
-MERGE (m)-[:IDENTIFIED_AS]->(id)
-MERGE (r)-[u:USES_MIDDLEWARE {order: row.order}]->(m)
-SET u.parameters = coalesce(row.parameters, '')
-CYPHER;
-
-    private const CYPHER_DROP_LEGACY_IDENTIFIERS = <<<'CYPHER'
-MATCH (n:Identifier)
-DETACH DELETE n
-CYPHER;
-
-    private const CYPHER_DROP_LEGACY_ABSTRACT_SECONDARY_LABELS = <<<'CYPHER'
-MATCH (a:Abstract)
-REMOVE a:Interface, a:Class, a:AbstractType
-CYPHER;
+    /** Label used by graphs written before Identifier was merged into Abstract. */
+    private const LEGACY_IDENTIFIER_LABEL = 'Identifier';
 
     public function __construct(
         private ContainerGraphConnection $connection,
@@ -224,42 +126,15 @@ CYPHER;
         $this->validateBroadcastChannelRows($broadcastChannelRows);
 
         $this->ensureConstraints();
-        $this->connection->run(self::CYPHER_DROP_LEGACY_IDENTIFIERS);
-        $this->connection->run(self::CYPHER_DROP_LEGACY_ABSTRACT_SECONDARY_LABELS);
+        $this->table(self::LEGACY_IDENTIFIER_LABEL)->delete();
 
-        if ($instanceRows !== []) {
-            $this->connection->run(self::CYPHER_INSTANCES, ['rows' => $instanceRows]);
-        }
-        if ($bindingRows !== []) {
-            $this->connection->run(self::CYPHER_BINDINGS, ['rows' => $bindingRows]);
-        }
-        if ($dependencyChainRows !== []) {
-            $this->connection->run(self::CYPHER_IDENTIFIED_AS, ['rows' => $dependencyChainRows]);
-
-            $instanceChains = array_values(array_filter(
-                $dependencyChainRows,
-                static fn (array $row): bool => ($row['instance'] ?? '') !== '',
-            ));
-
-            if ($instanceChains !== []) {
-                $this->connection->run(self::CYPHER_INSTANCE_DEPENDS_ON, ['rows' => $instanceChains]);
-            }
-        }
-
-        $abstractResolveRows = $this->buildAbstractResolveRows($instanceRows, $bindingRows, $dependencyChainRows);
-        if ($abstractResolveRows !== []) {
-            $this->connection->run(self::CYPHER_ABSTRACT_RESOLVES_TO, ['rows' => $abstractResolveRows]);
-        }
-
-        if ($contextualBindingRows !== []) {
-            $this->connection->run(self::CYPHER_CONTEXTUAL_BINDS, ['rows' => $contextualBindingRows]);
-        }
-        if ($routeRows !== []) {
-            $this->connection->run(self::CYPHER_ROUTES, ['rows' => $routeRows]);
-        }
-        if ($routeMiddlewareRows !== []) {
-            $this->connection->run(self::CYPHER_ROUTE_MIDDLEWARE, ['rows' => $routeMiddlewareRows]);
-        }
+        $this->writeInstances(array_column($instanceRows, 'class'));
+        $this->writeBindings($bindingRows);
+        $this->writeDependencyChains($dependencyChainRows);
+        $this->writeAbstractResolves($this->buildAbstractResolveRows($instanceRows, $bindingRows, $dependencyChainRows));
+        $this->writeContextualBindings($contextualBindingRows);
+        $this->writeRoutes($routeRows);
+        $this->writeRouteMiddleware($routeMiddlewareRows);
         $this->writeEvents($eventRows);
         $this->writeQueueConnections($queueConnectionRows);
         $this->writeJobs($jobRows);
@@ -278,21 +153,232 @@ CYPHER;
         $this->writeBroadcastChannels($broadcastChannelRows);
     }
 
-    /**
-     * @return array<string, string>
-     */
-    public function cypherTemplates(): array
+    private function table(string $label): Neo4jQueryBuilder
     {
-        return [
-            'instances' => self::CYPHER_INSTANCES,
-            'bindings' => self::CYPHER_BINDINGS,
-            'identified_as' => self::CYPHER_IDENTIFIED_AS,
-            'abstract_resolves_to' => self::CYPHER_ABSTRACT_RESOLVES_TO,
-            'instance_depends_on' => self::CYPHER_INSTANCE_DEPENDS_ON,
-            'contextual_binds' => self::CYPHER_CONTEXTUAL_BINDS,
-            'routes' => self::CYPHER_ROUTES,
-            'route_middleware' => self::CYPHER_ROUTE_MIDDLEWARE,
-        ];
+        $query = DB::connection(Neo4jBoltClient::ELOQUENT_CONNECTION)->table($label);
+
+        if (! $query instanceof Neo4jQueryBuilder) {
+            throw new RuntimeException('The '.Neo4jBoltClient::ELOQUENT_CONNECTION.' connection must use the neo4j-laravel query builder.');
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  list<array{name: string, kind: string, reason?: string}>  $rows
+     */
+    private function upsertAbstracts(array $rows): void
+    {
+        $withReason = array_values(array_filter($rows, static fn (array $row): bool => isset($row['reason'])));
+        $withoutReason = array_values(array_filter($rows, static fn (array $row): bool => ! isset($row['reason'])));
+
+        $this->table(RuntimeGraphModel::LABEL_ABSTRACT)->upsert($withoutReason, [RuntimeGraphModel::NAME_KEY]);
+        $this->table(RuntimeGraphModel::LABEL_ABSTRACT)->upsert($withReason, [RuntimeGraphModel::NAME_KEY]);
+    }
+
+    /**
+     * @param  list<string>  $names
+     */
+    private function writeInstances(array $names): void
+    {
+        $this->table(RuntimeGraphModel::LABEL_INSTANCE)->upsert(
+            array_map(static fn (string $name): array => ['name' => $name], $names),
+            [RuntimeGraphModel::NAME_KEY],
+        );
+    }
+
+    /**
+     * @param  array<int, array{abstract: string, abstractKind: string, concrete: string, concreteKind: string, shared: bool, type: string, source: string, confidence: string, provenance: string, remarks: string}>  $bindingRows
+     */
+    private function writeBindings(array $bindingRows): void
+    {
+        $abstracts = [];
+        $edges = [];
+        foreach ($bindingRows as $row) {
+            $abstracts[] = ['name' => $row['abstract'], 'kind' => $row['abstractKind']];
+            $abstracts[] = ['name' => $row['concrete'], 'kind' => $row['concreteKind']];
+            $edges[] = [
+                'from' => ['name' => $row['abstract']],
+                'to' => ['name' => $row['concrete']],
+                'properties' => [
+                    'type' => $row['type'],
+                    'source' => $row['source'],
+                    'confidence' => $row['confidence'],
+                    'provenance' => $row['provenance'],
+                    'remarks' => $row['remarks'] ?? '',
+                ],
+            ];
+        }
+
+        $this->upsertAbstracts($abstracts);
+        $this->table(RuntimeGraphModel::LABEL_ABSTRACT)->upsertRelationships('BINDS_TO>', RuntimeGraphModel::LABEL_ABSTRACT, $edges);
+    }
+
+    /**
+     * Dependency -[:IDENTIFIED_AS]-> Abstract for every chain, plus Instance -[:DEPENDS_ON]-> Dependency
+     * for chains that start at an instance.
+     *
+     * @param  array<int, array{instance: string, dependency_key: string, access: string, identifier: string, identifier_kind: string, lifetime: string, injection_type: string, method: string, parameter: string, via: string, file: string, line: int, source: string, confidence: string, provenance: string, remarks: string, catalog_source?: string, reason?: string, helper?: string}>  $dependencyChainRows
+     */
+    private function writeDependencyChains(array $dependencyChainRows): void
+    {
+        $dependencies = [];
+        $abstracts = [];
+        $identifiedAs = [];
+        $instances = [];
+        $dependsOn = [];
+        foreach ($dependencyChainRows as $row) {
+            $dependencies[] = ['key' => $row['dependency_key'], 'access' => $row['access']];
+            $abstract = ['name' => $row['identifier'], 'kind' => $row['identifier_kind']];
+            if (isset($row['reason'])) {
+                $abstract['reason'] = $row['reason'];
+            }
+            $abstracts[] = $abstract;
+            $identifiedAs[] = ['from' => ['key' => $row['dependency_key']], 'to' => ['name' => $row['identifier']]];
+
+            if ($row['instance'] === '') {
+                continue;
+            }
+
+            $instances[] = $row['instance'];
+            $dependsOn[] = [
+                'from' => ['name' => $row['instance']],
+                'to' => ['key' => $row['dependency_key']],
+                'properties' => [
+                    'file' => $row['file'],
+                    'line' => $row['line'],
+                    'via' => $row['via'],
+                    'type' => $row['injection_type'],
+                    'method' => $row['method'],
+                    'parameter' => $row['parameter'],
+                    'helper' => $row['helper'] ?? '',
+                    'source' => $row['source'],
+                    'confidence' => $row['confidence'],
+                    'provenance' => $row['provenance'],
+                    'remarks' => $row['remarks'],
+                    'catalog_source' => $row['catalog_source'] ?? '',
+                ],
+            ];
+        }
+
+        $this->table(RuntimeGraphModel::LABEL_DEPENDENCY)->upsert($dependencies, [RuntimeGraphModel::DEPENDENCY_KEY]);
+        $this->upsertAbstracts($abstracts);
+        $this->table(RuntimeGraphModel::LABEL_DEPENDENCY)->upsertRelationships(RuntimeGraphModel::REL_IDENTIFIED_AS.'>', RuntimeGraphModel::LABEL_ABSTRACT, $identifiedAs);
+        $this->writeInstances(array_values(array_unique($instances)));
+        $this->table(RuntimeGraphModel::LABEL_INSTANCE)->upsertRelationships(RuntimeGraphModel::REL_DEPENDS_ON.'>', RuntimeGraphModel::LABEL_DEPENDENCY, $dependsOn);
+    }
+
+    /**
+     * @param  array<int, array{identifier: string, identifier_kind: string, instance: string, lifetime: string}>  $rows
+     */
+    private function writeAbstractResolves(array $rows): void
+    {
+        $this->upsertAbstracts(array_map(static fn (array $row): array => ['name' => $row['identifier'], 'kind' => $row['identifier_kind']], $rows));
+        $this->writeInstances(array_values(array_unique(array_column($rows, 'instance'))));
+        $this->table(RuntimeGraphModel::LABEL_ABSTRACT)->upsertRelationships(
+            RuntimeGraphModel::REL_RESOLVES_TO.'>',
+            RuntimeGraphModel::LABEL_INSTANCE,
+            array_map(static fn (array $row): array => [
+                'from' => ['name' => $row['identifier']],
+                'to' => ['name' => $row['instance']],
+                'properties' => ['lifetime' => $row['lifetime']],
+            ], $rows),
+        );
+    }
+
+    /**
+     * An empty reason keeps the reason already stored on the node and edge.
+     *
+     * @param  array<int, array{when: string, when_kind: string, needs: string, needs_kind: string, give: string, give_kind: string, reason: string}>  $contextualBindingRows
+     */
+    private function writeContextualBindings(array $contextualBindingRows): void
+    {
+        $abstracts = [];
+        $edges = ['with_reason' => [], 'without_reason' => []];
+        foreach ($contextualBindingRows as $row) {
+            $properties = ['needs' => $row['needs'], 'needs_kind' => $row['needs_kind']];
+            $abstract = ['name' => $row['give'], 'kind' => $row['give_kind']];
+            if ($row['reason'] !== '') {
+                $abstract['reason'] = $properties['reason'] = $row['reason'];
+            }
+            $abstracts[] = $abstract;
+            $edges[$row['reason'] !== '' ? 'with_reason' : 'without_reason'][] = [
+                'from' => ['name' => $row['when']],
+                'to' => ['name' => $row['give']],
+                'properties' => $properties,
+            ];
+        }
+
+        $this->writeInstances(array_values(array_unique(array_column($contextualBindingRows, 'when'))));
+        $this->upsertAbstracts($abstracts);
+        foreach ($edges as $group) {
+            $this->table(RuntimeGraphModel::LABEL_INSTANCE)->upsertRelationships('CONTEXTUAL_BINDS>', RuntimeGraphModel::LABEL_ABSTRACT, $group);
+        }
+    }
+
+    /**
+     * route_name is a property from older exports; writing null removes it.
+     *
+     * @param  array<int, array{key: string, uri: string, methods: string, name: string, action: string, identifier: string, identifier_kind: string}>  $routeRows
+     */
+    private function writeRoutes(array $routeRows): void
+    {
+        $this->table(RuntimeGraphModel::LABEL_ROUTE)->upsert(array_map(static fn (array $row): array => [
+            'key' => $row['key'],
+            'uri' => $row['uri'],
+            'methods' => $row['methods'],
+            'name' => $row['name'],
+            'action' => $row['action'],
+            'route_name' => null,
+        ], $routeRows), [RuntimeGraphModel::ROUTE_KEY]);
+        $this->upsertAbstracts(array_map(static fn (array $row): array => ['name' => $row['identifier'], 'kind' => $row['identifier_kind']], $routeRows));
+        $this->table(RuntimeGraphModel::LABEL_ROUTE)->upsertRelationships(
+            RuntimeGraphModel::REL_HANDLED_BY.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (array $row): array => ['from' => ['key' => $row['key']], 'to' => ['name' => $row['identifier']]], $routeRows),
+        );
+    }
+
+    /**
+     * A route can use the same middleware twice (e.g. two throttle rules), so each
+     * route's USES_MIDDLEWARE edges are replaced instead of merged.
+     *
+     * @param  array<int, array{route_key: string, middleware_key: string, identifier: string, identifier_kind: string, parameters: string, order: int}>  $routeMiddlewareRows
+     */
+    private function writeRouteMiddleware(array $routeMiddlewareRows): void
+    {
+        $routeKeys = array_values(array_unique(array_column($routeMiddlewareRows, 'route_key')));
+
+        $this->table(RuntimeGraphModel::LABEL_ROUTE)->upsert(
+            array_map(static fn (string $key): array => ['key' => $key], $routeKeys),
+            [RuntimeGraphModel::ROUTE_KEY],
+        );
+        $this->table(RuntimeGraphModel::LABEL_MIDDLEWARE)->upsert(
+            array_map(static fn (array $row): array => ['key' => $row['middleware_key'], 'name' => $row['middleware_key']], $routeMiddlewareRows),
+            [RuntimeGraphModel::MIDDLEWARE_KEY],
+        );
+        $this->upsertAbstracts(array_map(static fn (array $row): array => ['name' => $row['identifier'], 'kind' => $row['identifier_kind']], $routeMiddlewareRows));
+        $this->table(RuntimeGraphModel::LABEL_MIDDLEWARE)->upsertRelationships(
+            RuntimeGraphModel::REL_IDENTIFIED_AS.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (array $row): array => ['from' => ['key' => $row['middleware_key']], 'to' => ['name' => $row['identifier']]], $routeMiddlewareRows),
+        );
+
+        $routes = $this->table(RuntimeGraphModel::LABEL_ROUTE);
+        $routes->deleteRelationships(
+            RuntimeGraphModel::REL_USES_MIDDLEWARE.'>',
+            RuntimeGraphModel::LABEL_MIDDLEWARE,
+            array_map(static fn (string $key): array => ['from' => ['key' => $key]], $routeKeys),
+        );
+        $routes->insertRelationships(
+            RuntimeGraphModel::REL_USES_MIDDLEWARE.'>',
+            RuntimeGraphModel::LABEL_MIDDLEWARE,
+            array_map(static fn (array $row): array => [
+                'from' => ['key' => $row['route_key']],
+                'to' => ['key' => $row['middleware_key']],
+                'properties' => ['order' => $row['order'], 'parameters' => $row['parameters']],
+            ], $routeMiddlewareRows),
+        );
     }
 
     /**
@@ -512,8 +598,7 @@ CYPHER;
     }
 
     /**
-     * Policy nodes are deleted and recreated because neo4j-laravel cannot delete a
-     * single relationship; DETACH DELETE is the only way to drop stale edges.
+     * Policy nodes are deleted and recreated so edges to a previous handler or model go away.
      *
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      */
@@ -646,7 +731,7 @@ CYPHER;
 
     /**
      * One row per listener; rows sharing an event key collapse into one node with
-     * one HANDLED_BY edge per distinct listener (last row wins), as MERGE did.
+     * one HANDLED_BY edge per distinct listener (last row wins).
      *
      * @param  array<int, array{key: string, name: string, action: string, identifier: string, identifier_kind: string}>  $eventRows
      */
@@ -882,7 +967,7 @@ CYPHER;
 
     /**
      * Several rows may share a channel key; they collapse into one node with one
-     * HANDLED_BY edge per distinct handler (last row wins), as MERGE did.
+     * HANDLED_BY edge per distinct handler (last row wins).
      *
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      */

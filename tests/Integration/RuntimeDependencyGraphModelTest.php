@@ -22,7 +22,6 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\Veri
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Support\ReportAggregator;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
-use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\Post;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\PostPolicy;
@@ -324,23 +323,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertFalse($this->graph->hasJobHandledBy(QueuedWelcomeMailable::class, QueuedWelcomeMailable::class));
     }
 
-    public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
+    public function test_traversal_cypher_supports_recursive_walk(): void
     {
-        $templates = (new ContainerGraphWriter(
-            new UnusedContainerGraphConnection
-        ))->cypherTemplates();
-
-        $this->assertArrayHasKey('routes', $templates);
-        $this->assertArrayHasKey('route_middleware', $templates);
-        $this->assertArrayHasKey('identified_as', $templates);
-        $this->assertArrayHasKey('abstract_resolves_to', $templates);
-        $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
-        $this->assertStringContainsString('USES_MIDDLEWARE', $templates['route_middleware']);
-        $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
-        $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
-        $this->assertStringContainsString(':Abstract', $templates['routes']);
-        $this->assertStringNotContainsString(':Identifier', $templates['routes']);
-
         $traversal = RuntimeGraphModel::routeTraversalCypher();
         $this->assertStringContainsString('DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*', $traversal);
         $this->assertStringContainsString('USES_MIDDLEWARE', $traversal);

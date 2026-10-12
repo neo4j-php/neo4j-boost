@@ -5,7 +5,6 @@ namespace Neo4j\LaravelBoost\Tests\Integration\Support;
 use Neo4j\LaravelBoost\GraphKnowledgeContributor;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
-use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 
 /**
  * In-memory stand-in for GraphKnowledgeContributor used in integration tests.
@@ -16,11 +15,6 @@ class RecordingGraphKnowledgeContributor extends GraphKnowledgeContributor
     public array $persistedContributions = [];
 
     private ?InMemoryClassDependencyGraphReader $graphReader = null;
-
-    public function __construct()
-    {
-        parent::__construct(new UnusedContainerGraphConnection);
-    }
 
     public function attachGraphReader(InMemoryClassDependencyGraphReader $reader): void
     {

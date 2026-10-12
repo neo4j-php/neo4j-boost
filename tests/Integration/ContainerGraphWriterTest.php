@@ -24,7 +24,6 @@ use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
 use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordsEloquentCypher;
 use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\TrackingContainerGraphConnection;
-use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\Neo4jLaravel\Neo4jConnection;
 
@@ -32,114 +31,127 @@ class ContainerGraphWriterTest extends TestCase
 {
     use RecordsEloquentCypher;
 
-    public function test_cypher_templates_include_core_keys(): void
+    public function test_bindings_write_both_abstracts_and_binds_to_metadata_in_bulk(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $keys = array_keys($writer->cypherTemplates());
-        sort($keys);
+        $this->recordEloquentCypher();
+        $binding = static fn (string $abstract, string $concrete, string $concreteKind): array => [
+            'abstract' => $abstract,
+            'abstractKind' => 'Interface',
+            'concrete' => $concrete,
+            'concreteKind' => $concreteKind,
+            'shared' => true,
+            'type' => 'singleton',
+            'source' => 'reflection',
+            'confidence' => 'high',
+            'provenance' => 'reflection',
+            'remarks' => '',
+        ];
 
-        $this->assertSame(['abstract_resolves_to', 'bindings', 'contextual_binds', 'identified_as', 'instance_depends_on', 'instances', 'route_middleware', 'routes'], $keys);
+        $this->writeRows([1 => [
+            $binding('App\\Contracts\\Ledger', 'App\\Ledgers\\ArrayLedger', 'Class'),
+            $binding('App\\Contracts\\Clock', 'clock', 'Alias'),
+        ]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Abstract'], ['App\\Contracts\\Ledger', 'Interface', 'clock', 'Alias']));
+        $edges = $this->statementsMatching($recorded, ['UNWIND', 'BINDS_TO'], ['App\\Contracts\\Ledger', 'App\\Ledgers\\ArrayLedger', 'App\\Contracts\\Clock', 'clock']);
+        $this->assertCount(1, $edges);
+        foreach (['type', 'source', 'confidence', 'provenance', 'remarks'] as $property) {
+            $this->assertStringContainsString('rel.'.$property, $edges[0]['cypher']);
+        }
     }
 
-    public function test_binding_cypher_uses_concrete_kind_for_non_class_targets(): void
+    public function test_dependency_chains_link_dependency_identifier_and_instance(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $bindingsTemplate = $writer->cypherTemplates()['bindings'];
+        $this->recordEloquentCypher();
+        $chain = static fn (string $instance, string $key): array => [
+            'instance' => $instance,
+            'dependency_key' => $key,
+            'access' => 'di',
+            'identifier' => 'Psr\\Log\\LoggerInterface',
+            'identifier_kind' => 'Interface',
+            'lifetime' => 'singleton',
+            'injection_type' => 'constructor',
+            'method' => '__construct',
+            'parameter' => 'logger',
+            'via' => 'constructor',
+            'file' => 'app/Services/Billing.php',
+            'line' => 12,
+            'source' => 'reflection',
+            'confidence' => 'high',
+            'provenance' => 'reflection',
+            'remarks' => '',
+        ];
 
-        $this->assertStringContainsString('row.concreteKind', $bindingsTemplate);
-        $this->assertStringContainsString('MERGE (a:Abstract {name: row.abstract})', $bindingsTemplate);
-        $this->assertStringContainsString('MERGE (c:Abstract {name: row.concrete})', $bindingsTemplate);
-        $this->assertStringContainsString('SET a.kind = row.abstractKind', $bindingsTemplate);
-        $this->assertStringContainsString('SET c.kind = row.concreteKind', $bindingsTemplate);
-        $this->assertStringNotContainsString('SET a:Class', $bindingsTemplate);
-        $this->assertStringNotContainsString('SET a:Interface', $bindingsTemplate);
-        $this->assertStringNotContainsString('SET a:AbstractType', $bindingsTemplate);
-        $this->assertStringContainsString('r.type = row.type', $bindingsTemplate);
-        $this->assertStringNotContainsString('MERGE (:Interface:Abstract', $bindingsTemplate);
+        $this->writeRows([2 => [$chain('App\\Services\\Billing', 'billing-logger'), $chain('', 'orphan-logger')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Dependency', 'access'], ['billing-logger', 'orphan-logger', 'di']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['IDENTIFIED_AS', ':Dependency'], ['billing-logger', 'orphan-logger', 'Psr\\Log\\LoggerInterface']));
+        $dependsOn = $this->statementsMatching($recorded, ['DEPENDS_ON', ':Instance'], ['App\\Services\\Billing', 'billing-logger', 'app/Services/Billing.php', 12]);
+        $this->assertCount(1, $dependsOn);
+        $this->assertCount(0, $this->statementsMatching($recorded, ['DEPENDS_ON'], ['orphan-logger']));
+        foreach (['file', 'line', 'via', 'type', 'method', 'parameter', 'helper', 'source', 'confidence', 'provenance', 'remarks', 'catalog_source'] as $property) {
+            $this->assertStringContainsString('rel.'.$property, $dependsOn[0]['cypher']);
+        }
     }
 
-    public function test_instance_depends_on_cypher_sets_metadata_on_edges(): void
+    public function test_instances_resolve_to_themselves(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $dependsOnTemplate = $writer->cypherTemplates()['instance_depends_on'];
+        $this->recordEloquentCypher();
 
-        $this->assertStringContainsString('d.via = row.via', $dependsOnTemplate);
-        $this->assertStringContainsString('d.file = row.file', $dependsOnTemplate);
-        $this->assertStringContainsString('d.line = row.line', $dependsOnTemplate);
-        $this->assertStringContainsString('d.type = row.injection_type', $dependsOnTemplate);
-        $this->assertStringContainsString('d.method = row.method', $dependsOnTemplate);
-        $this->assertStringContainsString('d.parameter = row.parameter', $dependsOnTemplate);
-        $this->assertStringContainsString('d.source = row.source', $dependsOnTemplate);
-        $this->assertStringContainsString('d.confidence = row.confidence', $dependsOnTemplate);
-        $this->assertStringContainsString('d.provenance = row.provenance', $dependsOnTemplate);
-        $this->assertStringContainsString('d.remarks = coalesce(row.remarks', $dependsOnTemplate);
-        $this->assertStringContainsString(':Instance', $dependsOnTemplate);
-        $this->assertStringContainsString(':Dependency', $dependsOnTemplate);
+        $this->writeRows([0 => [['class' => 'App\\Services\\Billing']]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $this->assertNotSame([], $this->statementsMatching($recorded, ['UNWIND', ':Instance'], ['App\\Services\\Billing']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['RESOLVES_TO', 'rel.lifetime'], ['App\\Services\\Billing', 'bind']));
     }
 
-    public function test_bindings_cypher_sets_edge_metadata(): void
+    public function test_routes_upsert_handler_and_clear_legacy_route_name(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $bindingsTemplate = $writer->cypherTemplates()['bindings'];
+        $this->recordEloquentCypher();
 
-        $this->assertStringContainsString('r.source = row.source', $bindingsTemplate);
-        $this->assertStringContainsString('r.confidence = row.confidence', $bindingsTemplate);
-        $this->assertStringContainsString('r.provenance = row.provenance', $bindingsTemplate);
-        $this->assertStringContainsString('r.remarks = coalesce(row.remarks', $bindingsTemplate);
+        $this->writeRows([4 => [[
+            'key' => 'GET|orders',
+            'uri' => 'orders',
+            'methods' => 'GET|HEAD',
+            'name' => 'orders.index',
+            'action' => 'App\\Http\\Controllers\\OrderController@index',
+            'identifier' => 'App\\Http\\Controllers\\OrderController',
+            'identifier_kind' => 'Class',
+        ]]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $routes = $this->statementsMatching($recorded, ['MERGE (n:Route', 'route_name'], ['GET|orders', 'orders.index']);
+        $this->assertCount(1, $routes);
+        $this->assertArrayHasKey('route_name', $routes[0]['params']['rows'][0]);
+        $this->assertNull($routes[0]['params']['rows'][0]['route_name']);
+        $this->assertCount(1, $this->statementsMatching($recorded, ['HANDLED_BY', ':Route'], ['GET|orders', 'App\\Http\\Controllers\\OrderController']));
     }
 
-    public function test_identified_as_cypher_links_dependency_to_abstract(): void
+    public function test_route_middleware_edges_are_replaced_and_keep_repeated_middleware(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['identified_as'];
+        $this->recordEloquentCypher();
+        $throttle = static fn (string $parameters, int $order): array => [
+            'route_key' => 'GET|orders',
+            'middleware_key' => 'throttle',
+            'identifier' => 'Illuminate\\Routing\\Middleware\\ThrottleRequests',
+            'identifier_kind' => 'Class',
+            'parameters' => $parameters,
+            'order' => $order,
+        ];
 
-        $this->assertStringContainsString('IDENTIFIED_AS', $template);
-        $this->assertStringContainsString('dep.access = row.access', $template);
-        $this->assertStringContainsString('MERGE (id:Abstract {name: row.identifier})', $template);
-        $this->assertStringContainsString(':Dependency', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-        $this->assertStringNotContainsString('MERGE (:Interface:Abstract', $template);
-    }
+        $this->writeRows([5 => [$throttle('60,1', 0), $throttle('10,1', 1)]]);
+        $recorded = $this->takeEloquentCypher();
 
-    public function test_abstract_resolves_to_cypher_sets_lifetime(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['abstract_resolves_to'];
-
-        $this->assertStringContainsString('RESOLVES_TO', $template);
-        $this->assertStringContainsString('r.lifetime = row.lifetime', $template);
-        $this->assertStringContainsString(':Abstract', $template);
-        $this->assertStringContainsString(':Instance', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-    }
-
-    public function test_routes_cypher_uses_handled_by(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['routes'];
-
-        $this->assertStringContainsString(':Route', $template);
-        $this->assertStringContainsString('HANDLED_BY', $template);
-        $this->assertStringContainsString(':Abstract', $template);
-        $this->assertStringContainsString('REMOVE r.route_name', $template);
-        $this->assertStringNotContainsString('r.route_name = row.route_name', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-    }
-
-    public function test_route_middleware_cypher_uses_middleware_and_identified_as(): void
-    {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $template = $writer->cypherTemplates()['route_middleware'];
-
-        $this->assertStringContainsString(':Route', $template);
-        $this->assertStringContainsString(':Middleware', $template);
-        $this->assertStringContainsString('USES_MIDDLEWARE', $template);
-        $this->assertStringContainsString('IDENTIFIED_AS', $template);
-        $this->assertStringContainsString(':Abstract', $template);
-        $this->assertStringContainsString('m.name = row.middleware_key', $template);
-        $this->assertStringNotContainsString(':Identifier', $template);
-        $this->assertStringContainsString('u.parameters = coalesce(row.parameters', $template);
-        $this->assertStringContainsString('order: row.order', $template);
+        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Middleware'], ['throttle']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['IDENTIFIED_AS', ':Middleware'], ['throttle', 'Illuminate\\Routing\\Middleware\\ThrottleRequests']));
+        $delete = $this->statementsMatching($recorded, ['USES_MIDDLEWARE', 'DELETE rel'], ['GET|orders']);
+        $create = $this->statementsMatching($recorded, ['USES_MIDDLEWARE', 'CREATE'], ['60,1', '10,1', 0, 1]);
+        $this->assertCount(1, $delete);
+        $this->assertCount(1, $create);
+        $this->assertCount(2, $create[0]['params']['rows']);
+        $this->assertLessThan(array_search($create[0], $recorded, true), array_search($delete[0], $recorded, true));
     }
 
     public function test_authorization_models_use_package_connection_labels_and_keys(): void
@@ -316,7 +328,8 @@ class ContainerGraphWriterTest extends TestCase
         ]);
         $recorded = $this->takeEloquentCypher();
 
-        $this->assertCount(0, $this->statementsMatching($recorded, ['DETACH DELETE']));
+        $this->assertCount(0, $this->statementsMatching($recorded, [':Mailer', 'DETACH DELETE']));
+        $this->assertCount(0, $this->statementsMatching($recorded, [':BroadcastConnection', 'DETACH DELETE']));
         $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:Mailer'], ['smtp', true]));
         $this->assertCount(1, $this->statementsMatching($recorded, ['CREATE (n0:BroadcastConnection'], ['pusher', false]));
     }
@@ -447,28 +460,36 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertCount(0, $this->statementsMatching($recorded, ['HANDLED_BY']));
     }
 
-    public function test_write_strips_legacy_abstract_secondary_labels(): void
+    public function test_write_drops_legacy_identifier_nodes(): void
     {
-        $connection = new TrackingContainerGraphConnection;
-        $writer = new ContainerGraphWriter($connection);
+        $this->recordEloquentCypher();
 
-        $writer->write([], [], []);
+        $this->writeRows([]);
 
-        $this->assertTrue($connection->ranStatementMatching('REMOVE a:Interface, a:Class, a:AbstractType'));
-        $this->assertTrue($connection->ranStatementMatching('MATCH (a:Abstract)'));
+        $this->assertCount(1, $this->statementsMatching($this->takeEloquentCypher(), [':Identifier', 'DETACH DELETE']));
     }
 
-    public function test_contextual_binds_cypher_sets_needs_and_give_metadata(): void
+    public function test_contextual_binds_keep_stored_reason_when_row_reason_is_empty(): void
     {
-        $writer = new ContainerGraphWriter(new UnusedContainerGraphConnection);
-        $contextualTemplate = $writer->cypherTemplates()['contextual_binds'];
+        $this->recordEloquentCypher();
+        $row = static fn (string $give, string $reason): array => [
+            'when' => 'App\\Http\\Controllers\\ReportController',
+            'when_kind' => 'Class',
+            'needs' => 'App\\Contracts\\Exporter',
+            'needs_kind' => 'Interface',
+            'give' => $give,
+            'give_kind' => 'Class',
+            'reason' => $reason,
+        ];
 
-        $this->assertStringContainsString('CONTEXTUAL_BINDS', $contextualTemplate);
-        $this->assertStringContainsString('r.needs = row.needs', $contextualTemplate);
-        $this->assertStringContainsString('r.needs_kind = row.needs_kind', $contextualTemplate);
-        $this->assertStringContainsString(':Instance', $contextualTemplate);
-        $this->assertStringContainsString(':Abstract', $contextualTemplate);
-        $this->assertStringNotContainsString(':Identifier', $contextualTemplate);
+        $this->writeRows([3 => [$row('App\\Exporters\\CsvExporter', ''), $row('App\\Exporters\\PdfExporter', 'closure')]]);
+        $recorded = $this->takeEloquentCypher();
+
+        $withoutReason = $this->statementsMatching($recorded, ['CONTEXTUAL_BINDS', 'rel.needs_kind'], ['App\\Exporters\\CsvExporter']);
+        $this->assertCount(1, $withoutReason);
+        $this->assertStringNotContainsString('rel.reason', $withoutReason[0]['cypher']);
+        $this->assertCount(1, $this->statementsMatching($recorded, ['CONTEXTUAL_BINDS', 'rel.reason', 'rel.needs_kind'], ['App\\Exporters\\PdfExporter', 'closure']));
+        $this->assertCount(1, $this->statementsMatching($recorded, ['MERGE (n:Abstract', 'reason'], ['App\\Exporters\\PdfExporter', 'closure']));
     }
 
     public function test_parse_dsn_extracts_uri_and_credentials(): void

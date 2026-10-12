@@ -25,7 +25,7 @@ final class AbstractNode extends Neo4jModel
     protected $guarded = [];
 
     /**
-     * Same effect as MERGE (a:Abstract {name}) SET a.kind = ...
+     * Creates the Abstract node, or updates the kind of the existing one.
      */
     public static function ensure(string $name, string $kind): self
     {

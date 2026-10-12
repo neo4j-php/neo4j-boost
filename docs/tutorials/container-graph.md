@@ -151,7 +151,7 @@ Container graph written to Neo4j successfully.
 | Option | Behavior |
 |--------|----------|
 | `--dry-run` | Extract and summarize only; **no** Neo4j write |
-| `--print-cypher` | Print the writer’s Cypher templates and a small sample of params before writing (or with dry-run) |
+| `--print-cypher` | Print a small sample of params before writing, then every distinct Cypher statement neo4j-laravel ran (nothing is generated with `--dry-run`) |
 
 ```bash
 php artisan container:graph --dry-run
