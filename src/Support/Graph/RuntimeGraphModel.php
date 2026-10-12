@@ -24,6 +24,7 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * Mailable -[:USES_CONNECTION]-> QueueConnection
  * BroadcastChannel -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * ArtisanCommand -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
+ * ServiceProvider -[:REGISTERS]-> Abstract -[:BINDS_TO]-> Abstract
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -64,6 +65,8 @@ final class RuntimeGraphModel
 
     public const LABEL_ARTISAN_COMMAND = 'ArtisanCommand';
 
+    public const LABEL_SERVICE_PROVIDER = 'ServiceProvider';
+
     public const LABEL_INSTANCE = 'Instance';
 
     public const LABEL_DEPENDENCY = 'Dependency';
@@ -93,6 +96,8 @@ final class RuntimeGraphModel
     public const REL_USES_CHANNEL = 'USES_CHANNEL';
 
     public const REL_USES_MAILER = 'USES_MAILER';
+
+    public const REL_REGISTERS = 'REGISTERS';
 
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
@@ -144,6 +149,9 @@ final class RuntimeGraphModel
     /** Unique property on ArtisanCommand nodes (command name). */
     public const ARTISAN_COMMAND_KEY = 'key';
 
+    /** Unique property on ServiceProvider nodes (FQCN). */
+    public const SERVICE_PROVIDER_KEY = 'key';
+
     /** Unique property on Instance / Abstract nodes. */
     public const NAME_KEY = 'name';
 
@@ -178,6 +186,7 @@ final class RuntimeGraphModel
             'CREATE CONSTRAINT mailer_key IF NOT EXISTS FOR (n:Mailer) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT mailable_key IF NOT EXISTS FOR (n:Mailable) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT artisan_command_key IF NOT EXISTS FOR (n:ArtisanCommand) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT service_provider_key IF NOT EXISTS FOR (n:ServiceProvider) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT instance_name IF NOT EXISTS FOR (n:Instance) REQUIRE n.name IS UNIQUE',
             'CREATE CONSTRAINT dependency_key IF NOT EXISTS FOR (n:Dependency) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT abstract_name IF NOT EXISTS FOR (n:Abstract) REQUIRE n.name IS UNIQUE',
@@ -257,6 +266,19 @@ CYPHER;
 MATCH (c:BroadcastChannel {key: $channelKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN c AS broadcastChannel, root AS rootInstance, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Container keys a ServiceProvider registers, with the concrete each key binds to.
+     */
+    public static function serviceProviderRegistrationsCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (p:ServiceProvider {key: $providerKey})-[r:REGISTERS]->(a:Abstract)
+OPTIONAL MATCH (a)-[b:BINDS_TO]->(c:Abstract)
+RETURN p AS serviceProvider, a AS abstract, r AS registers, b AS binding, c AS concrete
+ORDER BY a.name
 CYPHER;
     }
 

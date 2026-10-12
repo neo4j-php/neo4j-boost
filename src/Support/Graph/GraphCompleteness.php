@@ -41,6 +41,7 @@ final class GraphCompleteness
             'Closure notification channels are not exported as IDENTIFIED_AS targets.',
             'Broadcast channel closure callbacks export as BroadcastChannel nodes without HANDLED_BY; class-based channel auth uses join() (channel-binding parameters are not method injection).',
             'Closure Artisan commands (Artisan::command()) export as ArtisanCommand nodes without HANDLED_BY; aliases are stored as a property, not separate nodes.',
+            'ServiceProvider REGISTERS edges come from $bindings / $singletons, deferred provides(), and literal-key bind/singleton/scoped/instance calls in register(); bindings with dynamic keys or made outside register() are not attributed to a provider.',
         ];
     }
 

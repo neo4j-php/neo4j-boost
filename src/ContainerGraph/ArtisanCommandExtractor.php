@@ -83,7 +83,7 @@ final class ArtisanCommandExtractor
         if ($command instanceof ClosureCommand) {
             return $row + [
                 'kind' => 'closure',
-                'source' => $this->sourceForFile($this->closureFile($command)),
+                'source' => CodeSource::forFile($this->closureFile($command)),
                 'action' => '',
                 'identifier' => '',
                 'identifier_kind' => '',
@@ -95,7 +95,7 @@ final class ArtisanCommandExtractor
 
         return $row + [
             'kind' => 'class',
-            'source' => $this->sourceForFile((string) $reflection->getFileName()),
+            'source' => CodeSource::forFile((string) $reflection->getFileName()),
             'action' => $class.'@'.$this->handlerMethod($reflection),
             'identifier' => $class,
             'identifier_kind' => 'Class',
@@ -126,16 +126,5 @@ final class ArtisanCommandExtractor
         return $callback instanceof Closure
             ? (string) (new ReflectionFunction($callback))->getFileName()
             : '';
-    }
-
-    private function sourceForFile(string $file): string
-    {
-        $path = str_replace('\\', '/', $file);
-
-        if (str_contains($path, '/vendor/laravel/framework/') || str_contains($path, '/vendor/symfony/console/')) {
-            return 'framework';
-        }
-
-        return str_contains($path, '/vendor/') ? 'vendor' : 'app';
     }
 }
