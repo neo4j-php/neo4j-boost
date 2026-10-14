@@ -84,6 +84,12 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}> */
     public array $artisanCommandRows = [];
 
+    /** @var array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}> */
+    public array $serviceProviderRows = [];
+
+    /** @var array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}> */
+    public array $serviceProviderRegistersRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -113,6 +119,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
+     * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
      */
     public function write(
         array $instanceRows,
@@ -138,6 +146,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
         array $artisanCommandRows = [],
+        array $serviceProviderRows = [],
+        array $serviceProviderRegistersRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -162,6 +172,8 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->broadcastConnectionRows = $broadcastConnectionRows;
         $this->broadcastChannelRows = $broadcastChannelRows;
         $this->artisanCommandRows = $artisanCommandRows;
+        $this->serviceProviderRows = $serviceProviderRows;
+        $this->serviceProviderRegistersRows = $serviceProviderRegistersRows;
     }
 
     /**
@@ -535,6 +547,34 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     {
         foreach ($this->artisanCommandRows as $row) {
             if ($row['key'] === $commandKey) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return null|array{key: string, name: string, deferred: bool, loaded: bool, source: string}
+     */
+    public function findServiceProvider(string $providerKey): ?array
+    {
+        foreach ($this->serviceProviderRows as $row) {
+            if ($row['key'] === $providerKey) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return null|array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}
+     */
+    public function findServiceProviderRegistration(string $providerKey, string $abstract): ?array
+    {
+        foreach ($this->serviceProviderRegistersRows as $row) {
+            if ($row['provider_key'] === $providerKey && $row['abstract'] === $abstract) {
                 return $row;
             }
         }

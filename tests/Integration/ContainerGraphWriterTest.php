@@ -615,6 +615,75 @@ class ContainerGraphWriterTest extends TestCase
         ]]);
     }
 
+    public function test_service_providers_replace_registers_edges_and_keep_existing_abstract_kind(): void
+    {
+        $this->recordGraphWrites();
+
+        $this->writeRows([
+            23 => [
+                ['key' => 'App\\Providers\\BillingServiceProvider', 'name' => 'BillingServiceProvider', 'deferred' => false, 'loaded' => true, 'source' => 'app'],
+                ['key' => 'App\\Providers\\EmptyServiceProvider', 'name' => 'EmptyServiceProvider', 'deferred' => true, 'loaded' => false, 'source' => 'app'],
+            ],
+            24 => [
+                ['provider_key' => 'App\\Providers\\BillingServiceProvider', 'abstract' => 'billing.gateway', 'abstract_kind' => 'Alias', 'type' => 'singleton', 'via' => 'register'],
+            ],
+        ]);
+        $recorded = $this->takeGraphWrites();
+
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_SERVICE_PROVIDER)->upsert([
+            ['key' => 'App\\Providers\\BillingServiceProvider', 'name' => 'BillingServiceProvider', 'deferred' => false, 'loaded' => true, 'source' => 'app'],
+            ['key' => 'App\\Providers\\EmptyServiceProvider', 'name' => 'EmptyServiceProvider', 'deferred' => true, 'loaded' => false, 'source' => 'app'],
+        ], ['key']));
+        $clear = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_SERVICE_PROVIDER)->deleteRelationships(
+            'REGISTERS>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            [['from' => ['key' => 'App\\Providers\\BillingServiceProvider']], ['from' => ['key' => 'App\\Providers\\EmptyServiceProvider']]],
+        ));
+        $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_ABSTRACT)->upsert(
+            [['name' => 'billing.gateway', 'kind' => 'Alias']],
+            ['name'],
+            ['name'],
+        ));
+        $registers = $this->assertWroteOnce($recorded, fn () => $this->graph(RuntimeGraphModel::LABEL_SERVICE_PROVIDER)->upsertRelationships(
+            'REGISTERS>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            [[
+                'from' => ['key' => 'App\\Providers\\BillingServiceProvider'],
+                'to' => ['name' => 'billing.gateway'],
+                'properties' => ['type' => 'singleton', 'via' => 'register'],
+            ]],
+        ));
+        $this->assertLessThan($registers, $clear);
+    }
+
+    public function test_service_provider_rows_require_boolean_deferred(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Service provider row is missing boolean deferred');
+
+        (new ContainerGraphWriter(new UnusedContainerGraphConnection))->write([], [], [], serviceProviderRows: [[
+            'key' => 'App\\Providers\\BillingServiceProvider',
+            'name' => 'BillingServiceProvider',
+            'deferred' => 'no',
+            'loaded' => true,
+            'source' => 'app',
+        ]]);
+    }
+
+    public function test_service_provider_registrations_require_a_known_provider(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Service provider registers row references unknown provider App\\Providers\\Missing');
+
+        (new ContainerGraphWriter(new UnusedContainerGraphConnection))->write([], [], [], serviceProviderRegistersRows: [[
+            'provider_key' => 'App\\Providers\\Missing',
+            'abstract' => 'billing.gateway',
+            'abstract_kind' => 'Alias',
+            'type' => 'normal',
+            'via' => 'bindings',
+        ]]);
+    }
+
     public function test_write_drops_legacy_identifier_nodes(): void
     {
         $this->recordGraphWrites();
@@ -672,7 +741,7 @@ class ContainerGraphWriterTest extends TestCase
      */
     private function writeRows(array $rowsByPosition): void
     {
-        $arguments = array_fill(0, 23, []);
+        $arguments = array_fill(0, 25, []);
         foreach ($rowsByPosition as $position => $rows) {
             $arguments[$position] = $rows;
         }

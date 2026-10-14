@@ -79,6 +79,8 @@ class ContainerGraphWriter
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
+     * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
      */
     public function write(
         array $instanceRows,
@@ -104,6 +106,8 @@ class ContainerGraphWriter
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
         array $artisanCommandRows = [],
+        array $serviceProviderRows = [],
+        array $serviceProviderRegistersRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -127,6 +131,7 @@ class ContainerGraphWriter
         $this->validateBroadcastConnectionRows($broadcastConnectionRows);
         $this->validateBroadcastChannelRows($broadcastChannelRows);
         $this->validateArtisanCommandRows($artisanCommandRows);
+        $this->validateServiceProviderRows($serviceProviderRows, $serviceProviderRegistersRows);
 
         $this->ensureConstraints();
         $this->table(self::LEGACY_IDENTIFIER_LABEL)->delete();
@@ -155,6 +160,7 @@ class ContainerGraphWriter
         $this->writeBroadcastConnections($broadcastConnectionRows);
         $this->writeBroadcastChannels($broadcastChannelRows);
         $this->writeArtisanCommands($artisanCommandRows);
+        $this->writeServiceProviders($serviceProviderRows, $serviceProviderRegistersRows);
     }
 
     private function table(string $label): Neo4jQueryBuilder
@@ -1037,6 +1043,44 @@ class ContainerGraphWriter
     }
 
     /**
+     * A provider only names what it registers, so an Abstract that already has a
+     * kind keeps it. Each provider's REGISTERS edges are replaced on every export.
+     *
+     * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
+     * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
+     */
+    private function writeServiceProviders(array $serviceProviderRows, array $serviceProviderRegistersRows): void
+    {
+        $providers = $this->table(RuntimeGraphModel::LABEL_SERVICE_PROVIDER);
+        $providers->upsert(array_map(static fn (array $row): array => [
+            'key' => $row['key'],
+            'name' => $row['name'],
+            'deferred' => $row['deferred'],
+            'loaded' => $row['loaded'],
+            'source' => $row['source'],
+        ], $serviceProviderRows), [RuntimeGraphModel::SERVICE_PROVIDER_KEY]);
+        $providers->deleteRelationships(
+            RuntimeGraphModel::REL_REGISTERS.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (array $row): array => ['from' => ['key' => $row['key']]], $serviceProviderRows),
+        );
+        $this->table(RuntimeGraphModel::LABEL_ABSTRACT)->upsert(
+            array_map(static fn (array $row): array => ['name' => $row['abstract'], 'kind' => $row['abstract_kind']], $serviceProviderRegistersRows),
+            [RuntimeGraphModel::NAME_KEY],
+            [RuntimeGraphModel::NAME_KEY],
+        );
+        $providers->upsertRelationships(
+            RuntimeGraphModel::REL_REGISTERS.'>',
+            RuntimeGraphModel::LABEL_ABSTRACT,
+            array_map(static fn (array $row): array => [
+                'from' => ['key' => $row['provider_key']],
+                'to' => ['name' => $row['abstract']],
+                'properties' => ['type' => $row['type'], 'via' => $row['via']],
+            ], $serviceProviderRegistersRows),
+        );
+    }
+
+    /**
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      */
     private function validatePolicyRows(array $policyRows): void
@@ -1204,6 +1248,43 @@ class ContainerGraphWriter
 
             if (! array_key_exists('hidden', $row) || ! is_bool($row['hidden'])) {
                 throw new \InvalidArgumentException('Artisan command row is missing boolean hidden');
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
+     * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
+     */
+    private function validateServiceProviderRows(array $serviceProviderRows, array $serviceProviderRegistersRows): void
+    {
+        $providerKeys = [];
+
+        foreach ($serviceProviderRows as $row) {
+            foreach (['key', 'name', 'source'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Service provider row is missing string {$key}");
+                }
+            }
+
+            foreach (['deferred', 'loaded'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_bool($row[$key])) {
+                    throw new \InvalidArgumentException("Service provider row is missing boolean {$key}");
+                }
+            }
+
+            $providerKeys[$row['key']] = true;
+        }
+
+        foreach ($serviceProviderRegistersRows as $row) {
+            foreach (['provider_key', 'abstract', 'abstract_kind', 'type', 'via'] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Service provider registers row is missing string {$key}");
+                }
+            }
+
+            if (! isset($providerKeys[$row['provider_key']])) {
+                throw new \InvalidArgumentException("Service provider registers row references unknown provider {$row['provider_key']}");
             }
         }
     }

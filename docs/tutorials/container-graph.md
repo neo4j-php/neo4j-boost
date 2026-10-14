@@ -50,10 +50,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 9. **Mailers** and **mailables** from `config/mail.php` and scanned mailable classes (queued mailables are not Jobs)
 10. **Broadcasting** from `config/broadcasting.php` connections and live channel auth (`Broadcast::channel`)
 11. **Artisan commands** from the live console application (every registered command, not only scheduled ones; closure commands export without `HANDLED_BY`)
-12. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-13. **Constructor and method-injection dependencies** for concrete classes
-14. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-15. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+12. **Service providers** from the live application (loaded and still-deferred) and the container keys each one registers
+13. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+14. **Constructor and method-injection dependencies** for concrete classes
+15. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+16. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -76,10 +77,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:BroadcastConnection` | `key` (connection name) | From `config/broadcasting.php`. `driver`, `is_default`. |
 | `:BroadcastChannel` | `key` (channel pattern) | Registered channel auth. Optional `guards`. |
 | `:ArtisanCommand` | `key` (command name, e.g. `queue:work`) | Registered Artisan command. `description`, `hidden`, `aliases` (comma-separated), `kind` (`class`/`closure`), `source` (`app`/`vendor`/`framework`). |
+| `:ServiceProvider` | `key` (provider FQCN) | Registered service provider. `name` (short class name), `deferred`, `loaded` (false for deferred providers not loaded yet), `source` (`app`/`vendor`/`framework`). |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, mailables, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, broadcast channels, Artisan commands, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, mailables, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, broadcast channels, Artisan commands, service provider registrations, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -107,6 +109,7 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:Mailable)-[:USES_CONNECTION]->(:QueueConnection)  # when a queued mailable declares a connection
 (:BroadcastChannel)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based channel auth
 (:ArtisanCommand)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based commands
+(:ServiceProvider)-[:REGISTERS {type,via}]->(:Abstract)-[:BINDS_TO]->(:Abstract)  # container keys the provider registers
 ```
 
 | Type | Meaning | Properties |
@@ -122,6 +125,7 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 | `IDENTIFIED_AS` | Dependency, middleware, or NotificationChannel → identifier | — |
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
+| `REGISTERS` | ServiceProvider → container key it registers | `type` (`normal`/`singleton`/`scoped`/`instance`, empty when only listed in `provides()`), `via` (`bindings`/`singletons`/`register`/`provides`) |
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
 | `CONTEXTUAL_BINDS` | Contextual `when/needs/give` | `needs`, `needs_kind`, `reason` |
 
@@ -321,7 +325,7 @@ Typical loop:
 1. Change bindings, constructors, routes, middleware, events, jobs, or schedule entries in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:Mailable` / `:BroadcastChannel` / `:ScheduledTask` / `:ArtisanCommand` / `:Instance` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:Mailable` / `:BroadcastChannel` / `:ScheduledTask` / `:ArtisanCommand` / `:ServiceProvider` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 

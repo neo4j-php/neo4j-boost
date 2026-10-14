@@ -3,6 +3,7 @@
 namespace Neo4j\LaravelBoost\Tests\Integration;
 
 use Illuminate\Auth\Access\Gate;
+use Illuminate\Cache\CacheServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Broadcasting\Factory;
 use Illuminate\Contracts\Console\Kernel;
@@ -27,6 +28,9 @@ use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\Post;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\PostPolicy;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\ArrayLedger;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\BillingServiceProvider;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\Ledger;
 
 /**
  * Acceptance coverage for the runtime dependency graph model:
@@ -42,7 +46,8 @@ use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoiceP
  * Mailable -> Abstract -> Instance
  * Mailable -> Mailer / QueueConnection
  * BroadcastChannel -> Abstract -> Instance
- * ArtisanCommand -> Abstract -> Instance.
+ * ArtisanCommand -> Abstract -> Instance
+ * ServiceProvider -> REGISTERS -> Abstract.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -203,6 +208,37 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $frameworkCommand = $this->graph->findArtisanCommand('list');
         $this->assertNotNull($frameworkCommand);
         $this->assertSame('framework', $frameworkCommand['source']);
+    }
+
+    public function test_exports_service_providers_with_the_bindings_they_register(): void
+    {
+        $this->app->register(BillingServiceProvider::class);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Service providers:')
+            ->expectsOutputToContain('Service provider registrations:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $billing = $this->graph->findServiceProvider(BillingServiceProvider::class);
+        $this->assertNotNull($billing);
+        $this->assertSame(['deferred' => false, 'loaded' => true, 'source' => 'app'], [
+            'deferred' => $billing['deferred'],
+            'loaded' => $billing['loaded'],
+            'source' => $billing['source'],
+        ]);
+
+        $ledger = $this->graph->findServiceProviderRegistration(BillingServiceProvider::class, Ledger::class);
+        $this->assertNotNull($ledger);
+        $this->assertSame(['singleton', 'singletons'], [$ledger['type'], $ledger['via']]);
+        $this->assertSame(ArrayLedger::class, $this->graph->findBinding(Ledger::class)['concrete'] ?? null);
+        $this->assertSame('scoped', $this->graph->findServiceProviderRegistration(BillingServiceProvider::class, 'billing.session')['type'] ?? null);
+
+        $cache = $this->graph->findServiceProvider(CacheServiceProvider::class);
+        $this->assertNotNull($cache);
+        $this->assertTrue($cache['deferred']);
+        $this->assertSame('framework', $cache['source']);
+        $this->assertNotNull($this->graph->findServiceProviderRegistration(CacheServiceProvider::class, 'cache'));
     }
 
     public function test_exports_auth_guards_providers_and_password_brokers(): void
@@ -436,6 +472,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
             ->expectsOutputToContain('Broadcast connections:')
             ->expectsOutputToContain('Broadcast channels:')
             ->expectsOutputToContain('Artisan commands:')
+            ->expectsOutputToContain('Service providers:')
             ->expectsOutputToContain('Dry run complete')
             ->assertExitCode(0);
 
@@ -457,5 +494,7 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertSame([], $this->graph->broadcastConnectionRows);
         $this->assertSame([], $this->graph->broadcastChannelRows);
         $this->assertSame([], $this->graph->artisanCommandRows);
+        $this->assertSame([], $this->graph->serviceProviderRows);
+        $this->assertSame([], $this->graph->serviceProviderRegistersRows);
     }
 }

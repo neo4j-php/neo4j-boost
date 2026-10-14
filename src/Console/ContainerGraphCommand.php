@@ -26,6 +26,7 @@ use Neo4j\LaravelBoost\ContainerGraph\QueueConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\RouteMiddlewareExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ScheduledTaskExtractor;
+use Neo4j\LaravelBoost\ContainerGraph\ServiceProviderExtractor;
 use Neo4j\LaravelBoost\ContainerGraphWriter;
 use Neo4j\LaravelBoost\ResolutionCatalog\FacadeCatalogExporter;
 use Neo4j\LaravelBoost\StaticAnalysis\FacadeEdgeFinder;
@@ -75,6 +76,7 @@ class ContainerGraphCommand extends Command
         private BroadcastConnectionExtractor $broadcastConnectionExtractor,
         private BroadcastChannelExtractor $broadcastChannelExtractor,
         private ArtisanCommandExtractor $artisanCommandExtractor,
+        private ServiceProviderExtractor $serviceProviderExtractor,
     ) {
         parent::__construct();
     }
@@ -106,6 +108,9 @@ class ContainerGraphCommand extends Command
         $broadcastConnectionRows = $this->broadcastConnectionExtractor->extract();
         $broadcastChannelRows = $this->broadcastChannelExtractor->extract();
         $artisanCommandRows = $this->artisanCommandExtractor->extract();
+        $serviceProviders = $this->serviceProviderExtractor->extract();
+        $serviceProviderRows = $serviceProviders['providers'];
+        $serviceProviderRegistersRows = $serviceProviders['registers'];
         $concreteClasses = $this->mergeClassLists(
             $concreteClasses,
             $this->classNamesFromRouteRows($routeRows),
@@ -217,6 +222,8 @@ class ContainerGraphCommand extends Command
         $this->line('- Broadcast connections: '.count($broadcastConnectionRows));
         $this->line('- Broadcast channels: '.count($broadcastChannelRows));
         $this->line('- Artisan commands: '.count($artisanCommandRows));
+        $this->line('- Service providers: '.count($serviceProviderRows));
+        $this->line('- Service provider registrations: '.count($serviceProviderRegistersRows));
         $this->line('- Contextual bindings: '.count($contextualBindingRows));
         $this->line('- Method injection edges: '.count($methodInjectionRows));
         $this->line('- Static service_location edges: '.count($staticServiceLocationRows));
@@ -226,7 +233,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printSampleParams($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows);
+            $this->printSampleParams($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows);
         }
 
         if ($this->option('dry-run')) {
@@ -250,7 +257,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -927,6 +934,8 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, driver: string, is_default: bool}>  $broadcastConnectionRows
      * @param  array<int, array{key: string, name: string, guards: string, action: string, identifier: string, identifier_kind: string}>  $broadcastChannelRows
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
+     * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
+     * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
      */
     private function printSampleParams(
         array $instanceRows,
@@ -952,6 +961,8 @@ class ContainerGraphCommand extends Command
         array $broadcastConnectionRows = [],
         array $broadcastChannelRows = [],
         array $artisanCommandRows = [],
+        array $serviceProviderRows = [],
+        array $serviceProviderRegistersRows = [],
     ): void {
         $this->line('');
         $this->line('Sample params:');
@@ -978,6 +989,8 @@ class ContainerGraphCommand extends Command
         $this->line('- broadcast_connections: '.json_encode(array_slice($broadcastConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- broadcast_channels: '.json_encode(array_slice($broadcastChannelRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- artisan_commands: '.json_encode(array_slice($artisanCommandRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- service_providers: '.json_encode(array_slice($serviceProviderRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- service_provider_registers: '.json_encode(array_slice($serviceProviderRegistersRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('');
     }
 }
