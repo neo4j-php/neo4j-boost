@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Authentication config** in `container:graph`: `(:AuthGuard)-[:USES_PROVIDER]->(:AuthProvider)`, optional `(:AuthProvider)-[:USES_MODEL]->(:Abstract)` for eloquent user models, and `(:PasswordBroker)-[:USES_PROVIDER]->(:AuthProvider)` from `config/auth.php`. Re-export replaces stale provider/model edges when wiring changes.
 - **Authorization** in `container:graph`: `(:Policy)-[:HANDLED_BY]->(:Abstract)` and `(:Policy)-[:FOR_MODEL]->(:Abstract)` from Gate policy registrations, plus `(:GateAbility)-[:HANDLED_BY]->(:Abstract)` for class-based Gate abilities (closures export as `GateAbility` nodes without `HANDLED_BY`). Re-export replaces stale policy/ability edges when wiring changes.
 
+### Changed
+
+- `container:graph` writes the whole graph through the `neo4j-php/neo4j-laravel` query builder and Eloquent models (`^0.0.1` from Packagist) instead of hand-written Cypher. `--print-cypher` now prints the statements neo4j-laravel ran after the write.
+- Route `USES_MIDDLEWARE` edges are replaced on each export, so removed middleware no longer lingers.
+- The writer no longer strips the `Interface`, `Class` and `AbstractType` labels left on `Abstract` nodes by exports older than 1.2.0.
+
 ### Fixed
 
 - Broadcast channel extraction no longer swallows broadcaster resolution failures; unexpected exceptions propagate instead of silently returning no channels.

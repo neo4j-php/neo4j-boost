@@ -22,7 +22,6 @@ use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Middleware\Veri
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Services\Logger;
 use Neo4j\LaravelBoost\Tests\Integration\Fixtures\ContainerGraph\Support\ReportAggregator;
 use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
-use Neo4j\LaravelBoost\Tests\Integration\Support\Stubs\UnusedContainerGraphConnection;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\Post;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\PostPolicy;
@@ -324,63 +323,8 @@ class RuntimeDependencyGraphModelTest extends TestCase
         $this->assertFalse($this->graph->hasJobHandledBy(QueuedWelcomeMailable::class, QueuedWelcomeMailable::class));
     }
 
-    public function test_writer_templates_and_traversal_cypher_support_recursive_walk(): void
+    public function test_traversal_cypher_supports_recursive_walk(): void
     {
-        $templates = (new ContainerGraphWriter(
-            new UnusedContainerGraphConnection
-        ))->cypherTemplates();
-
-        $this->assertArrayHasKey('routes', $templates);
-        $this->assertArrayHasKey('route_middleware', $templates);
-        $this->assertArrayHasKey('events', $templates);
-        $this->assertArrayHasKey('events_clear_handled_by', $templates);
-        $this->assertArrayHasKey('jobs', $templates);
-        $this->assertArrayHasKey('queue_connections', $templates);
-        $this->assertArrayHasKey('scheduled_tasks', $templates);
-        $this->assertArrayHasKey('auth_providers', $templates);
-        $this->assertArrayHasKey('auth_guards', $templates);
-        $this->assertArrayHasKey('password_brokers', $templates);
-        $this->assertArrayHasKey('policies', $templates);
-        $this->assertArrayHasKey('gate_abilities', $templates);
-        $this->assertArrayHasKey('notifications', $templates);
-        $this->assertArrayHasKey('notification_channels', $templates);
-        $this->assertArrayHasKey('notification_uses_channel', $templates);
-        $this->assertArrayHasKey('mailers', $templates);
-        $this->assertArrayHasKey('mailables', $templates);
-        $this->assertArrayHasKey('broadcast_connections', $templates);
-        $this->assertArrayHasKey('broadcast_channels', $templates);
-        $this->assertArrayHasKey('broadcast_channels_clear_handled_by', $templates);
-        $this->assertArrayHasKey('identified_as', $templates);
-        $this->assertArrayHasKey('abstract_resolves_to', $templates);
-        $this->assertStringContainsString('HANDLED_BY', $templates['routes']);
-        $this->assertStringContainsString('HANDLED_BY', $templates['events']);
-        $this->assertStringContainsString(':Event', $templates['events']);
-        $this->assertStringContainsString('HANDLED_BY', $templates['jobs']);
-        $this->assertStringContainsString(':Job', $templates['jobs']);
-        $this->assertStringContainsString('USES_MIDDLEWARE', $templates['route_middleware']);
-        $this->assertStringContainsString(':ScheduledTask', $templates['scheduled_tasks']);
-        $this->assertStringContainsString(':AuthGuard', $templates['auth_guards']);
-        $this->assertStringContainsString('USES_PROVIDER', $templates['auth_guards']);
-        $this->assertStringContainsString('USES_MODEL', $templates['auth_providers']);
-        $this->assertStringContainsString(':PasswordBroker', $templates['password_brokers']);
-        $this->assertStringContainsString(':Policy', $templates['policies']);
-        $this->assertStringContainsString('FOR_MODEL', $templates['policies']);
-        $this->assertStringContainsString(':GateAbility', $templates['gate_abilities']);
-        $this->assertStringContainsString(':Notification', $templates['notifications']);
-        $this->assertStringContainsString('USES_CHANNEL', $templates['notifications']);
-        $this->assertStringContainsString(':NotificationChannel', $templates['notification_channels']);
-        $this->assertStringContainsString('USES_CHANNEL', $templates['notification_uses_channel']);
-        $this->assertStringContainsString(':Mailer', $templates['mailers']);
-        $this->assertStringContainsString(':Mailable', $templates['mailables']);
-        $this->assertStringContainsString('USES_MAILER', $templates['mailables']);
-        $this->assertStringContainsString(':BroadcastConnection', $templates['broadcast_connections']);
-        $this->assertStringContainsString(':BroadcastChannel', $templates['broadcast_channels']);
-        $this->assertStringContainsString('HANDLED_BY', $templates['broadcast_channels']);
-        $this->assertStringContainsString('IDENTIFIED_AS', $templates['identified_as']);
-        $this->assertStringContainsString('RESOLVES_TO', $templates['abstract_resolves_to']);
-        $this->assertStringContainsString(':Abstract', $templates['routes']);
-        $this->assertStringNotContainsString(':Identifier', $templates['routes']);
-
         $traversal = RuntimeGraphModel::routeTraversalCypher();
         $this->assertStringContainsString('DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*', $traversal);
         $this->assertStringContainsString('USES_MIDDLEWARE', $traversal);

@@ -2,9 +2,13 @@
 
 namespace Neo4j\LaravelBoost;
 
-use Neo4j\LaravelBoost\Support\ContainerGraphConnection;
+use Illuminate\Support\Facades\DB;
 use Neo4j\LaravelBoost\Support\Graph\BindsToType;
 use Neo4j\LaravelBoost\Support\Graph\DependsOnType;
+use Neo4j\LaravelBoost\Support\Graph\RuntimeGraphModel;
+use Neo4j\LaravelBoost\Support\Neo4jBoltClient;
+use Neo4j\Neo4jLaravel\Neo4jQueryBuilder;
+use RuntimeException;
 
 class GraphKnowledgeContributor
 {
@@ -21,38 +25,6 @@ class GraphKnowledgeContributor
     public const RELATIONSHIP_DEPENDS_ON = 'DEPENDS_ON';
 
     public const RELATIONSHIP_BINDS_TO = 'BINDS_TO';
-
-    private const CYPHER_DEPENDS_ON = <<<'CYPHER'
-MERGE (c:Abstract {name: $from})
-SET c.kind = 'Class'
-WITH c
-FOREACH (_ IN CASE WHEN $toKind = 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Abstract {name: $to})
-  SET d.kind = 'Interface'
-  MERGE (c)-[r:DEPENDS_ON]->(d)
-  SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
-)
-FOREACH (_ IN CASE WHEN $toKind <> 'Interface' THEN [1] ELSE [] END |
-  MERGE (d:Abstract {name: $to})
-  SET d.kind = 'Class'
-  MERGE (c)-[r:DEPENDS_ON]->(d)
-  SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
-)
-CYPHER;
-
-    private const CYPHER_BINDS_TO = <<<'CYPHER'
-MERGE (a:Abstract {name: $from})
-SET a.kind = $fromKind
-WITH a
-MERGE (c:Abstract {name: $to})
-SET c.kind = $toKind
-MERGE (a)-[r:BINDS_TO]->(c)
-SET r.type = $type, r.source = $source, r.confidence = $confidence, r.reason = $reason
-CYPHER;
-
-    public function __construct(
-        private ContainerGraphConnection $connection,
-    ) {}
 
     /**
      * @return array<string, mixed>
@@ -128,36 +100,41 @@ CYPHER;
         ?bool $shared,
         ?string $dependsOnType,
     ): void {
-        $reason = $reason ?? '';
-
         if ($relationship === self::RELATIONSHIP_DEPENDS_ON) {
-            $type = DependsOnType::assertAllowed($dependsOnType ?? DependsOnType::ServiceLocation->value);
-
-            $this->connection->run(self::CYPHER_DEPENDS_ON, [
-                'from' => $from,
-                'to' => $to,
-                'toKind' => $this->kindForTypeName($to),
-                'type' => $type->value,
-                'source' => $source,
-                'confidence' => $confidence,
-                'reason' => $reason,
-            ]);
-
-            return;
+            $type = DependsOnType::assertAllowed($dependsOnType ?? DependsOnType::ServiceLocation->value)->value;
+            $fromKind = 'Class';
+            $toKind = $this->kindForTypeName($to) === 'Interface' ? 'Interface' : 'Class';
+        } else {
+            $relationship = self::RELATIONSHIP_BINDS_TO;
+            $type = BindsToType::fromShared($shared ?? false)->value;
+            $fromKind = $this->kindForTypeName($from);
+            $toKind = $this->kindForTypeName($to);
         }
 
-        $bindsToType = BindsToType::fromShared($shared ?? false);
+        $abstracts = $this->abstracts();
+        $abstracts->upsert(['name' => $from, 'kind' => $fromKind], [RuntimeGraphModel::NAME_KEY]);
+        $abstracts->upsert(['name' => $to, 'kind' => $toKind], [RuntimeGraphModel::NAME_KEY]);
+        $abstracts->upsertRelationships($relationship.'>', RuntimeGraphModel::LABEL_ABSTRACT, [[
+            'from' => ['name' => $from],
+            'to' => ['name' => $to],
+            'properties' => [
+                'type' => $type,
+                'source' => $source,
+                'confidence' => $confidence,
+                'reason' => $reason ?? '',
+            ],
+        ]]);
+    }
 
-        $this->connection->run(self::CYPHER_BINDS_TO, [
-            'from' => $from,
-            'to' => $to,
-            'fromKind' => $this->kindForTypeName($from),
-            'toKind' => $this->kindForTypeName($to),
-            'type' => $bindsToType->value,
-            'source' => $source,
-            'confidence' => $confidence,
-            'reason' => $reason,
-        ]);
+    private function abstracts(): Neo4jQueryBuilder
+    {
+        $query = DB::connection(Neo4jBoltClient::ELOQUENT_CONNECTION)->table(RuntimeGraphModel::LABEL_ABSTRACT);
+
+        if (! $query instanceof Neo4jQueryBuilder) {
+            throw new RuntimeException('The '.Neo4jBoltClient::ELOQUENT_CONNECTION.' connection must use the neo4j-laravel query builder.');
+        }
+
+        return $query;
     }
 
     private function kindForTypeName(string $name): string
