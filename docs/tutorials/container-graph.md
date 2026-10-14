@@ -49,10 +49,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 8. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
 9. **Mailers** and **mailables** from `config/mail.php` and scanned mailable classes (queued mailables are not Jobs)
 10. **Broadcasting** from `config/broadcasting.php` connections and live channel auth (`Broadcast::channel`)
-11. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-12. **Constructor and method-injection dependencies** for concrete classes
-13. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-14. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+11. **Artisan commands** from the live console application (every registered command, not only scheduled ones; closure commands export without `HANDLED_BY`)
+12. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+13. **Constructor and method-injection dependencies** for concrete classes
+14. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+15. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
@@ -74,10 +75,11 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 | `:Mailable` | `key` (mailable FQCN) | Discovered mailable class. `should_queue`, optional `mailer` / `connection` / `queue`, `unique`. |
 | `:BroadcastConnection` | `key` (connection name) | From `config/broadcasting.php`. `driver`, `is_default`. |
 | `:BroadcastChannel` | `key` (channel pattern) | Registered channel auth. Optional `guards`. |
+| `:ArtisanCommand` | `key` (command name, e.g. `queue:work`) | Registered Artisan command. `description`, `hidden`, `aliases` (comma-separated), `kind` (`class`/`closure`), `source` (`app`/`vendor`/`framework`). |
 | `:Middleware` | `key` | Middleware after alias/group expansion. `name` matches `key` for Browser captions. |
 | `:Instance` | `name` | Concrete class inspected from the container / PSR-4 scan |
 | `:Dependency` | `key` | A dependency occurrence on an instance |
-| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, mailables, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, broadcast channels, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
+| `:Abstract` | `name` | Container lookup key (class, interface, or alias) for handlers, middleware, listeners, jobs, mailables, scheduled tasks, auth models, policies, Gate abilities, notifications, channels, broadcast channels, Artisan commands, dependencies, and bindings. `kind` is `Class`, `Interface`, or `AbstractType`. |
 
 Bindings use `BINDS_TO` between `:Abstract` nodes.
 
@@ -104,11 +106,12 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:Mailable)-[:USES_MAILER]->(:Mailer)           # when the mailable declares a default mailer
 (:Mailable)-[:USES_CONNECTION]->(:QueueConnection)  # when a queued mailable declares a connection
 (:BroadcastChannel)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based channel auth
+(:ArtisanCommand)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based commands
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, Mailable → mailable class, BroadcastChannel → channel class, ScheduledTask → command/job/callable class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/Mailable/BroadcastChannel/ScheduledTask/Policy/GateAbility/Notification edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, Mailable → mailable class, BroadcastChannel → channel class, ScheduledTask → command/job/callable class, ArtisanCommand → command class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/Mailable/BroadcastChannel/ScheduledTask/ArtisanCommand/Policy/GateAbility/Notification edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job or Mailable → configured queue connection | — |
 | `USES_MAILER` | Mailable → configured mailer | — |
@@ -318,7 +321,7 @@ Typical loop:
 1. Change bindings, constructors, routes, middleware, events, jobs, or schedule entries in Laravel.
 2. Re-run `php artisan container:graph`.
 3. Ask Cursor to call `get-class-dependency-graph` for the FQCN you care about.
-4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:Mailable` / `:BroadcastChannel` / `:ScheduledTask` / `:Instance` nodes.
+4. Optionally open Neo4j Browser for a visual neighborhood around `:Route` / `:Event` / `:Job` / `:Mailable` / `:BroadcastChannel` / `:ScheduledTask` / `:ArtisanCommand` / `:Instance` nodes.
 
 Prerequisite: export must have run successfully for that class; otherwise the tool returns `graph_export_required: true`.
 

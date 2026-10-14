@@ -17,6 +17,7 @@ use Neo4j\LaravelBoost\Console\InstallMcpCommand;
 use Neo4j\LaravelBoost\Console\SetupCommand;
 use Neo4j\LaravelBoost\Console\StartNeo4jCommand;
 use Neo4j\LaravelBoost\Console\TestStdioCommand;
+use Neo4j\LaravelBoost\ContainerGraph\ArtisanCommandExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\AuthConfigExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\AuthorizationExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\BindingLifetimeResolver;
@@ -110,6 +111,7 @@ class Neo4jBoostServiceProvider extends ServiceProvider
         $this->app->singleton(MailableExtractor::class);
         $this->app->singleton(BroadcastConnectionExtractor::class);
         $this->app->singleton(BroadcastChannelExtractor::class);
+        $this->app->singleton(ArtisanCommandExtractor::class);
         $this->app->singleton(LaravelFirstPartyFacadeCatalog::class);
         $this->app->singleton(FacadeCatalogExporter::class);
         $this->app->singleton(FacadeAccessorParser::class);

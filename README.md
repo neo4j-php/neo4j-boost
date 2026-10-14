@@ -249,6 +249,7 @@ What ends up in the graph:
 (:Mailable)-[:USES_MAILER]->(:Mailer)
 (:Mailable)-[:USES_CONNECTION]->(:QueueConnection)
 (:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)
+(:ArtisanCommand)-[:HANDLED_BY]->(:Abstract)
 ```
 
 `:Abstract` is the container lookup key (the same idea as `make($abstract)`), with a `kind` property (`Class` / `Interface` / `AbstractType`). Bindings use `BINDS_TO` between abstracts.
@@ -262,7 +263,7 @@ Then ask your assistant, or call **`get-class-dependency-graph`** directly:
 <img src="docs/media/demos/07-container-dependency-tool.gif" alt="Export and query Laravel dependencies" width="800">
 
 <details>
-<summary><b>🔍 Ready-made Neo4j Browser queries</b> (routes, jobs, scheduled tasks, auth, policies, gates, notifications, mail, broadcasting)</summary>
+<summary><b>🔍 Ready-made Neo4j Browser queries</b> (routes, jobs, scheduled tasks, auth, policies, gates, notifications, mail, broadcasting, Artisan commands)</summary>
 
 <br>
 
@@ -348,6 +349,15 @@ LIMIT 50
 
 ```cypher
 MATCH (c:BroadcastChannel)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+RETURN c, root, path
+LIMIT 50
+```
+
+**Artisan commands**
+
+```cypher
+MATCH (c:ArtisanCommand {source: 'app'})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN c, root, path
 LIMIT 50
