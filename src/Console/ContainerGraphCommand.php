@@ -14,6 +14,7 @@ use Neo4j\LaravelBoost\ContainerGraph\BroadcastConnectionExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\ContextualBindingExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyChainBuilder;
 use Neo4j\LaravelBoost\ContainerGraph\DependencyEdgeMetadataResolver;
+use Neo4j\LaravelBoost\ContainerGraph\EloquentModelEventExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\EventListenerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\JobHandlerExtractor;
 use Neo4j\LaravelBoost\ContainerGraph\MailableExtractor;
@@ -77,6 +78,7 @@ class ContainerGraphCommand extends Command
         private BroadcastChannelExtractor $broadcastChannelExtractor,
         private ArtisanCommandExtractor $artisanCommandExtractor,
         private ServiceProviderExtractor $serviceProviderExtractor,
+        private EloquentModelEventExtractor $eloquentModelEventExtractor,
     ) {
         parent::__construct();
     }
@@ -163,6 +165,11 @@ class ContainerGraphCommand extends Command
             $concreteClasses,
             $this->classNamesFromArtisanCommandRows($artisanCommandRows),
         );
+        $modelEventRows = $this->eloquentModelEventExtractor->extract($concreteClasses);
+        $concreteClasses = $this->mergeClassLists(
+            $concreteClasses,
+            $this->classNamesFromModelEventRows($modelEventRows),
+        );
         [$constructorDependencyRows, $constructorUnresolvedRows] = $this->extractConstructorDependencyRows($concreteClasses);
         [$methodInjectionRows, $methodInjectionUnresolvedRows] = $this->methodInjectionExtractor->extract($concreteClasses);
         $dependencyRows = $this->uniqueRows(array_merge($constructorDependencyRows, $methodInjectionRows));
@@ -206,6 +213,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Route handlers: '.count($routeRows));
         $this->line('- Route middleware links: '.count($routeMiddlewareRows));
         $this->line('- Event listeners: '.count($eventRows));
+        $this->line('- Model events: '.count($modelEventRows));
         $this->line('- Jobs: '.count($jobRows));
         $this->line('- Queue connections: '.count($queueConnectionRows));
         $this->line('- Scheduled tasks: '.count($scheduledTaskRows));
@@ -233,7 +241,7 @@ class ContainerGraphCommand extends Command
         $this->line('- Unresolved dependencies: '.count($unresolvedRows));
 
         if ($this->option('print-cypher')) {
-            $this->printSampleParams($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows);
+            $this->printSampleParams($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows, $modelEventRows);
         }
 
         if ($this->option('dry-run')) {
@@ -257,7 +265,7 @@ class ContainerGraphCommand extends Command
 
         try {
             $writer->connect();
-            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows);
+            $writer->write($instanceRows, $bindingRows, $dependencyChainRows, $contextualBindingRows, $routeRows, $routeMiddlewareRows, $eventRows, $jobRows, $queueConnectionRows, $scheduledTaskRows, $authProviderRows, $authGuardRows, $passwordBrokerRows, $policyRows, $gateAbilityRows, $notificationRows, $notificationChannelRows, $notificationUsesChannelRows, $mailerRows, $mailableRows, $broadcastConnectionRows, $broadcastChannelRows, $artisanCommandRows, $serviceProviderRows, $serviceProviderRegistersRows, $modelEventRows);
         } catch (Throwable $e) {
             $this->warn(Neo4jMcpHealth::noInstanceFoundMessage());
             $this->error('Failed to write container graph: '.$e->getMessage());
@@ -718,6 +726,33 @@ class ContainerGraphCommand extends Command
     }
 
     /**
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
+     * @return array<int, string>
+     */
+    private function classNamesFromModelEventRows(array $modelEventRows): array
+    {
+        $classes = [];
+
+        foreach ($modelEventRows as $row) {
+            if (($row['identifier_kind'] ?? '') === 'Class' && ($row['identifier'] ?? '') !== '' && class_exists($row['identifier'])) {
+                $classes[] = $row['identifier'];
+            }
+
+            $model = $row['model'] ?? '';
+            if (($row['model_kind'] ?? '') === 'Class' && $model !== '' && class_exists($model)) {
+                $classes[] = $model;
+            }
+
+            $eventClass = $row['event_class'] ?? '';
+            if (($row['event_class_kind'] ?? '') === 'Class' && $eventClass !== '' && class_exists($eventClass)) {
+                $classes[] = $eventClass;
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      * @return array<int, string>
      */
@@ -936,6 +971,7 @@ class ContainerGraphCommand extends Command
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
      * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
      */
     private function printSampleParams(
         array $instanceRows,
@@ -963,6 +999,7 @@ class ContainerGraphCommand extends Command
         array $artisanCommandRows = [],
         array $serviceProviderRows = [],
         array $serviceProviderRegistersRows = [],
+        array $modelEventRows = [],
     ): void {
         $this->line('');
         $this->line('Sample params:');
@@ -973,6 +1010,7 @@ class ContainerGraphCommand extends Command
         $this->line('- routes: '.json_encode(array_slice($routeRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- route_middleware: '.json_encode(array_slice($routeMiddlewareRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- events: '.json_encode(array_slice($eventRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->line('- model_events: '.json_encode(array_slice($modelEventRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- jobs: '.json_encode(array_slice($jobRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- queue_connections: '.json_encode(array_slice($queueConnectionRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         $this->line('- scheduled_tasks: '.json_encode(array_slice($scheduledTaskRows, 0, 2), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

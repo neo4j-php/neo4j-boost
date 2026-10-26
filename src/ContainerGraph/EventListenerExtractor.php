@@ -35,6 +35,11 @@ final class EventListenerExtractor
                 continue;
             }
 
+            // Eloquent lifecycle listeners are exported as ModelEvent nodes.
+            if (str_starts_with($eventName, 'eloquent.')) {
+                continue;
+            }
+
             foreach ((array) $listeners as $listener) {
                 $resolved = $this->resolveListener($listener);
                 if ($resolved === null) {

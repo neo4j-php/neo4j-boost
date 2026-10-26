@@ -11,9 +11,10 @@ class RuntimeGraphModelTest extends TestCase
     {
         $statements = RuntimeGraphModel::constraintStatements();
 
-        $this->assertCount(22, $statements);
+        $this->assertCount(23, $statements);
         $this->assertStringContainsString(':Route', implode("\n", $statements));
         $this->assertStringContainsString(':Event', implode("\n", $statements));
+        $this->assertStringContainsString(':ModelEvent', implode("\n", $statements));
         $this->assertStringContainsString(':Job', implode("\n", $statements));
         $this->assertStringContainsString(':QueueConnection', implode("\n", $statements));
         $this->assertStringContainsString(':ScheduledTask', implode("\n", $statements));
@@ -66,6 +67,18 @@ class RuntimeGraphModelTest extends TestCase
         $this->assertStringContainsString('HANDLED_BY', $cypher);
         $this->assertStringContainsString('RESOLVES_TO', $cypher);
         $this->assertStringContainsString('DEPENDS_ON', $cypher);
+        $this->assertStringContainsString(':Abstract', $cypher);
+    }
+
+    public function test_model_event_traversal_cypher_uses_runtime_relationships(): void
+    {
+        $cypher = RuntimeGraphModel::modelEventTraversalCypher();
+
+        $this->assertStringContainsString(':ModelEvent', $cypher);
+        $this->assertStringContainsString('FOR_MODEL', $cypher);
+        $this->assertStringContainsString('HANDLED_BY', $cypher);
+        $this->assertStringContainsString('DISPATCHES', $cypher);
+        $this->assertStringContainsString('RESOLVES_TO', $cypher);
         $this->assertStringContainsString(':Abstract', $cypher);
     }
 

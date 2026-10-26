@@ -27,7 +27,10 @@ use Neo4j\LaravelBoost\Tests\Integration\Support\RecordingContainerGraphWriter;
 use Neo4j\LaravelBoost\Tests\TestCase;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\Post;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Authorization\PostPolicy;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Events\InvoiceCreated;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Models\Invoice;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Notifications\InvoicePaidNotification;
+use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Observers\InvoiceObserver;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\ArrayLedger;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\BillingServiceProvider;
 use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\Ledger;
@@ -47,7 +50,8 @@ use Neo4j\LaravelBoost\Tests\Unit\ContainerGraph\Fixtures\Providers\Ledger;
  * Mailable -> Mailer / QueueConnection
  * BroadcastChannel -> Abstract -> Instance
  * ArtisanCommand -> Abstract -> Instance
- * ServiceProvider -> REGISTERS -> Abstract.
+ * ServiceProvider -> REGISTERS -> Abstract
+ * ModelEvent -> Abstract (observer) + FOR_MODEL + optional DISPATCHES.
  */
 class RuntimeDependencyGraphModelTest extends TestCase
 {
@@ -127,6 +131,27 @@ class RuntimeDependencyGraphModelTest extends TestCase
             'handle',
             'event',
         ));
+    }
+
+    public function test_exports_eloquent_model_events_beyond_the_dispatcher_map(): void
+    {
+        Invoice::observe(InvoiceObserver::class);
+
+        $this->artisan('container:graph')
+            ->expectsOutputToContain('Model events:')
+            ->expectsOutputToContain('Container graph written to Neo4j successfully.')
+            ->assertExitCode(0);
+
+        $createdKey = 'eloquent.created: '.Invoice::class;
+        $deletedKey = 'eloquent.deleted: '.Invoice::class;
+
+        $this->assertTrue($this->graph->hasModelEventHandledBy($createdKey, InvoiceObserver::class));
+        $this->assertTrue($this->graph->hasModelEventForModel($createdKey, Invoice::class));
+        $this->assertTrue($this->graph->hasModelEventDispatches($createdKey, InvoiceCreated::class));
+        $this->assertTrue($this->graph->hasModelEventHandledBy($deletedKey, InvoiceObserver::class));
+        $this->assertFalse($this->graph->hasEventHandledBy($createdKey, InvoiceObserver::class));
+        $this->assertTrue($this->graph->hasInstanceNode(InvoiceObserver::class));
+        $this->assertTrue($this->graph->hasInstanceNode(Invoice::class));
     }
 
     public function test_exports_job_handled_by_and_queue_connections(): void

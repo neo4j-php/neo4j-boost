@@ -13,6 +13,7 @@ use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\JobNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\MailableNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\MailerNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\ModelEventNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationChannelNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\PasswordBrokerNode;
@@ -412,7 +413,7 @@ class ContainerGraphWriterTest extends TestCase
 
     public function test_runtime_surface_models_use_package_connection_labels_and_keys(): void
     {
-        foreach ([[new EventNode, 'Event'], [new JobNode, 'Job'], [new ScheduledTaskNode, 'ScheduledTask']] as [$model, $label]) {
+        foreach ([[new EventNode, 'Event'], [new JobNode, 'Job'], [new ScheduledTaskNode, 'ScheduledTask'], [new ModelEventNode, 'ModelEvent']] as [$model, $label]) {
             $this->assertSame(Neo4jBoltClient::ELOQUENT_CONNECTION, $model->getConnectionName());
             $this->assertSame($label, $model->getLabel());
             $this->assertSame('key', $model->getKeyName());
@@ -420,10 +421,14 @@ class ContainerGraphWriterTest extends TestCase
         }
 
         $job = new JobNode(['key' => 'App\\Jobs\\ExampleJob']);
+        $modelEvent = new ModelEventNode(['key' => 'eloquent.deleted: App\\Models\\Product']);
         $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new EventNode(['key' => 'App\\Events\\OrderShipped']))->handledBy());
         $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $job->handledBy());
         $this->assertRelationship(RuntimeGraphModel::REL_USES_CONNECTION.'>', QueueConnectionNode::class, $job->usesConnection());
         $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, (new ScheduledTaskNode(['key' => 'task']))->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_HANDLED_BY.'>', AbstractNode::class, $modelEvent->handledBy());
+        $this->assertRelationship(RuntimeGraphModel::REL_FOR_MODEL.'>', AbstractNode::class, $modelEvent->forModel());
+        $this->assertRelationship(RuntimeGraphModel::REL_DISPATCHES.'>', AbstractNode::class, $modelEvent->dispatches());
     }
 
     public function test_event_listeners_are_replaced_on_rerun(): void
@@ -451,6 +456,72 @@ class ContainerGraphWriterTest extends TestCase
         $this->assertWroteOnce($recorded, fn () => EventNode::whereKey('App\\Events\\OrderShipped')->delete());
         $this->assertCount(1, $this->writesLike($recorded, fn () => $handledBy('App\\Listeners\\SendEmail'), sameValues: false));
         $this->assertWroteOnce($recorded, fn () => $handledBy('App\\Listeners\\WriteAuditLog'));
+    }
+
+    public function test_model_events_link_observer_model_and_dispatched_event(): void
+    {
+        $this->recordGraphWrites();
+        $key = 'eloquent.created: App\\Models\\Invoice';
+        $observer = [
+            'key' => $key,
+            'name' => 'Invoice created',
+            'lifecycle' => 'created',
+            'source' => 'observer',
+            'model' => 'App\\Models\\Invoice',
+            'model_kind' => 'Class',
+            'identifier' => 'App\\Observers\\InvoiceObserver',
+            'identifier_kind' => 'Class',
+            'action' => 'App\\Observers\\InvoiceObserver@created',
+            'event_class' => '',
+            'event_class_kind' => '',
+        ];
+        $dispatched = [
+            'key' => $key,
+            'name' => 'Invoice created',
+            'lifecycle' => 'created',
+            'source' => 'dispatches_events',
+            'model' => 'App\\Models\\Invoice',
+            'model_kind' => 'Class',
+            'identifier' => '',
+            'identifier_kind' => '',
+            'action' => '',
+            'event_class' => 'App\\Events\\InvoiceCreated',
+            'event_class_kind' => 'Class',
+        ];
+
+        $this->writeRows([25 => [$observer, $dispatched]]);
+        $recorded = $this->takeGraphWrites();
+
+        $this->assertWroteOnce($recorded, fn () => ModelEventNode::whereKey($key)->delete());
+        $this->assertWroteOnce($recorded, fn () => ModelEventNode::create([
+            'key' => $key,
+            'name' => 'Invoice created',
+            'lifecycle' => 'created',
+            'source' => 'observer,dispatches_events',
+        ]));
+        $this->assertWroteOnce($recorded, fn () => (new ModelEventNode(['key' => $key]))->forModel()->attach('App\\Models\\Invoice'));
+        $this->assertWroteOnce($recorded, fn () => (new ModelEventNode(['key' => $key]))->handledBy()->attach('App\\Observers\\InvoiceObserver', ['action' => 'App\\Observers\\InvoiceObserver@created']));
+        $this->assertWroteOnce($recorded, fn () => (new ModelEventNode(['key' => $key]))->dispatches()->attach('App\\Events\\InvoiceCreated'));
+    }
+
+    public function test_model_event_rows_require_observer_or_dispatched_event(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Model event row needs an observer identifier or a dispatched event_class');
+
+        (new ContainerGraphWriter(new UnusedContainerGraphConnection))->write([], [], [], modelEventRows: [[
+            'key' => 'eloquent.created: App\\Models\\Invoice',
+            'name' => 'Invoice created',
+            'lifecycle' => 'created',
+            'source' => 'observer',
+            'model' => 'App\\Models\\Invoice',
+            'model_kind' => 'Class',
+            'identifier' => '',
+            'identifier_kind' => '',
+            'action' => '',
+            'event_class' => '',
+            'event_class_kind' => '',
+        ]]);
     }
 
     public function test_job_is_recreated_with_current_connection_and_queue_connections_update_in_place(): void
@@ -741,7 +812,7 @@ class ContainerGraphWriterTest extends TestCase
      */
     private function writeRows(array $rowsByPosition): void
     {
-        $arguments = array_fill(0, 25, []);
+        $arguments = array_fill(0, 26, []);
         foreach ($rowsByPosition as $position => $rows) {
             $arguments[$position] = $rows;
         }
