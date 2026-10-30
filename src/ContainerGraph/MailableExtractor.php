@@ -6,7 +6,6 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use ReflectionClass;
-use ReflectionProperty;
 use Throwable;
 
 /**
@@ -85,7 +84,7 @@ final class MailableExtractor
         }
 
         $prop = $reflection->getProperty($property);
-        if (! $prop instanceof ReflectionProperty || ! $prop->isPublic()) {
+        if (! $prop->isPublic()) {
             return '';
         }
 

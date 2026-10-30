@@ -13,7 +13,6 @@ use Illuminate\Notifications\Notifiable;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
-use ReflectionProperty;
 use Throwable;
 use UnitEnum;
 
@@ -212,7 +211,7 @@ final class NotificationHandlerExtractor
         }
 
         $prop = $reflection->getProperty($property);
-        if (! $prop instanceof ReflectionProperty || ! $prop->isPublic()) {
+        if (! $prop->isPublic()) {
             return '';
         }
 
