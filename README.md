@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/media/neo4j-boost.jpg" alt="Neo4j Laravel Boost" width="720">
+
 # Neo4j Laravel Boost
 
 ### Give your AI assistant x-ray vision into your Laravel app.
@@ -574,5 +576,9 @@ The full step-by-step guide (Docker, Aura, MCP, auth, environment, error message
 **MIT licensed.** Built for Laravel developers who want their AI to actually understand their app.
 
 If it helps you, a ⭐ on GitHub helps others find it.
+
+<br>
+
+Maintained by [Nagels Tech](https://nagels.tech/)
 
 </div>
