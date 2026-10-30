@@ -27,6 +27,8 @@ final class GraphCompleteness
             'config() and env() edges use literal keys only; confidence is medium.',
             'Closure-based routes without a controller class are not exported as Route nodes.',
             'Closure and wildcard event listeners are not exported as Event HANDLED_BY edges.',
+            'Eloquent model-event closures are skipped; only class observers and $dispatchesEvents maps are exported as ModelEvent nodes.',
+            '#[ObservedBy] is read from scanned model classes; observers registered only on unbooted models that are outside the scanned class list are not discovered.',
             'Job nodes are discovered via ShouldQueue / *Job / \\Jobs\\ heuristics from scanned classes; dispatch-time connection/queue overrides are not visible.',
             'Queued listeners (*Listener / \\Listeners\\) are not exported as Job nodes.',
             'Queued mailables (Mailable + ShouldQueue) are exported as Mailable nodes, not Job nodes.',

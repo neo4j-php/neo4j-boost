@@ -25,6 +25,9 @@ namespace Neo4j\LaravelBoost\Support\Graph;
  * BroadcastChannel -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * ArtisanCommand -[:HANDLED_BY]-> Abstract -[:RESOLVES_TO]-> Instance
  * ServiceProvider -[:REGISTERS]-> Abstract -[:BINDS_TO]-> Abstract
+ * ModelEvent -[:HANDLED_BY]-> Abstract (observer)
+ * ModelEvent -[:FOR_MODEL]-> Abstract (Eloquent model)
+ * ModelEvent -[:DISPATCHES]-> Abstract ($dispatchesEvents target)
  *
  * Abstract is the container lookup key (same concept as make($abstract) / bind($abstract)).
  * Kind is stored on the node as property `kind` (Class, Interface, or AbstractType).
@@ -34,6 +37,8 @@ final class RuntimeGraphModel
     public const LABEL_ROUTE = 'Route';
 
     public const LABEL_EVENT = 'Event';
+
+    public const LABEL_MODEL_EVENT = 'ModelEvent';
 
     public const LABEL_JOB = 'Job';
 
@@ -99,11 +104,16 @@ final class RuntimeGraphModel
 
     public const REL_REGISTERS = 'REGISTERS';
 
+    public const REL_DISPATCHES = 'DISPATCHES';
+
     /** Unique property on Route nodes (method + URI). */
     public const ROUTE_KEY = 'key';
 
     /** Unique property on Event nodes (registered event name / FQCN). */
     public const EVENT_KEY = 'key';
+
+    /** Unique property on ModelEvent nodes (eloquent.{lifecycle}: {Model}). */
+    public const MODEL_EVENT_KEY = 'key';
 
     /** Unique property on Job nodes (FQCN). */
     public const JOB_KEY = 'key';
@@ -171,6 +181,7 @@ final class RuntimeGraphModel
         return [
             'CREATE CONSTRAINT route_key IF NOT EXISTS FOR (n:Route) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT event_key IF NOT EXISTS FOR (n:Event) REQUIRE n.key IS UNIQUE',
+            'CREATE CONSTRAINT model_event_key IF NOT EXISTS FOR (n:ModelEvent) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT job_key IF NOT EXISTS FOR (n:Job) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT queue_connection_key IF NOT EXISTS FOR (n:QueueConnection) REQUIRE n.key IS UNIQUE',
             'CREATE CONSTRAINT scheduled_task_key IF NOT EXISTS FOR (n:ScheduledTask) REQUIRE n.key IS UNIQUE',
@@ -216,6 +227,20 @@ CYPHER;
 MATCH (e:Event {key: $eventKey})-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
 OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
 RETURN e AS event, root AS rootInstance, collect(DISTINCT path) AS paths
+CYPHER;
+    }
+
+    /**
+     * Model lifecycle event through its observer (and optional dispatched event class).
+     */
+    public static function modelEventTraversalCypher(): string
+    {
+        return <<<'CYPHER'
+MATCH (e:ModelEvent {key: $eventKey})-[:FOR_MODEL]->(model:Abstract)
+OPTIONAL MATCH (e)-[:HANDLED_BY]->(:Abstract)-[:RESOLVES_TO]->(root:Instance)
+OPTIONAL MATCH path = (root)-[:DEPENDS_ON|IDENTIFIED_AS|RESOLVES_TO*0..8]->(n)
+OPTIONAL MATCH dispatched = (e)-[:DISPATCHES]->(:Abstract)
+RETURN e AS modelEvent, model AS eloquentModel, root AS rootInstance, collect(DISTINCT path) AS paths, collect(DISTINCT dispatched) AS dispatchedEvents
 CYPHER;
     }
 

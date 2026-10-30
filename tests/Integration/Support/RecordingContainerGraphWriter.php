@@ -90,6 +90,9 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     /** @var array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}> */
     public array $serviceProviderRegistersRows = [];
 
+    /** @var array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}> */
+    public array $modelEventRows = [];
+
     public function connect(): void
     {
         // No Neo4j required in tests.
@@ -121,6 +124,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
      * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
      */
     public function write(
         array $instanceRows,
@@ -148,6 +152,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         array $artisanCommandRows = [],
         array $serviceProviderRows = [],
         array $serviceProviderRegistersRows = [],
+        array $modelEventRows = [],
     ): void {
         $this->instanceRows = $instanceRows;
         $this->bindingRows = $bindingRows;
@@ -174,6 +179,7 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
         $this->artisanCommandRows = $artisanCommandRows;
         $this->serviceProviderRows = $serviceProviderRows;
         $this->serviceProviderRegistersRows = $serviceProviderRegistersRows;
+        $this->modelEventRows = $modelEventRows;
     }
 
     /**
@@ -316,6 +322,39 @@ class RecordingContainerGraphWriter extends ContainerGraphWriter
     {
         foreach ($this->eventRows as $row) {
             if ($row['key'] === $eventKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasModelEventHandledBy(string $eventKey, string $identifier): bool
+    {
+        foreach ($this->modelEventRows as $row) {
+            if ($row['key'] === $eventKey && $row['identifier'] === $identifier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasModelEventForModel(string $eventKey, string $model): bool
+    {
+        foreach ($this->modelEventRows as $row) {
+            if ($row['key'] === $eventKey && $row['model'] === $model) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasModelEventDispatches(string $eventKey, string $eventClass): bool
+    {
+        foreach ($this->modelEventRows as $row) {
+            if ($row['key'] === $eventKey && $row['event_class'] === $eventClass) {
                 return true;
             }
         }

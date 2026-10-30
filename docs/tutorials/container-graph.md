@@ -41,27 +41,29 @@ Details: [README – Exploring Your Container Dependency Graph](../../README.md#
 
 1. **Routes** from the live Laravel router (controller / invokable handlers; closures are skipped)
 2. **Route middleware** after groups and aliases are expanded (`Router::gatherRouteMiddleware()`)
-3. **Event listeners** from the live dispatcher (class-based listeners; closures/wildcards skipped)
-4. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
-5. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
-6. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
-7. **Authorization** from the live Gate (model→policy registrations and Gate abilities)
-8. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
-9. **Mailers** and **mailables** from `config/mail.php` and scanned mailable classes (queued mailables are not Jobs)
-10. **Broadcasting** from `config/broadcasting.php` connections and live channel auth (`Broadcast::channel`)
-11. **Artisan commands** from the live console application (every registered command, not only scheduled ones; closure commands export without `HANDLED_BY`)
-12. **Service providers** from the live application (loaded and still-deferred) and the container keys each one registers
-13. **Container bindings** from `app()->getBindings()` (abstract → concrete)
-14. **Constructor and method-injection dependencies** for concrete classes
-15. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
-16. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
+3. **Event listeners** from the live dispatcher (class-based listeners; closures/wildcards skipped; Eloquent `eloquent.*` lifecycle listeners are exported as ModelEvents instead)
+4. **Eloquent model events** from live `eloquent.*` observers, `#[ObservedBy]`, and `$dispatchesEvents` on scanned models
+5. **Jobs** and **queue connections** from scanned job classes and `config/queue.php`
+6. **Scheduled tasks** from the live `Schedule` (Artisan commands, jobs, callables; closures export without `HANDLED_BY`)
+7. **Authentication config** from `config/auth.php` (guards, user providers, password brokers)
+8. **Authorization** from the live Gate (model→policy registrations and Gate abilities)
+9. **Notifications** from scanned notification classes and `via()` channels (plus ChannelManager builtins / extensions)
+10. **Mailers** and **mailables** from `config/mail.php` and scanned mailable classes (queued mailables are not Jobs)
+11. **Broadcasting** from `config/broadcasting.php` connections and live channel auth (`Broadcast::channel`)
+12. **Artisan commands** from the live console application (every registered command, not only scheduled ones; closure commands export without `HANDLED_BY`)
+13. **Service providers** from the live application (loaded and still-deferred) and the container keys each one registers
+14. **Container bindings** from `app()->getBindings()` (abstract → concrete)
+15. **Constructor and method-injection dependencies** for concrete classes
+16. **Optional static-scan edges** when `NEO4J_CONTAINER_GRAPH_STATIC_SCAN_PATHS` is set
+17. **Project classes** discovered from production PSR-4 autoload paths in `composer.json` (not `autoload-dev`)
 
 ### Runtime node labels
 
 | Label | Unique key | Meaning |
 |--------|------------|---------|
 | `:Route` | `key` (method + URI, e.g. `GET /api/contracts`) | HTTP route. `name` is Laravel’s route name (empty when unnamed). |
-| `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. |
+| `:Event` | `key` (registered event name / FQCN) | Laravel event. `name` is a short display label. Eloquent lifecycle events use `:ModelEvent` instead. |
+| `:ModelEvent` | `key` (`eloquent.{lifecycle}: {Model}`) | Eloquent model lifecycle wiring. `lifecycle`, `source` (`observer` / `observed_by` / `dispatches_events`, comma-joined when combined). |
 | `:Job` | `key` (job FQCN) | Discovered job class. `should_queue`, optional `connection` / `queue`, `unique`. |
 | `:QueueConnection` | `key` (connection name) | From `config/queue.php`. `driver`, `default_queue`, `is_default`. |
 | `:ScheduledTask` | `key` (stable hash of expression + kind + command + handler identifier; excludes display names) | Cron / scheduler entry. `expression`, `kind` (`command`/`job`/`callback`/`exec`), flags, optional `description`. |
@@ -110,11 +112,14 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 (:BroadcastChannel)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based channel auth
 (:ArtisanCommand)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class-based commands
 (:ServiceProvider)-[:REGISTERS {type,via}]->(:Abstract)-[:BINDS_TO]->(:Abstract)  # container keys the provider registers
+(:ModelEvent)-[:HANDLED_BY {action}]->(:Abstract)-[:RESOLVES_TO {lifetime}]->(:Instance)  # class observer
+(:ModelEvent)-[:FOR_MODEL]->(:Abstract)  # Eloquent model
+(:ModelEvent)-[:DISPATCHES]->(:Abstract)  # $dispatchesEvents target
 ```
 
 | Type | Meaning | Properties |
 |------|---------|------------|
-| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, Job → handler class, Mailable → mailable class, BroadcastChannel → channel class, ScheduledTask → command/job/callable class, ArtisanCommand → command class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/Job/Mailable/BroadcastChannel/ScheduledTask/ArtisanCommand/Policy/GateAbility/Notification edges |
+| `HANDLED_BY` | Route action → controller/invokable, Event → listener class, ModelEvent → observer class, Job → handler class, Mailable → mailable class, BroadcastChannel → channel class, ScheduledTask → command/job/callable class, ArtisanCommand → command class, Policy → policy class, GateAbility → ability class, or Notification → notification class | `action` on Event/ModelEvent/Job/Mailable/BroadcastChannel/ScheduledTask/ArtisanCommand/Policy/GateAbility/Notification edges |
 | `USES_MIDDLEWARE` | Route → middleware in pipeline order | `order`, `parameters` (e.g. `auth:api` → `parameters: api`) |
 | `USES_CONNECTION` | Job or Mailable → configured queue connection | — |
 | `USES_MAILER` | Mailable → configured mailer | — |
@@ -126,6 +131,7 @@ Bindings use `BINDS_TO` between `:Abstract` nodes.
 | `RESOLVES_TO` | Abstract → instance | `lifetime` (`singleton` or `bind`) |
 | `DEPENDS_ON` | Instance → dependency | `type`, `file`, `line`, `via`, `method`, `parameter`, metadata |
 | `REGISTERS` | ServiceProvider → container key it registers | `type` (`normal`/`singleton`/`scoped`/`instance`, empty when only listed in `provides()`), `via` (`bindings`/`singletons`/`register`/`provides`) |
+| `DISPATCHES` | ModelEvent → custom event class from `$dispatchesEvents` | — |
 | `BINDS_TO` | Abstract binding key → concrete | `type` (`normal` / `singleton`) plus edge metadata |
 | `CONTEXTUAL_BINDS` | Contextual `when/needs/give` | `needs`, `needs_kind`, `reason` |
 

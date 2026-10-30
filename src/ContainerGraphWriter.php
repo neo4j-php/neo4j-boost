@@ -13,6 +13,7 @@ use Neo4j\LaravelBoost\ContainerGraph\Models\GateAbilityNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\JobNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\MailableNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\MailerNode;
+use Neo4j\LaravelBoost\ContainerGraph\Models\ModelEventNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationChannelNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\NotificationNode;
 use Neo4j\LaravelBoost\ContainerGraph\Models\PasswordBrokerNode;
@@ -81,6 +82,7 @@ class ContainerGraphWriter
      * @param  array<int, array{key: string, name: string, description: string, hidden: bool, aliases: string, kind: string, source: string, action: string, identifier: string, identifier_kind: string}>  $artisanCommandRows
      * @param  array<int, array{key: string, name: string, deferred: bool, loaded: bool, source: string}>  $serviceProviderRows
      * @param  array<int, array{provider_key: string, abstract: string, abstract_kind: string, type: string, via: string}>  $serviceProviderRegistersRows
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
      */
     public function write(
         array $instanceRows,
@@ -108,6 +110,7 @@ class ContainerGraphWriter
         array $artisanCommandRows = [],
         array $serviceProviderRows = [],
         array $serviceProviderRegistersRows = [],
+        array $modelEventRows = [],
     ): void {
         $this->validateBindingRows($bindingRows);
         $this->validateDependencyChainRows($dependencyChainRows);
@@ -132,6 +135,7 @@ class ContainerGraphWriter
         $this->validateBroadcastChannelRows($broadcastChannelRows);
         $this->validateArtisanCommandRows($artisanCommandRows);
         $this->validateServiceProviderRows($serviceProviderRows, $serviceProviderRegistersRows);
+        $this->validateModelEventRows($modelEventRows);
 
         $this->ensureConstraints();
         $this->table(self::LEGACY_IDENTIFIER_LABEL)->delete();
@@ -161,6 +165,7 @@ class ContainerGraphWriter
         $this->writeBroadcastChannels($broadcastChannelRows);
         $this->writeArtisanCommands($artisanCommandRows);
         $this->writeServiceProviders($serviceProviderRows, $serviceProviderRegistersRows);
+        $this->writeModelEvents($modelEventRows);
     }
 
     private function table(string $label): Neo4jQueryBuilder
@@ -1081,6 +1086,54 @@ class ContainerGraphWriter
     }
 
     /**
+     * One ModelEvent node per eloquent.{lifecycle}: Model key. Multiple observer
+     * rows and a $dispatchesEvents target collapse onto the same node.
+     *
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
+     */
+    private function writeModelEvents(array $modelEventRows): void
+    {
+        $byKey = [];
+        foreach ($modelEventRows as $row) {
+            $byKey[$row['key']]['row'] = $row;
+            $sources = $byKey[$row['key']]['sources'] ?? [];
+            $sources[$row['source']] = true;
+            $byKey[$row['key']]['sources'] = $sources;
+
+            if ($row['identifier'] !== '') {
+                $byKey[$row['key']]['observers'][$row['identifier']] = $row;
+            }
+
+            if ($row['event_class'] !== '') {
+                $byKey[$row['key']]['dispatches'][$row['event_class']] = $row;
+            }
+        }
+
+        foreach ($byKey as $key => $group) {
+            ModelEventNode::whereKey($key)->delete();
+            $event = ModelEventNode::create([
+                'key' => $key,
+                'name' => $group['row']['name'],
+                'lifecycle' => $group['row']['lifecycle'],
+                'source' => implode(',', array_keys($group['sources'])),
+            ]);
+
+            AbstractNode::ensure($group['row']['model'], $group['row']['model_kind']);
+            $event->forModel()->attach($group['row']['model']);
+
+            foreach ($group['observers'] ?? [] as $identifier => $observer) {
+                AbstractNode::ensure($identifier, $observer['identifier_kind']);
+                $event->handledBy()->attach($identifier, ['action' => $observer['action']]);
+            }
+
+            foreach ($group['dispatches'] ?? [] as $eventClass => $dispatched) {
+                AbstractNode::ensure($eventClass, $dispatched['event_class_kind']);
+                $event->dispatches()->attach($eventClass);
+            }
+        }
+    }
+
+    /**
      * @param  array<int, array{key: string, name: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string}>  $policyRows
      */
     private function validatePolicyRows(array $policyRows): void
@@ -1285,6 +1338,27 @@ class ContainerGraphWriter
 
             if (! isset($providerKeys[$row['provider_key']])) {
                 throw new \InvalidArgumentException("Service provider registers row references unknown provider {$row['provider_key']}");
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{key: string, name: string, lifecycle: string, source: string, model: string, model_kind: string, identifier: string, identifier_kind: string, action: string, event_class: string, event_class_kind: string}>  $modelEventRows
+     */
+    private function validateModelEventRows(array $modelEventRows): void
+    {
+        foreach ($modelEventRows as $row) {
+            foreach ([
+                'key', 'name', 'lifecycle', 'source', 'model', 'model_kind',
+                'identifier', 'identifier_kind', 'action', 'event_class', 'event_class_kind',
+            ] as $key) {
+                if (! array_key_exists($key, $row) || ! is_string($row[$key])) {
+                    throw new \InvalidArgumentException("Model event row is missing string {$key}");
+                }
+            }
+
+            if ($row['identifier'] === '' && $row['event_class'] === '') {
+                throw new \InvalidArgumentException('Model event row needs an observer identifier or a dispatched event_class');
             }
         }
     }
